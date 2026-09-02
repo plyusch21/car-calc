@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "api/rates.js", "use": "@vercel/node" },
+    { "src": "api/customs.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/rates", "dest": "/api/rates.js" },
+    { "src": "/api/customs", "dest": "/api/customs.js" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
