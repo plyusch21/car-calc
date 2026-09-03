@@ -362,7 +362,7 @@ function defaultForm(route){
     engineType:'ben', power:'', powerUnit:'ls',
     powerElectric:'', powerElectricUnit:'kvt', phev:false, hybridDominant:'a',
     jeep:false,
-    dutyManual:'', utilManual:'',
+    dutyManual:'', utilManual:'', feeManual:'',
     deliveryCity: CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : '',
     bodyTypeIdx: 1,
     deliveryOverride:false, deliveryManual:'',
@@ -518,7 +518,8 @@ function calcDeal(route, f){
 
   const duty = routeCfg.dutyMode==='utilOnly' ? 0 : num(f.dutyManual);
   const util = num(f.utilManual);
-  const customsTotal = routeCfg.dutyMode==='utilOnly' ? util : duty;
+  const fee = num(f.feeManual);
+  const customsTotal = duty + util + fee; // пошлина (если применима) + утильсбор + сбор за оформление
 
   const broker = num(f.brokerFee);
   const agent = num(f.agentFee);
@@ -527,7 +528,7 @@ function calcDeal(route, f){
 
   const total = invoiceRub + customsTotal + broker + agent + delivery;
   return {
-    invoiceRub, duty, util, broker, agent, delivery, total, downPayment,
+    invoiceRub, duty, util, fee, broker, agent, delivery, total, downPayment,
     bankPct, bankCommissionRub,
     customsLabel: routeCfg.dutyMode==='utilOnly' ? 'Утилизационный сбор' : 'Пошлина'
   };
@@ -676,11 +677,12 @@ function renderCalc(c){
 
     <div class="card">
       <h2>Таможенные платежи</h2>
-      <div class="notice info">Пошлина${isEaeu?'':' и утилизационный сбор считаются'} автоматически по нажатию «Рассчитать» — приложение отправляет параметры авто на alta.ru/auto-vat/ (тот же официальный расчёт по Решению ЕЭК №107 и Постановлению №1291, на которые ссылается и tks.ru — его собственную форму напрямую использовать нельзя, она защищена антибот-капчей). Поля ниже можно поправить вручную в любой момент.</div>
+      <div class="notice info">${isEaeu?'Утилизационный сбор считается':'Пошлина, утилизационный сбор и сбор за оформление считаются'} автоматически по нажатию «Рассчитать» — приложение отправляет параметры авто на alta.ru/auto-vat/ (тот же официальный расчёт по Решению ЕЭК №107 и Постановлению №1291, на которые ссылается и tks.ru — его собственную форму напрямую использовать нельзя, она защищена антибот-капчей). Поля ниже можно поправить вручную в любой момент.</div>
       <a class="linkbtn" id="openAlta" href="javascript:void(0)">alta.ru / auto-vat ↗<small>тот же расчёт, глазами</small></a>
       <a class="linkbtn" id="openTks" href="javascript:void(0)">tks.ru / auto/calc ↗<small>перепроверка вручную</small></a>
       ${!isEaeu ? field('Пошлина, ₽', `<input type="number" id="f_dutyManual" value="${f.dutyManual}" inputmode="numeric">`) : ''}
       ${field('Утилизационный сбор, ₽', `<input type="number" id="f_utilManual" value="${f.utilManual}" inputmode="numeric">`)}
+      ${!isEaeu ? field('Сбор за таможенное оформление, ₽', `<input type="number" id="f_feeManual" value="${f.feeManual}" inputmode="numeric">`) : ''}
       <div id="customsStatus" style="font-size:11.5px;color:var(--muted);"></div>
     </div>
 
@@ -712,7 +714,7 @@ function renderCalc(c){
     <div id="resultZone"></div>
   `;
 
-  ['model','carPrice','extraCosts','volumeCm3','power','powerElectric','dutyManual','utilManual','deliveryManual','agentFee','brokerFee'].forEach(k=>{
+  ['model','carPrice','extraCosts','volumeCm3','power','powerElectric','dutyManual','utilManual','feeManual','deliveryManual','agentFee','brokerFee'].forEach(k=>{
     const el = document.getElementById('f_'+k);
     if(el) el.oninput = ()=> f[k]=el.value;
   });
@@ -738,6 +740,7 @@ function renderCalc(c){
       const res = await fetchCustomsFromAlta(route, f);
       if(!isEaeu && res.duty!=null) f.dutyManual = String(Math.round(res.duty));
       if(res.util!=null) f.utilManual = String(Math.round(res.util));
+      if(!isEaeu && res.fee!=null) f.feeManual = String(Math.round(res.fee));
       if(statusEl) statusEl.textContent = 'Получено с alta.ru (те же ставки, что у tks.ru) · '+ new Date().toLocaleTimeString('ru-RU');
     }catch(e){
       if(statusEl){ statusEl.textContent = 'Не удалось получить расчёт ('+e.message+') — использованы значения из полей выше.'; statusEl.style.color = 'var(--danger)'; }
@@ -762,6 +765,7 @@ function showResult(route, f){
         <div class="rline"><div class="k">Цена ТС с расходами до РФ<span class="hint">переведено в рубли по текущим курсам, банк. комиссия учтена</span></div><div class="v">${fmt(r.invoiceRub,'₽')}</div></div>
         ${cfg.dutyMode!=='utilOnly' ? `<div class="rline"><div class="k">Пошлина</div><div class="v">${fmt(r.duty,'₽')}</div></div>` : ''}
         <div class="rline"><div class="k">Утилизационный сбор</div><div class="v">${fmt(r.util,'₽')}</div></div>
+        ${cfg.dutyMode!=='utilOnly' ? `<div class="rline"><div class="k">Сбор за таможенное оформление</div><div class="v">${fmt(r.fee,'₽')}</div></div>` : ''}
         <div class="rline"><div class="k">Брокер</div><div class="v">${fmt(r.broker,'₽')}</div></div>
         <div class="rline"><div class="k">Наша комиссия</div><div class="v">${fmt(r.agent,'₽')}</div></div>
         <div class="rline"><div class="k">Доставка по РФ${f.deliveryOverride?' (вручную)':' · '+f.deliveryCity}</div><div class="v">${fmt(r.delivery,'₽')}</div></div>
@@ -792,6 +796,7 @@ function shareResult(route, f, r){
     `Цена ТС с расходами до РФ: ${fmt(r.invoiceRub,'₽')}`,
     cfg.dutyMode!=='utilOnly' ? `Пошлина: ${fmt(r.duty,'₽')}` : null,
     `Утильсбор: ${fmt(r.util,'₽')}`,
+    cfg.dutyMode!=='utilOnly' ? `Сбор за оформление: ${fmt(r.fee,'₽')}` : null,
     `Брокер: ${fmt(r.broker,'₽')}`,
     `Комиссия: ${fmt(r.agent,'₽')}`,
     `Доставка: ${fmt(r.delivery,'₽')}`,

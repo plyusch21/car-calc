@@ -43,7 +43,10 @@
  *     jeep: boolean                         // "повышенной проходимости"
  *   }
  *
- * Output: { duty, util, dutyBasis, utilBasis } or { error }
+ * Output: { duty, util, fee, dutyBasis, utilBasis } or { error }
+ *   fee = сбор за таможенное оформление (Постановление №1637), tiered by
+ *   declared value — small, but it's part of the same "таможенные платежи"
+ *   bucket as duty+util in the reference cost sheet this app matches.
  */
 
 const ALTA_URL = 'https://www.alta.ru/auto-vat/';
@@ -70,16 +73,17 @@ function parseSum(cellHtml) {
 
 function parseResult(html) {
   const rows = html.match(/<tr[\s\S]*?<\/tr>/g) || [];
-  let duty = null, util = null, dutyBasis = null, utilBasis = null;
+  let duty = null, util = null, fee = null, dutyBasis = null, utilBasis = null;
   for (const row of rows) {
-    if (!/пошлина/i.test(row) && !/утилиза/i.test(row)) continue;
+    if (!/пошлина/i.test(row) && !/утилиза/i.test(row) && !/таможенный сбор/i.test(row)) continue;
     const cells = cellTexts(row);
     if (cells.length < 4) continue;
     const sum = parseSum(cells[3]);
     if (/пошлина/i.test(cells[0])) { duty = sum; dutyBasis = stripTags(cells[2]); }
     else if (/утилиза/i.test(row)) { util = sum; utilBasis = stripTags(cells[0]); }
+    else if (/таможенный сбор/i.test(cells[0])) { fee = sum; }
   }
-  return { duty, util, dutyBasis, utilBasis };
+  return { duty, util, fee, dutyBasis, utilBasis };
 }
 
 module.exports = async (req, res) => {
@@ -138,10 +142,10 @@ module.exports = async (req, res) => {
     const totalIdx = html.indexOf('Итого:', startIdx);
     const resultHtml = html.slice(startIdx, totalIdx === -1 ? startIdx + 6000 : totalIdx + 50);
 
-    const { duty, util, dutyBasis, utilBasis } = parseResult(resultHtml);
+    const { duty, util, fee, dutyBasis, utilBasis } = parseResult(resultHtml);
     if (duty === null && util === null) throw new Error('не нашли строки "Пошлина"/"Утилизационный сбор" в ответе — вёрстка alta.ru могла измениться');
 
-    res.status(200).send(JSON.stringify({ duty, util, dutyBasis, utilBasis }));
+    res.status(200).send(JSON.stringify({ duty, util, fee, dutyBasis, utilBasis }));
   } catch (e) {
     res.status(200).send(JSON.stringify({ error: 'Не удалось получить расчёт с alta.ru: ' + (e.message || e) }));
   }
