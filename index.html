@@ -220,9 +220,9 @@ input:focus, select:focus{border-color:var(--accent);}
      manual-override switch (see openRateEditor) — when it's on, the
      manual value is used and further auto-refreshes no longer overwrite
      it until you turn the switch back off.
-       ЮАНЬ/₽   — VTB Online exchange page (VTB disallows automated
-                   access in robots.txt, so this one is quick-link +
-                   manual only — see README)
+       ЮАНЬ/₽   — VTB Online currency-rates API (public JSON, no auth —
+                   see api/rates.js header for how the TLS/robots.txt
+                   assumptions that used to block this were wrong)
        ЙЕНА/₽   — ATB "для денежных переводов" exchange page
        USDT/ВОНА— Naver search result for "usdt"  (raw value − 5)
        USDT/₽   — Investing.com USDT/RUB page      (raw value + 3)
@@ -243,9 +243,9 @@ const DEFAULT_CONFIG = {
     CNY: {
       label:'ЮАНЬ / ₽', short:'ЮАНЬ',
       sourceUrl:'https://www.vtb.ru/personal/platezhi-i-perevody/obmen-valjuty/',
-      sourceNote:'ВТБ Онлайн (безналичный обмен). ВТБ запрещает автоматический доступ к сайту (robots.txt), поэтому курс обновляется только вручную — откройте страницу по кнопке и перенесите значение.',
-      autoAvailable:false, manualOverride:true, adjustment:0, adjustmentLabel:'',
-      raw: 13.19, autoRaw:null, value:13.19, updatedAt:null
+      sourceNote:'ВТБ Онлайн (без подписок и пакетов услуг), курс продажи, транш «до 500 000 ¥» — тот же публичный JSON, который использует сама страница ВТБ. Если сделка выходит за этот транш, курс на сайте будет немного другим — подправьте вручную при необходимости.',
+      autoAvailable:true, manualOverride:false, proxyKey:'cny', adjustment:0, adjustmentLabel:'',
+      raw: 13.19, autoRaw:13.19, value:13.19, updatedAt:null
     },
     JPY: {
       label:'ЙЕНА / ₽', short:'ЙЕНА',
