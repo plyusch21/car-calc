@@ -25,6 +25,7 @@
   --radius:14px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tg-top-pad: 0px; /* доп. место под кнопки закрыть/свернуть/⋯ в Telegram Mini App, см. bootGate() */
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
@@ -48,7 +49,7 @@ body{
 .serif{font-family:'Fraunces',serif;}
 
 .topbar{
-  padding:calc(14px + var(--safe-top)) 16px 10px;
+  padding:calc(14px + var(--safe-top) + var(--tg-top-pad)) 16px 10px;
   position:sticky; top:0; z-index:20;
   background:linear-gradient(180deg, var(--bg) 70%, transparent);
 }
@@ -589,7 +590,7 @@ function renderRatesView(c){
               ${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}
             </div>
           </div>
-          <div class="mono" style="font-size:19px; font-weight:600; color:${stale?'var(--danger)':'var(--good)'};">${r.value.toFixed(id==='JPY'?4:2)}</div>
+          <div class="mono" style="font-size:19px; font-weight:600; color:${stale?'var(--danger)':'var(--good)'};">${r.value.toFixed(4)}</div>
         </div>
       </div>`;
     }).join('')}
@@ -889,20 +890,30 @@ function shareResult(route, f, r, carLines){
 }
 
 function renderHistory(c){
-  if(!state.history.length){
-    c.innerHTML = `<div class="emptystate"><div class="big">Пока пусто</div>Сохранённые расчёты появятся здесь</div>`;
-    return;
-  }
-  c.innerHTML = state.history.map(h=>{
+  const filter = state.historyFilter || 'all';
+  const filtered = filter==='all' ? state.history : state.history.filter(h=>h.route===filter);
+
+  const filterHtml = `<div class="tabs" id="histFilterSeg" style="padding:0 0 14px; margin:0;">
+    <button class="tab ${filter==='all'?'active':''}" data-f="all">Общие</button>
+    ${Object.keys(CONFIG.routes).map(id=>`<button class="tab ${filter===id?'active':''}" data-f="${id}">${CONFIG.routes[id].label}</button>`).join('')}
+  </div>`;
+
+  const listHtml = filtered.length ? filtered.map(h=>{
     const d = new Date(h.date);
     return `<div class="histcard" data-id="${h.id}">
       <div class="l"><div class="m">${h.model}</div><div class="d">${CONFIG.routes[h.route].label} · ${d.toLocaleDateString('ru-RU')}</div></div>
-      <div class="r"><div class="t">${fmt(h.total,'₽')}</div><div class="c">открыть</div></div>
+      <div class="r"><div class="t">${fmt(h.total,'₽')}</div><button class="btn secondary small" data-del="${h.id}" style="margin-top:5px;padding:4px 9px;">Удалить</button></div>
     </div>`;
-  }).join('') + `<button class="btn secondary" id="clearHist">Очистить историю</button>`;
+  }).join('') + `<button class="btn secondary" id="clearHist" style="margin-top:4px;">${filter==='all'?'Очистить всю историю':'Очистить историю «'+CONFIG.routes[filter].label+'»'}</button>`
+    : `<div class="emptystate"><div class="big">Пока пусто</div>Сохранённые расчёты появятся здесь</div>`;
+
+  c.innerHTML = filterHtml + listHtml;
+
+  c.querySelectorAll('#histFilterSeg .tab').forEach(b=> b.onclick = ()=>{ state.historyFilter = b.dataset.f; renderHistory(c); });
 
   c.querySelectorAll('.histcard').forEach(el=>{
-    el.onclick = ()=>{
+    el.onclick = (e)=>{
+      if(e.target.closest('[data-del]')) return;
       const h = state.history.find(x=>x.id==el.dataset.id);
       state.route = h.route; state.form = {...defaultForm(h.route), ...h.form};
       state.formCache[h.route] = state.form;
@@ -912,8 +923,18 @@ function renderHistory(c){
       setTimeout(()=> showResult(h.route, state.form), 50);
     };
   });
+  c.querySelectorAll('[data-del]').forEach(b=> b.onclick = (e)=>{
+    e.stopPropagation();
+    state.history = state.history.filter(x=>x.id!=b.dataset.del);
+    saveHistory();
+    renderHistory(c);
+    toast('Удалено');
+  });
   const cl = document.getElementById('clearHist');
-  if(cl) cl.onclick = ()=>{ state.history=[]; saveHistory(); renderHistory(c); };
+  if(cl) cl.onclick = ()=>{
+    if(filter==='all'){ state.history=[]; } else { state.history = state.history.filter(x=>x.route!==filter); }
+    saveHistory(); renderHistory(c);
+  };
 }
 
 /* ---------------------------------------------------------------------
@@ -1053,13 +1074,13 @@ function openRateEditor(id){
       </div>
     ` : `<div class="notice warn" style="margin-top:14px;">Автообновление недоступно для этого источника — вводите значение вручную после проверки по ссылке выше.</div>`}
     ${field('Значение (сырое)', `<input type="number" id="r_raw" value="${r.raw}" step="0.0001" ${r.autoAvailable && !r.manualOverride ? 'disabled' : ''}>`)}
-    ${r.adjustment ? `<div style="font-size:12px;color:var(--muted);margin:-4px 0 10px;">Применяется корректировка: <b style="color:var(--text)">${r.adjustmentLabel}</b> → итоговое значение <b id="r_computed" style="color:var(--text)">${(r.raw+r.adjustment).toFixed(2)}</b></div>` : ''}
+    ${r.adjustment ? `<div style="font-size:12px;color:var(--muted);margin:-4px 0 10px;">Применяется корректировка: <b style="color:var(--text)">${r.adjustmentLabel}</b> → итоговое значение <b id="r_computed" style="color:var(--text)">${(r.raw+r.adjustment).toFixed(4)}</b></div>` : ''}
     <button class="btn" id="saveRateBtn" style="margin-top:6px;">Сохранить</button>
   `);
   document.getElementById('openSrc').onclick = ()=> openExternal(r.sourceUrl);
   const rawEl = document.getElementById('r_raw');
   const compEl = document.getElementById('r_computed');
-  if(rawEl && compEl) rawEl.oninput = ()=>{ compEl.textContent = (num(rawEl.value)+r.adjustment).toFixed(2); };
+  if(rawEl && compEl) rawEl.oninput = ()=>{ compEl.textContent = (num(rawEl.value)+r.adjustment).toFixed(4); };
   const toggleEl = document.getElementById('manualToggle');
   if(toggleEl) toggleEl.onclick = ()=>{
     if(r.manualOverride){ clearManualOverride(id); } else { r.manualOverride = true; saveConfig(); }
@@ -1113,6 +1134,14 @@ async function bootGate(){
 
   const tg = window.Telegram.WebApp;
   try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#121a1b'); tg.setBackgroundColor && tg.setBackgroundColor('#121a1b'); }catch(e){}
+  try{
+    // Telegram рисует свои кнопки (закрыть/свернуть/⋯) поверх окна мини-приложения,
+    // а не в отдельной полосе — если не оставить место, они налезают на контент.
+    // contentSafeAreaInset (Bot API 8.0+) даёт точный отступ; если недоступен — берём
+    // разумный запас по умолчанию.
+    const inset = (tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || (tg.safeAreaInset && tg.safeAreaInset.top) || 0;
+    document.documentElement.style.setProperty('--tg-top-pad', Math.max(inset, 44) + 'px');
+  }catch(e){ document.documentElement.style.setProperty('--tg-top-pad', '44px'); }
 
   let authRes;
   try{
