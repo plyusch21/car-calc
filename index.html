@@ -194,13 +194,31 @@ input:focus, select:focus{border-color:var(--accent);}
 <script>
 /* =========================================================================
    CAR IMPORT COST CALCULATOR — internal tool
-   - Duty/utilisation fee are ALWAYS sourced from alta.ru/auto-vat and
-     tks.ru/auto/calc — this app does not compute them, it only stores
-     what your manager reads off those calculators, with one-tap links.
+
+   - Duty (пошлина) and utilisation fee (утилизационный сбор) are computed
+     automatically, server-side, by submitting the same inputs to
+     alta.ru/auto-vat/ (api/customs.js) and reading the numbers back off
+     its result table. Why alta.ru and not tks.ru/auto/calc directly:
+     tks.ru's own calculator form is protected by an anti-bot "cap" widget
+     (proof-of-work captcha) — automating past that would mean bypassing
+     bot-detection, which this app won't do, and TKS's separate paid
+     "Расчёт авто" API product has no published request/response docs to
+     build against safely. alta.ru is a free, non-captcha calculator that
+     cites and applies the exact same legal sources tks.ru's own page names
+     (Решение Совета ЕЭК №107 от 20.12.2017 for duty, Постановление
+     Правительства РФ №1291 от 26.12.2013 for the utilisation fee) — so it
+     is, in practice, the same official numbers. The util fee in particular
+     is NOT a flat figure any more (a 2024+ reform made it depend on engine
+     volume and power brackets too), which is exactly why this proxies live
+     instead of hard-coding a rate table that would go stale.
+     Both fields stay editable after the auto-fetch — manual correction
+     always wins until the next "Рассчитать" tap.
    - Currency rates are always pulled from the specific sources below via
-     a small server-side proxy (api/rates.js, see README) because these
-     sites cannot be fetched directly from a browser (no CORS). Manual
-     correction is always available and wins when entered.
+     a small server-side proxy (api/rates.js) because these sites cannot
+     be fetched directly from a browser (no CORS). Each rate has its own
+     manual-override switch (see openRateEditor) — when it's on, the
+     manual value is used and further auto-refreshes no longer overwrite
+     it until you turn the switch back off.
        ЮАНЬ/₽   — VTB Online exchange page (VTB disallows automated
                    access in robots.txt, so this one is quick-link +
                    manual only — see README)
@@ -225,37 +243,37 @@ const DEFAULT_CONFIG = {
       label:'ЮАНЬ / ₽', short:'ЮАНЬ',
       sourceUrl:'https://www.vtb.ru/personal/platezhi-i-perevody/obmen-valjuty/',
       sourceNote:'ВТБ Онлайн (безналичный обмен). ВТБ запрещает автоматический доступ к сайту (robots.txt), поэтому курс обновляется только вручную — откройте страницу по кнопке и перенесите значение.',
-      autoAvailable:false, adjustment:0, adjustmentLabel:'',
-      raw: 13.19, value:13.19, updatedAt:null
+      autoAvailable:false, manualOverride:true, adjustment:0, adjustmentLabel:'',
+      raw: 13.19, autoRaw:null, value:13.19, updatedAt:null
     },
     JPY: {
       label:'ЙЕНА / ₽', short:'ЙЕНА',
       sourceUrl:'https://www.atb.su/services/exchange/',
       sourceNote:'АТБ Банк, вкладка «для денежных переводов», курс продажи (за 1 йену).',
-      autoAvailable:true, proxyKey:'jpy', adjustment:0, adjustmentLabel:'',
-      raw: 0.5730, value:0.5730, updatedAt:null
+      autoAvailable:true, manualOverride:false, proxyKey:'jpy', adjustment:0, adjustmentLabel:'',
+      raw: 0.5730, autoRaw:0.5730, value:0.5730, updatedAt:null
     },
     KRW_USDT: {
       label:'USDT / ВОНА', short:'USDT/ВОНА',
       sourceUrl:'https://search.naver.com/search.naver?where=nexearch&sm=top_sug.pre&fbm=0&acr=1&acq=usdt&qdt=0&ie=utf8&query=usdt&ackey=op24n8r1',
       sourceNote:'Значение на Naver минус 5 (по договорённости с площадкой обмена).',
-      autoAvailable:true, proxyKey:'usdtKrw', adjustment:-5, adjustmentLabel:'− 5',
-      raw: 1409, value:1404, updatedAt:null
+      autoAvailable:true, manualOverride:false, proxyKey:'usdtKrw', adjustment:-5, adjustmentLabel:'− 5',
+      raw: 1409, autoRaw:1409, value:1404, updatedAt:null
     },
     USDT_RUB: {
       label:'USDT / ₽', short:'USDT/₽',
       sourceUrl:'https://ru.investing.com/?country=us',
       sourceNote:'Investing.com, курс USDT/RUB, плюс 3 (по договорённости с площадкой обмена).',
-      autoAvailable:true, proxyKey:'usdtRub', adjustment:3, adjustmentLabel:'+ 3',
-      raw: 86.83, value:89.83, updatedAt:null
+      autoAvailable:true, manualOverride:false, proxyKey:'usdtRub', adjustment:3, adjustmentLabel:'+ 3',
+      raw: 86.83, autoRaw:86.83, value:89.83, updatedAt:null
     },
     EUR: {
       label:'ЕВРО ЦБ РФ / ₽', short:'ЕВРО (ЦБ)',
       sourceUrl:'https://www.cbr.ru/currency_base/daily/',
       sourceNote:'Официальный курс ЦБ РФ — используется только для расчёта пошлины по авто младше 3 лет (ставка в % от стоимости с минимумом в €/см³).',
-      autoAvailable:true, direct:true, directUrl:'https://www.cbr-xml-daily.ru/daily_json.js', directPath:'Valute.EUR.Value',
+      autoAvailable:true, manualOverride:false, direct:true, directUrl:'https://www.cbr-xml-daily.ru/daily_json.js', directPath:'Valute.EUR.Value',
       adjustment:0, adjustmentLabel:'',
-      raw: 100, value:100, updatedAt:null
+      raw: 100, autoRaw:100, value:100, updatedAt:null
     }
   },
 
@@ -264,43 +282,10 @@ const DEFAULT_CONFIG = {
   // this as a Vercel/Cloudflare serverless function.
   proxyUrl: '/api/rates',
 
-  // ТКС API — «Расчёт таможенных платежей» (calc.tks.ru/calc/<сертификат>/),
-  // официально задокументирован на github.com/tkssoft/api.tks.ru. Это
-  // калькулятор общего назначения (по коду ТН ВЭД + ставке + там.
-  // стоимости) — он не содержит специальной "автомобильной" логики и не
-  // считает утилизационный сбор, поэтому:
-  //   • пошлину эта интеграция считает автоматически: мы сами подбираем
-  //     код ТН ВЭД (8703...) и ставку по возрасту/объёму (Решение ЕЭК
-  //     №107, те же публичные ставки, что действуют для физлиц), а ТКС
-  //     делает финальный расчёт суммы по актуальному курсу валют;
-  //   • утильсбор в документированном API не описан — остаётся вручную
-  //     (кнопки-ссылки на alta.ru/tks.ru), пока не появится точный
-  //     источник для него тоже.
-  // certificate — это и есть ваш ключ; если это на самом деле "product id"
-  // из личного кабинета my.tks.ru, а не сертификат — скажите, поправлю.
-  tks: { enabled:true, apiKey:'87434b095e3f4d6fa8febccee738b9bf', customsProxyUrl:'/api/customs' },
-
-  // TN ВЭД коды 8703... по объёму двигателя (бензин, физ. лица) и ставки
-  // пошлины физлиц по Решению ЕЭК №107 — используются только как ВХОД
-  // для запроса к ТКС (сама сумма считается их сервисом).
-  dutyLookup: {
-    tnvedByVolume: [ // объём см³ (до) → код ТН ВЭД (бензин)
-      {max:1000, code:'8703219098'}, {max:1500, code:'8703229098'},
-      {max:1800, code:'8703239018'}, {max:2300, code:'8703239024'},
-      {max:3000, code:'8703239024'}, {max:Infinity, code:'8703249098'}
-    ],
-    ratePctByAge: { lt3:null, t3to5:null, gt5:null }, // возраст <3 лет считается от стоимости — ставку определяет сам ТКС по коду
-    pctFloorLt3: [ // таможенная стоимость в €, до → {percent, минимум €/см³}  (Решение ЕЭК №107)
-      {max:8500, pct:0.54, minEurCm3:2.5}, {max:16700, pct:0.48, minEurCm3:3.5},
-      {max:42300, pct:0.48, minEurCm3:5.5}, {max:84500, pct:0.48, minEurCm3:7.5},
-      {max:169000, pct:0.48, minEurCm3:15}, {max:Infinity, pct:0.48, minEurCm3:20}
-    ],
-    rateEurCm3: {
-      t3to5: [ {max:1000,r:1.5},{max:1500,r:1.7},{max:1800,r:2.5},{max:2300,r:2.7},{max:3000,r:3.0},{max:Infinity,r:3.6} ],
-      gt5:   [ {max:1000,r:3.0},{max:1500,r:3.2},{max:1800,r:3.5},{max:2300,r:4.8},{max:3000,r:5.0},{max:Infinity,r:5.7} ]
-    },
-    countryCodeByRoute: { japan:'392', korea:'410', china:'156', eaeu:'417' } // ОКСМ/ISO numeric
-  },
+  // Пошлина и утильсбор считаются на сервере через api/customs.js (см.
+  // комментарий в начале файла и в самом api/customs.js — почему это
+  // проксирует alta.ru, а не tks.ru напрямую).
+  customsProxyUrl: '/api/customs',
 
   customsCalculators: [
     { label:'alta.ru — auto-vat', url:'https://www.alta.ru/auto-vat/' },
@@ -373,7 +358,10 @@ const state = { view:'calc', route:'japan', history: Store.get('history_v2', [])
 function defaultForm(route){
   const r = CONFIG.routes[route];
   return {
-    model:'', carPrice:'', extraCosts:'', volumeCm3:'', hp:'', age:'t3to5',
+    model:'', carPrice:'', extraCosts:'', volumeCm3:'', age:'t3to5',
+    engineType:'ben', power:'', powerUnit:'ls',
+    powerElectric:'', powerElectricUnit:'kvt', phev:false, hybridDominant:'a',
+    jeep:false,
     dutyManual:'', utilManual:'',
     deliveryCity: CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : '',
     bodyTypeIdx: 1,
@@ -381,6 +369,13 @@ function defaultForm(route){
     brokerFee: r.brokerFee, agentFee: r.agentFee, bankPct: r.bankCommissionPct
   };
 }
+const ENGINE_TYPES = {
+  ben:      { label:'Бензиновый',            hybrid:false, dtype:'ben' },
+  dis:      { label:'Дизельный',              hybrid:false, dtype:'dis' },
+  electric: { label:'Электрический',          hybrid:false, dtype:'electric' },
+  ben_hybrid: { label:'Бензиновый гибрид (+ электро)', hybrid:true, dtype:'ben' },
+  dis_hybrid: { label:'Дизельный гибрид (+ электро)',  hybrid:true, dtype:'dis' }
+};
 
 /* ---------------------------------------------------------------------
    3. Helpers
@@ -395,6 +390,11 @@ function openExternal(url){
 /* ---------------------------------------------------------------------
    4. Currency rates — fetch via server-side proxy, manual always wins
 --------------------------------------------------------------------- */
+function applyAutoRate(r, raw){
+  r.autoRaw = raw; r.autoUpdatedAt = Date.now(); r.fetchError = false;
+  if(!r.manualOverride){ r.raw = raw; r.value = raw + r.adjustment; r.updatedAt = r.autoUpdatedAt; }
+}
+
 async function fetchAutoRates(){
   const proxyTargets = Object.keys(CONFIG.rates).filter(id => CONFIG.rates[id].autoAvailable && !CONFIG.rates[id].direct);
   const directTargets = Object.keys(CONFIG.rates).filter(id => CONFIG.rates[id].autoAvailable && CONFIG.rates[id].direct);
@@ -407,9 +407,8 @@ async function fetchAutoRates(){
       proxyTargets.forEach(id=>{
         const r = CONFIG.rates[id];
         const raw = data[r.proxyKey];
-        if(raw!==undefined && raw!==null && !isNaN(raw)){
-          r.raw = raw; r.value = raw + r.adjustment; r.updatedAt = Date.now(); r.fetchError=false;
-        } else { r.fetchError = true; }
+        if(raw!==undefined && raw!==null && !isNaN(raw)) applyAutoRate(r, raw);
+        else { r.fetchError = true; }
       });
     }catch(e){ proxyTargets.forEach(id=> CONFIG.rates[id].fetchError = true); }
   }
@@ -422,7 +421,7 @@ async function fetchAutoRates(){
       const data = await res.json();
       const raw = r.directPath.split('.').reduce((o,k)=>(o&&o[k]!==undefined)?o[k]:undefined, data);
       if(raw===undefined || isNaN(raw)) throw new Error('path not found');
-      r.raw = parseFloat(raw); r.value = r.raw + r.adjustment; r.updatedAt = Date.now(); r.fetchError = false;
+      applyAutoRate(r, parseFloat(raw));
     }catch(e){ r.fetchError = true; }
   }));
 
@@ -431,59 +430,56 @@ async function fetchAutoRates(){
 }
 
 /* ---------------------------------------------------------------------
-   4b. ТКС API — automatic customs duty lookup
-   (see comment on CONFIG.tks above for what this does and doesn't cover)
+   4b. Duty + utilisation fee — live official calc via api/customs.js
+   (see the file header comment and api/customs.js for why this proxies
+   alta.ru rather than tks.ru/auto/calc or an undocumented paid API)
 --------------------------------------------------------------------- */
-function bracketOf(list, x){ for(const b of list){ if(x<=b.max) return b; } return list[list.length-1]; }
+const ALTA_AGE = { lt3:'age0', t3to5:'age3', gt5:'age5' };
 
-async function fetchCustomsFromTks(route, f){
+async function fetchCustomsFromAlta(route, f){
   const routeCfg = CONFIG.routes[route];
-  if(routeCfg.dutyMode==='utilOnly') return { duty:null, util:null }; // ЕАЭС-маршрут: пошлины нет, утиль — вручную
-
-  const volumeCm3 = num(f.volumeCm3);
-  const valueRub = convertToRub(route, num(f.carPrice), num(f.extraCosts), routeCfg.bankCommissionPct);
-  const DL = CONFIG.dutyLookup;
-
-  if(f.age==='lt3'){
-    // Ad valorem + floor — public EAEU Decision №107 formula, computed
-    // directly (this bracket doesn't reduce to a single per-cm³ rate that
-    // the generic TKS contract-calc endpoint accepts as one input).
-    const eurRub = CONFIG.rates.EUR.value;
-    const valueEur = valueRub / eurRub;
-    const b = bracketOf(DL.pctFloorLt3, valueEur);
-    const byPct = valueRub * b.pct;
-    const byMin = b.minEurCm3 * volumeCm3 * eurRub;
-    return { duty: Math.round(Math.max(byPct, byMin)), util: null };
-  }
-
-  const rateTable = f.age==='t3to5' ? DL.rateEurCm3.t3to5 : DL.rateEurCm3.gt5;
-  const rate = bracketOf(rateTable, volumeCm3).r;
-  const tnved = bracketOf(DL.tnvedByVolume, volumeCm3).code;
+  const priceRub = convertToRub(route, num(f.carPrice), num(f.extraCosts), routeCfg.bankCommissionPct);
+  const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
+  const isElectric = em.dtype === 'electric';
 
   const payload = {
-    apiKey: CONFIG.tks.apiKey,
-    tnvedCode: tnved,
-    countryCode: DL.countryCodeByRoute[route],
-    valueRub,
-    volumeCm3,
-    hp: num(f.hp),
-    rateEurPerCm3: rate
+    ageCode: ALTA_AGE[f.age],
+    priceRub,
+    volumeCm3: isElectric ? 0 : num(f.volumeCm3),
+    dtype: em.dtype,
+    hybrid1: !em.hybrid ? '1' : (f.phev ? '3' : '2'),
+    hybrid2: f.hybridDominant === 'b' ? 'b' : 'a',
+    power: isElectric ? 0 : num(f.power),
+    powerUnit: f.powerUnit,
+    powerElectric: isElectric ? num(f.power) : (em.hybrid ? num(f.powerElectric) : 0),
+    powerElectricUnit: isElectric ? f.powerUnit : f.powerElectricUnit,
+    jeep: !!f.jeep
   };
-  const res = await fetch(CONFIG.tks.customsProxyUrl, {
+
+  const res = await fetch(CONFIG.customsProxyUrl, {
     method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
   });
   if(!res.ok) throw new Error('HTTP '+res.status);
   const data = await res.json();
   if(data.error) throw new Error(data.error);
-  return { duty: data.duty, util: null };
+  return data; // { duty, util, dutyBasis, utilBasis }
 }
 
 function setRawValue(id, raw){
   const r = CONFIG.rates[id];
+  r.manualOverride = true;
   r.raw = num(raw);
   r.value = r.raw + r.adjustment;
   r.updatedAt = Date.now();
   r.fetchError = false;
+  saveConfig();
+}
+
+function clearManualOverride(id){
+  const r = CONFIG.rates[id];
+  if(!r.autoAvailable) return; // нечем заменить — источник только ручной
+  r.manualOverride = false;
+  if(r.autoRaw!=null){ r.raw = r.autoRaw; r.value = r.raw + r.adjustment; r.updatedAt = r.autoUpdatedAt; }
   saveConfig();
 }
 
@@ -566,7 +562,7 @@ function renderRatesView(c){
           <div>
             <div style="font-weight:600; font-size:14.5px;">${r.label}</div>
             <div style="font-size:11.5px; color:${stale?'var(--danger)':'var(--muted)'}; margin-top:2px;">
-              ${stale ? 'Не удалось обновить — используется последнее значение' : (r.autoAvailable ? 'Автообновление' : 'Только вручную')}
+              ${stale ? 'Не удалось обновить — используется последнее значение' : (r.manualOverride ? 'Вручную' : (r.autoAvailable ? 'Автообновление' : 'Только вручную'))}
               ${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}
             </div>
           </div>
@@ -611,6 +607,9 @@ function renderCalc(c){
   const suf = CUR_SUFFIX[route];
   const isEaeu = cfg.dutyMode==='utilOnly';
   const deliveryAuto = deliveryPrice(f.deliveryCity, f.bodyTypeIdx);
+  const engineMeta = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
+  const isElectric = engineMeta.dtype === 'electric';
+  const isHybrid = engineMeta.hybrid;
 
   c.innerHTML = `
     <div class="card">
@@ -620,31 +619,69 @@ function renderCalc(c){
         ${field('Цена авто ('+suf+')', `<input type="number" id="f_carPrice" value="${f.carPrice}" inputmode="decimal">`)}
         ${field('Расходы в стране ('+suf+')', `<input type="number" id="f_extraCosts" value="${f.extraCosts}" inputmode="decimal">`)}
       </div>
-      <div class="row2">
-        ${field('Объём двигателя (см³)', `<input type="number" id="f_volumeCm3" value="${f.volumeCm3}" step="10" inputmode="numeric">`)}
-        ${field('Мощность (л.с.)', `<input type="number" id="f_hp" value="${f.hp}" inputmode="numeric">`)}
+      <div class="field">
+        <label>Тип двигателя</label>
+        <select id="f_engineType">
+          ${Object.keys(ENGINE_TYPES).map(k=>`<option value="${k}" ${f.engineType===k?'selected':''}>${ENGINE_TYPES[k].label}</option>`).join('')}
+        </select>
       </div>
+      <div class="row2">
+        ${isElectric ? '' : field('Объём двигателя (см³)', `<input type="number" id="f_volumeCm3" value="${f.volumeCm3}" step="10" inputmode="numeric">`)}
+        <div class="field">
+          <label>${isElectric?'Мощность электродвигателя':'Мощность двигателя (ДВС)'}</label>
+          <div class="row2" style="gap:6px;">
+            <input type="number" id="f_power" value="${f.power}" inputmode="numeric">
+            <div class="seg" id="powerUnitSeg">
+              <button data-unit="ls" class="${f.powerUnit==='ls'?'active':''}">л.с.</button>
+              <button data-unit="kvt" class="${f.powerUnit==='kvt'?'active':''}">кВт</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      ${isHybrid ? `
+      <div class="row2">
+        <div class="field">
+          <label>Мощность электродвигателя</label>
+          <div class="row2" style="gap:6px;">
+            <input type="number" id="f_powerElectric" value="${f.powerElectric}" inputmode="numeric">
+            <div class="seg" id="powerElUnitSeg">
+              <button data-unit="ls" class="${f.powerElectricUnit==='ls'?'active':''}">л.с.</button>
+              <button data-unit="kvt" class="${f.powerElectricUnit==='kvt'?'active':''}">кВт</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Соотношение мощности</label>
+          <div class="seg" id="hybridDomSeg">
+            <button data-dom="a" class="${f.hybridDominant==='a'?'active':''}">ДВС &gt; ЭД</button>
+            <button data-dom="b" class="${f.hybridDominant==='b'?'active':''}">ДВС &lt; ЭД</button>
+          </div>
+        </div>
+      </div>
+      <div class="toggle-row field">
+        <div style="font-size:12.5px;">Подзаряжаемый гибрид (PHEV)</div>
+        <div class="switch ${f.phev?'on':''}" id="phevToggle"><div class="knob"></div></div>
+      </div>` : ''}
       <div class="field">
         <label>Возраст автомобиля</label>
         <div class="seg" id="ageSeg">
           ${Object.keys(AGE_LABELS).map(k=>`<button data-age="${k}" class="${f.age===k?'active':''}">${AGE_LABELS[k]}</button>`).join('')}
         </div>
       </div>
+      <div class="toggle-row field">
+        <div style="font-size:12.5px;">Повышенной проходимости (внедорожник)</div>
+        <div class="switch ${f.jeep?'on':''}" id="jeepToggle"><div class="knob"></div></div>
+      </div>
     </div>
 
     <div class="card">
       <h2>Таможенные платежи</h2>
-      ${!isEaeu ? (CONFIG.tks.enabled && CONFIG.tks.apiKey ? `
-        <div class="notice info">Пошлина считается автоматически через API ТКС при нажатии «Рассчитать» (код ТН ВЭД и ставка подбираются по объёму/возрасту, ТКС считает сумму по своему курсу валют). Поле ниже можно поправить вручную.</div>
-      ` : `
-        <div class="notice warn">API ТКС не подключён (ключ — в «Настройках»). Пока переносите пошлину с калькуляторов ниже вручную.</div>
-      `) : ''}
-      <div class="notice warn">Утилизационный сбор в API ТКС не считается (его там нет) — переносите с калькуляторов ниже вручную.</div>
-      <a class="linkbtn" id="openAlta" href="javascript:void(0)">alta.ru / auto-vat ↗<small>официальный калькулятор ФТС</small></a>
-      <a class="linkbtn" id="openTks" href="javascript:void(0)">tks.ru / auto/calc ↗<small>перепроверка расчёта</small></a>
+      <div class="notice info">Пошлина${isEaeu?'':' и утилизационный сбор считаются'} автоматически по нажатию «Рассчитать» — приложение отправляет параметры авто на alta.ru/auto-vat/ (тот же официальный расчёт по Решению ЕЭК №107 и Постановлению №1291, на которые ссылается и tks.ru — его собственную форму напрямую использовать нельзя, она защищена антибот-капчей). Поля ниже можно поправить вручную в любой момент.</div>
+      <a class="linkbtn" id="openAlta" href="javascript:void(0)">alta.ru / auto-vat ↗<small>тот же расчёт, глазами</small></a>
+      <a class="linkbtn" id="openTks" href="javascript:void(0)">tks.ru / auto/calc ↗<small>перепроверка вручную</small></a>
       ${!isEaeu ? field('Пошлина, ₽', `<input type="number" id="f_dutyManual" value="${f.dutyManual}" inputmode="numeric">`) : ''}
       ${field('Утилизационный сбор, ₽', `<input type="number" id="f_utilManual" value="${f.utilManual}" inputmode="numeric">`)}
-      <div id="tksStatus" style="font-size:11.5px;color:var(--muted);"></div>
+      <div id="customsStatus" style="font-size:11.5px;color:var(--muted);"></div>
     </div>
 
     <div class="card">
@@ -675,11 +712,17 @@ function renderCalc(c){
     <div id="resultZone"></div>
   `;
 
-  ['model','carPrice','extraCosts','volumeCm3','hp','dutyManual','utilManual','deliveryManual','agentFee','brokerFee'].forEach(k=>{
+  ['model','carPrice','extraCosts','volumeCm3','power','powerElectric','dutyManual','utilManual','deliveryManual','agentFee','brokerFee'].forEach(k=>{
     const el = document.getElementById('f_'+k);
     if(el) el.oninput = ()=> f[k]=el.value;
   });
   document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ f.age=b.dataset.age; renderCalc(c); });
+  const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ f.engineType=engineEl.value; renderCalc(c); };
+  document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ f.powerUnit=b.dataset.unit; renderCalc(c); });
+  document.querySelectorAll('#powerElUnitSeg button').forEach(b=> b.onclick = ()=>{ f.powerElectricUnit=b.dataset.unit; renderCalc(c); });
+  document.querySelectorAll('#hybridDomSeg button').forEach(b=> b.onclick = ()=>{ f.hybridDominant=b.dataset.dom; renderCalc(c); });
+  const phevT = document.getElementById('phevToggle'); if(phevT) phevT.onclick = ()=>{ f.phev=!f.phev; renderCalc(c); };
+  const jeepT = document.getElementById('jeepToggle'); if(jeepT) jeepT.onclick = ()=>{ f.jeep=!f.jeep; renderCalc(c); };
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
   const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; renderCalc(c); };
   const delT = document.getElementById('delOverrideToggle'); if(delT) delT.onclick = ()=>{ f.deliveryOverride=!f.deliveryOverride; renderCalc(c); };
@@ -688,20 +731,18 @@ function renderCalc(c){
 
   document.getElementById('calcBtn').onclick = async ()=>{
     const btn = document.getElementById('calcBtn');
-    const statusEl = document.getElementById('tksStatus');
-    if(CONFIG.tks.enabled && CONFIG.tks.apiKey){
-      btn.disabled = true; btn.textContent = 'Запрашиваю пошлину в ТКС…';
-      if(statusEl) statusEl.textContent = '';
-      try{
-        const res = await fetchCustomsFromTks(route, f);
-        f.dutyManual = res.duty!=null ? String(res.duty) : f.dutyManual;
-        f.utilManual = res.util!=null ? String(res.util) : f.utilManual;
-        if(statusEl) statusEl.textContent = 'Получено из ТКС API · '+ new Date().toLocaleTimeString('ru-RU');
-      }catch(e){
-        if(statusEl){ statusEl.textContent = 'Не удалось получить от ТКС API ('+e.message+') — использованы значения из полей выше.'; statusEl.style.color = 'var(--danger)'; }
-      }
-      btn.disabled = false; btn.textContent = 'Рассчитать';
+    const statusEl = document.getElementById('customsStatus');
+    btn.disabled = true; btn.textContent = 'Запрашиваю расчёт на alta.ru…';
+    if(statusEl){ statusEl.textContent = ''; statusEl.style.color = 'var(--muted)'; }
+    try{
+      const res = await fetchCustomsFromAlta(route, f);
+      if(!isEaeu && res.duty!=null) f.dutyManual = String(Math.round(res.duty));
+      if(res.util!=null) f.utilManual = String(Math.round(res.util));
+      if(statusEl) statusEl.textContent = 'Получено с alta.ru (те же ставки, что у tks.ru) · '+ new Date().toLocaleTimeString('ru-RU');
+    }catch(e){
+      if(statusEl){ statusEl.textContent = 'Не удалось получить расчёт ('+e.message+') — использованы значения из полей выше.'; statusEl.style.color = 'var(--danger)'; }
     }
+    btn.disabled = false; btn.textContent = 'Рассчитать';
     showResult(route, f);
   };
 }
@@ -715,7 +756,7 @@ function showResult(route, f){
     <div class="receipt">
       <div class="receipt-head">
         <div class="model">${f.model || 'Без названия'}</div>
-        <div class="meta">${cfg.label} · ${AGE_LABELS[f.age]} · ${f.volumeCm3?(num(f.volumeCm3)/1000).toFixed(1)+' л':'—'}${f.hp?(' · '+f.hp+' л.с.'):''}</div>
+        <div class="meta">${cfg.label} · ${AGE_LABELS[f.age]} · ${(ENGINE_TYPES[f.engineType]||ENGINE_TYPES.ben).label}${f.volumeCm3?(' · '+(num(f.volumeCm3)/1000).toFixed(1)+' л'):''}${f.power?(' · '+f.power+' '+(f.powerUnit==='kvt'?'кВт':'л.с.')):''}</div>
       </div>
       <div class="receipt-body">
         <div class="rline"><div class="k">Цена ТС с расходами до РФ<span class="hint">переведено в рубли по текущим курсам, банк. комиссия учтена</span></div><div class="v">${fmt(r.invoiceRub,'₽')}</div></div>
@@ -806,13 +847,8 @@ function renderSettingsView(c){
       ${Object.keys(CONFIG.routes).map(id=>routeSettingsBlock(id)).join('<div style="height:14px"></div>')}
     </div>
     <div class="card">
-      <h2>ТКС API — автоматический расчёт пошлины</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Как только у вас будет ключ API, вставьте его сюда и включите тумблер — «Рассчитать» в разделе «Расчёт» будет сам получать пошлину и утильсбор, без ручного переноса с сайтов. Формат запроса пока не подтверждён, поэтому серверная часть (<code>api/customs.js</code>) — заготовка: как только пришлёте документацию/ключ TKS, донастрою её под реальный ответ.</p>
-      <div class="toggle-row field">
-        <div style="font-size:13px;">Использовать TKS API</div>
-        <div class="switch ${CONFIG.tks.enabled?'on':''}" id="tksEnabledToggle"><div class="knob"></div></div>
-      </div>
-      ${field('API-ключ TKS', `<input type="text" id="tksApiKey" value="${CONFIG.tks.apiKey}" placeholder="вставьте ключ">`)}
+      <h2>Расчёт пошлины и утильсбора</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0;">Считается автоматически на сервере (<code>api/customs.js</code>) через официальный калькулятор alta.ru/auto-vat/ — тот же расчёт, что и по ссылкам ниже, и по тем же ставкам, на которые ссылается tks.ru. Ключа/настроек не требует.</p>
     </div>
     <div class="card">
       <h2>Таможенные калькуляторы (резерв / проверка)</h2>
@@ -828,8 +864,6 @@ function renderSettingsView(c){
   `;
   document.getElementById('refreshRatesBtn').onclick = async ()=>{ toast('Обновляю…'); await fetchAutoRates(); toast('Готово'); };
   document.getElementById('resetCfgBtn').onclick = ()=>{ if(confirm('Сбросить все настройки?')){ CONFIG=JSON.parse(JSON.stringify(DEFAULT_CONFIG)); saveConfig(); renderAll(); } };
-  document.getElementById('tksEnabledToggle').onclick = ()=>{ CONFIG.tks.enabled=!CONFIG.tks.enabled; saveConfig(); renderSettingsView(c); };
-  document.getElementById('tksApiKey').oninput = (e)=>{ CONFIG.tks.apiKey = e.target.value; saveConfig(); };
   bindRouteSettings();
   bindDeliveryTable();
   document.getElementById('addCityBtn').onclick = ()=>{
@@ -887,10 +921,15 @@ function openRateEditor(id){
     <a class="linkbtn" href="javascript:void(0)" id="openSrc">Открыть источник ↗</a>
     <div class="src-line">${r.sourceNote}</div>
     ${r.autoAvailable ? `
-      <div class="field" style="margin-top:14px;"><label>Обновлено автоматически</label>
-        <div style="font-size:12.5px; color:var(--muted);">${r.updatedAt ? new Date(r.updatedAt).toLocaleString('ru-RU') : 'ещё не запрашивалось'}</div>
-      </div>` : `<div class="notice warn" style="margin-top:14px;">Автообновление недоступно для этого источника — вводите значение вручную после проверки по ссылке выше.</div>`}
-    ${field('Значение на сайте (сырое)', `<input type="number" id="r_raw" value="${r.raw}" step="0.0001">`)}
+      <div class="field" style="margin-top:14px;"><label>Автообновление (2 раза в сутки, при открытии приложения)</label>
+        <div style="font-size:12.5px; color:var(--muted);">Последнее авто-значение: ${r.autoRaw!=null?r.autoRaw:'—'}${r.autoUpdatedAt ? ' · '+new Date(r.autoUpdatedAt).toLocaleString('ru-RU') : ''}</div>
+      </div>
+      <div class="toggle-row field" style="margin-top:10px;">
+        <div style="font-size:12.5px;">Ручная корректировка ${r.manualOverride?'(активна — авто-курс игнорируется)':''}</div>
+        <div class="switch ${r.manualOverride?'on':''}" id="manualToggle"><div class="knob"></div></div>
+      </div>
+    ` : `<div class="notice warn" style="margin-top:14px;">Автообновление недоступно для этого источника — вводите значение вручную после проверки по ссылке выше.</div>`}
+    ${field('Значение (сырое)', `<input type="number" id="r_raw" value="${r.raw}" step="0.0001" ${r.autoAvailable && !r.manualOverride ? 'disabled' : ''}>`)}
     ${r.adjustment ? `<div style="font-size:12px;color:var(--muted);margin:-4px 0 10px;">Применяется корректировка: <b style="color:var(--text)">${r.adjustmentLabel}</b> → итоговое значение <b id="r_computed" style="color:var(--text)">${(r.raw+r.adjustment).toFixed(2)}</b></div>` : ''}
     <button class="btn" id="saveRateBtn" style="margin-top:6px;">Сохранить</button>
   `);
@@ -898,7 +937,13 @@ function openRateEditor(id){
   const rawEl = document.getElementById('r_raw');
   const compEl = document.getElementById('r_computed');
   if(rawEl && compEl) rawEl.oninput = ()=>{ compEl.textContent = (num(rawEl.value)+r.adjustment).toFixed(2); };
+  const toggleEl = document.getElementById('manualToggle');
+  if(toggleEl) toggleEl.onclick = ()=>{
+    if(r.manualOverride){ clearManualOverride(id); } else { r.manualOverride = true; saveConfig(); }
+    openRateEditor(id);
+  };
   document.getElementById('saveRateBtn').onclick = ()=>{
+    if(r.autoAvailable && !r.manualOverride){ closeSheet(); refreshRatesUI(); return; }
     setRawValue(id, document.getElementById('r_raw').value);
     closeSheet(); refreshRatesUI();
     toast('Курс обновлён');

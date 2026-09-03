@@ -28,15 +28,24 @@ async function fetchText(url) {
   return res.text();
 }
 
-// ATB: "для денежных переводов" tab → JPY row → "продажа" value (per 100 JPY)
+// ATB: currency page has 4 tabs (в отделениях/для карт/ЦБ РФ/для денежных
+// переводов) rendered as sibling <div id="currencyTabN"> blocks, all present
+// in the raw HTML (tab switching is client-side CSS/JS, not a separate
+// request) — так что нужно взять именно блок currencyTab4 ("для денежных
+// переводов"), а не первый попавшийся "JPY" в документе (он в другом табе).
 async function getJpy() {
   const html = await fetchText('https://www.atb.su/services/exchange/');
-  // Look for the "для денежных переводов" panel, then the JPY row inside it,
-  // then its "продажа" (sell) figure. Adjust this if ATB changes markup.
-  const section = html.split(/для\s+денежных\s+переводов/i)[1] || html;
-  const jpyBlock = section.split(/JPY/i)[1] || '';
-  const m = jpyBlock.match(/продажа[^0-9]{0,40}([\d]+[.,][\d]+)/i);
-  if (!m) throw new Error('jpy: pattern not found');
+  const tabRe = /id="currencyTab4">\s*<div class="currency-table"/;
+  const m0 = tabRe.exec(html);
+  if (!m0) throw new Error('jpy: "для денежных переводов" section not found');
+  const blockStart = m0.index;
+  const nextTab = html.indexOf('currency-tabs__item', blockStart + 50);
+  const block = html.slice(blockStart, nextTab === -1 ? blockStart + 6000 : nextTab);
+  const jpyIdx = block.indexOf('>JPY<');
+  if (jpyIdx === -1) throw new Error('jpy: JPY row not found');
+  const after = block.slice(jpyIdx, jpyIdx + 900);
+  const m = after.match(/продажа<\/div>\s*([\d]+[.,][\d]+)/i);
+  if (!m) throw new Error('jpy: rate not found');
   const per100 = parseFloat(m[1].replace(',', '.'));
   return per100 / 100; // page quotes per 100 JPY, app wants per 1 JPY
 }
@@ -44,8 +53,8 @@ async function getJpy() {
 // Investing.com USDT/RUB page
 async function getUsdtRub() {
   const html = await fetchText('https://www.investing.com/crypto/tether/usdt-rub');
-  let m = html.match(/"last"\s*:\s*"?([\d]+\.?[\d]*)"?/i);
-  if (!m) m = html.match(/data-test="instrument-price-last"[^>]*>([\d.,]+)</i);
+  let m = html.match(/data-test="instrument-price-last"[^>]*>([\d][\d.,]*)</i);
+  if (!m) m = html.match(/"last"\s*:\s*"?([\d]+\.?[\d]*)"?/i);
   if (!m) throw new Error('usdtRub: pattern not found');
   return parseFloat(m[1].replace(',', ''));
 }
