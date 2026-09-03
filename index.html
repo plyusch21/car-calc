@@ -338,7 +338,29 @@ const DEFAULT_CONFIG = {
 
 let CONFIG = Store.get('cfg_v2', null) || JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 CONFIG = deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), CONFIG);
-function saveConfig(){ Store.set('cfg_v2', CONFIG); }
+
+// Доступ и синхронизация между устройствами через Telegram Mini App —
+// см. bootGate() в конце файла и api/auth.js, api/state.js, api/admin.js.
+// ACCESS = null, пока проверка не завершилась; иначе {status, isOwner, name}.
+let ACCESS = null;
+function getInitData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
+
+let configSyncTimer = null;
+function saveConfig(){
+  Store.set('cfg_v2', CONFIG);
+  if(ACCESS && ACCESS.status==='approved'){
+    clearTimeout(configSyncTimer);
+    configSyncTimer = setTimeout(()=>{
+      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveConfig', config:CONFIG})}).catch(()=>{});
+    }, 600);
+  }
+}
+function saveHistory(){
+  Store.set('history_v2', state.history);
+  if(ACCESS && ACCESS.status==='approved'){
+    fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveHistory', history:state.history})}).catch(()=>{});
+  }
+}
 function deepMerge(base, override){
   if(Array.isArray(base)) return override!==undefined ? override : base;
   if(typeof base === 'object' && base!==null){
@@ -775,7 +797,8 @@ function showResult(route, f){
 
   document.getElementById('saveBtn').onclick = ()=>{
     state.history.unshift({ id:Date.now(), route, model:f.model||'Без названия', total:r.total, date:new Date().toISOString(), form:{...f} });
-    Store.set('history_v2', state.history);
+    if(state.history.length>300) state.history.length = 300;
+    saveHistory();
     toast('Сохранено в историю');
   };
   document.getElementById('shareBtn').onclick = ()=> shareResult(route, f, r);
@@ -825,14 +848,17 @@ function renderHistory(c){
     };
   });
   const cl = document.getElementById('clearHist');
-  if(cl) cl.onclick = ()=>{ state.history=[]; Store.set('history_v2', []); renderHistory(c); };
+  if(cl) cl.onclick = ()=>{ state.history=[]; saveHistory(); renderHistory(c); };
 }
 
 /* ---------------------------------------------------------------------
    9. Settings
 --------------------------------------------------------------------- */
 function renderSettingsView(c){
-  c.innerHTML = `
+  const adminCardHtml = (ACCESS && ACCESS.isOwner)
+    ? `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div style="font-size:12px;color:var(--muted);">Загрузка…</div></div>`
+    : '';
+  c.innerHTML = adminCardHtml + `
     <div class="card">
       <h2>Курсы валют</h2>
       <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Источники и ручная корректировка перенесены на отдельную вкладку «Курсы» в нижнем меню.</p>
@@ -866,6 +892,45 @@ function renderSettingsView(c){
     CONFIG.delivery.cities.push({name:'Новый город', prices:[0,0,0,0]});
     saveConfig(); renderSettingsView(c);
   };
+  if(ACCESS && ACCESS.isOwner) loadAdminCard();
+}
+
+async function fetchAdminUsers(){
+  const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'list'})});
+  return res.json();
+}
+async function adminAction(action, targetId){
+  const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action, targetId})});
+  return res.json();
+}
+function renderAdminUsersList(users){
+  if(!users.length) return `<div style="font-size:12px;color:var(--muted);">Пока никто не заходил.</div>`;
+  return users.map(u=>{
+    const label = u.name || ('id '+u.id);
+    const uname = u.username ? ' · @'+u.username : '';
+    const statusColor = u.isOwner ? 'var(--accent)' : (u.status==='approved' ? 'var(--good)' : u.status==='pending' ? '#d9b25f' : 'var(--danger)');
+    const statusText = u.isOwner ? 'владелец' : (u.status==='approved' ? 'доступ открыт' : u.status==='pending' ? 'ожидает подтверждения' : 'доступ закрыт');
+    const btn = u.isOwner ? '' : (u.status==='approved'
+      ? `<button class="btn secondary small" data-revoke="${u.id}">Закрыть</button>`
+      : `<button class="btn small" data-approve="${u.id}">Разрешить</button>`);
+    return `<div class="histcard" style="cursor:default;">
+      <div class="l"><div class="m">${label}${uname}</div><div class="d" style="color:${statusColor};">${statusText}</div></div>
+      <div class="r">${btn}</div>
+    </div>`;
+  }).join('');
+}
+async function loadAdminCard(){
+  const cardEl = document.getElementById('adminCard');
+  if(!cardEl) return;
+  try{
+    const {users, error} = await fetchAdminUsers();
+    if(error){ cardEl.innerHTML = `<h2>Доступ к приложению</h2><div class="notice warn">${error}</div>`; return; }
+    cardEl.innerHTML = `<h2>Доступ к приложению</h2>` + renderAdminUsersList(users||[]);
+    cardEl.querySelectorAll('[data-approve]').forEach(b=> b.onclick = async ()=>{ b.disabled=true; await adminAction('approve', b.dataset.approve); toast('Доступ открыт'); loadAdminCard(); });
+    cardEl.querySelectorAll('[data-revoke]').forEach(b=> b.onclick = async ()=>{ b.disabled=true; await adminAction('revoke', b.dataset.revoke); toast('Доступ закрыт'); loadAdminCard(); });
+  }catch(e){
+    cardEl.innerHTML = `<h2>Доступ к приложению</h2><div class="notice warn">Не удалось загрузить: ${e.message}</div>`;
+  }
 }
 
 function routeSettingsBlock(id){
@@ -954,14 +1019,73 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
 });
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
 function renderAll(){ renderDateLine(); renderTabs(); renderContent(); }
+function startApp(){ renderAll(); fetchAutoRates(); }
 
-if(window.Telegram && window.Telegram.WebApp){
-  const tg = window.Telegram.WebApp;
-  try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#121a1b'); tg.setBackgroundColor && tg.setBackgroundColor('#121a1b'); }catch(e){}
+/* ---------------------------------------------------------------------
+   12. Доступ через Telegram — приложение работает только как Mini App.
+   Без initData (открыто не из Telegram) нет способа безопасно узнать,
+   кто это — поэтому доступ вообще не выдаём, а не просто "работаем как
+   гость". См. api/_lib/access.js: первый, кто когда-либо откроет
+   приложение, автоматически становится владельцем и может открывать/
+   закрывать доступ остальным во вкладке «Настройки».
+--------------------------------------------------------------------- */
+function renderGate(kind, info){
+  info = info || {};
+  document.getElementById('routeTabs').style.display = 'none';
+  const bn = document.querySelector('.bottomnav'); if(bn) bn.style.display = 'none';
+  const c = document.getElementById('content');
+  if(kind === 'no-telegram'){
+    c.innerHTML = `<div class="emptystate"><div class="big">Откройте через Telegram</div>Это приложение работает только внутри Telegram — откройте вашего бота и нажмите кнопку меню (или ссылку на мини-приложение).</div>`;
+  } else if(kind === 'pending'){
+    c.innerHTML = `<div class="emptystate"><div class="big">Доступ ожидает подтверждения</div>${info.name?('Здравствуйте, '+info.name+'. '):''}Владелец увидит запрос во вкладке «Настройки» и откроет доступ. Загляните чуть позже.<br><button class="btn secondary" id="recheckBtn" style="margin-top:16px;">Проверить ещё раз</button></div>`;
+    document.getElementById('recheckBtn').onclick = ()=> location.reload();
+  } else {
+    c.innerHTML = `<div class="emptystate"><div class="big">Не удалось проверить доступ</div>${info.error || 'Неизвестная ошибка'}<br><button class="btn secondary" id="recheckBtn" style="margin-top:16px;">Повторить</button></div>`;
+    document.getElementById('recheckBtn').onclick = ()=> location.reload();
+  }
 }
 
-renderAll();
-fetchAutoRates(); // best-effort background refresh of ЙЕНА / USDT-ВОНА / USDT-₽ via the proxy
+async function bootGate(){
+  const hasTelegram = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+  if(!hasTelegram){ renderGate('no-telegram'); return; }
+
+  const tg = window.Telegram.WebApp;
+  try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#121a1b'); tg.setBackgroundColor && tg.setBackgroundColor('#121a1b'); }catch(e){}
+
+  let authRes;
+  try{
+    const r = await fetch('/api/auth', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData})});
+    authRes = await r.json();
+  }catch(e){ authRes = {status:'error', error:'Нет связи с сервером'}; }
+
+  ACCESS = authRes;
+
+  if(authRes.status === 'pending'){ renderGate('pending', authRes); return; }
+  if(authRes.status !== 'approved'){ renderGate('error', authRes); return; }
+
+  try{
+    const r2 = await fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'get'})});
+    const data = await r2.json();
+    if(data && data.config){
+      CONFIG = deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), data.config);
+      Store.set('cfg_v2', CONFIG);
+    } else {
+      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveConfig', config:CONFIG})}).catch(()=>{});
+    }
+    if(data && Array.isArray(data.history)){
+      state.history = data.history;
+      Store.set('history_v2', state.history);
+    } else if(state.history.length){
+      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveHistory', history:state.history})}).catch(()=>{});
+    }
+  }catch(e){ /* работаем с тем, что было в localStorage, пока не появится связь */ }
+
+  document.getElementById('routeTabs').style.display = '';
+  const bn2 = document.querySelector('.bottomnav'); if(bn2) bn2.style.display = '';
+  startApp();
+}
+
+bootGate();
 </script>
 </body>
 </html>
