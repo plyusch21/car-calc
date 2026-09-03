@@ -330,10 +330,10 @@ const DEFAULT_CONFIG = {
 
   // ---- per-route defaults ------------------------------------------------
   routes: {
-    japan: { label:'Япония', currency:'JPY', bankCommissionPct:1.5, brokerFee:80000, agentFee:50000, dutyMode:'precise' },
-    korea: { label:'Корея',  currency:'KRW', bankCommissionPct:0,   brokerFee:85000, agentFee:50000, dutyMode:'precise' },
-    china: { label:'Китай (напрямую)', currency:'CNY', bankCommissionPct:2.5, brokerFee:90000, agentFee:50000, dutyMode:'precise' },
-    eaeu:  { label:'ЕАЭС / Киргизия', currency:'USDT', bankCommissionPct:0, brokerFee:100000, agentFee:50000, dutyMode:'utilOnly' }
+    japan: { label:'Япония', currency:'JPY', bankCommissionPct:1.5, brokerFee:80000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'' },
+    korea: { label:'Корея',  currency:'KRW', bankCommissionPct:0,   brokerFee:85000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'' },
+    china: { label:'Китай (напрямую)', currency:'CNY', bankCommissionPct:2.5, brokerFee:90000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'3000' },
+    eaeu:  { label:'ЕАЭС / Киргизия', currency:'USDT', bankCommissionPct:0, brokerFee:100000, agentFee:50000, dutyMode:'utilOnly', defaultExtraCosts:'' }
   }
 };
 
@@ -376,19 +376,21 @@ function deepMerge(base, override){
 /* ---------------------------------------------------------------------
    2. State
 --------------------------------------------------------------------- */
-const state = { view:'calc', route:'japan', history: Store.get('history_v2', []), form: defaultForm('japan') };
+const state = { view:'calc', route:'japan', history: Store.get('history_v2', []), form: defaultForm('japan'), formCache: {} };
 
 function defaultForm(route){
   const r = CONFIG.routes[route];
   return {
-    model:'', carPrice:'', extraCosts:'', volumeCm3:'', age:'t3to5',
+    model:'', carPrice:'', extraCosts:r.defaultExtraCosts||'', volumeCm3:'', age:'t3to5',
     engineType:'ben', power:'', powerUnit:'ls',
     powerElectric:'', powerElectricUnit:'kvt', phev:false, hybridDominant:'a',
-    dutyManual:'', utilManual:'',
+    customsAuto:'', customsManual:'', customsOverride:false,
     deliveryCity: CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : '',
     bodyTypeIdx: 1,
     deliveryOverride:false, deliveryManual:'',
-    brokerFee: r.brokerFee, agentFee: r.agentFee, bankPct: r.bankCommissionPct
+    brokerFee: r.brokerFee, agentFee: r.agentFee, bankPct: r.bankCommissionPct,
+    showCarDetails:false,
+    carTrim:'', prodMonth:'', prodYear:'', mileage:'', drivetrain:'', transmission:'', condition:'', notes:''
   };
 }
 const ENGINE_TYPES = {
@@ -398,6 +400,7 @@ const ENGINE_TYPES = {
   ben_hybrid: { label:'Бензиновый гибрид (+ электро)', hybrid:true, dtype:'ben' },
   dis_hybrid: { label:'Дизельный гибрид (+ электро)',  hybrid:true, dtype:'dis' }
 };
+const TRANSMISSION_LABELS = { auto:'Автомат', robot:'Робот', variator:'Вариатор', reductor:'Редуктор', manual:'Механика' };
 
 /* ---------------------------------------------------------------------
    3. Helpers
@@ -537,9 +540,7 @@ function calcDeal(route, f){
   const bankCommissionRub = invoiceRub - invoiceRubNoCommission;
   const routeCfg = CONFIG.routes[route];
 
-  const duty = routeCfg.dutyMode==='utilOnly' ? 0 : num(f.dutyManual);
-  const util = num(f.utilManual);
-  const customsTotal = duty + util; // «Пошлина» — это уже сумма всех строк с alta.ru, кроме утильсбора
+  const customsTotal = f.customsOverride ? num(f.customsManual) : num(f.customsAuto);
 
   const broker = num(f.brokerFee);
   const agent = num(f.agentFee);
@@ -548,9 +549,9 @@ function calcDeal(route, f){
 
   const total = invoiceRub + customsTotal + broker + agent + delivery;
   return {
-    invoiceRub, duty, util, broker, agent, delivery, total, downPayment,
+    invoiceRub, customsTotal, broker, agent, delivery, total, downPayment,
     bankPct, bankCommissionRub,
-    customsLabel: routeCfg.dutyMode==='utilOnly' ? 'Утилизационный сбор' : 'Пошлина'
+    customsLabel: routeCfg.dutyMode==='utilOnly' ? 'Утилизационный сбор' : 'Таможенные платежи'
   };
 }
 
@@ -603,7 +604,12 @@ function renderTabs(){
     return `<button class="tab ${state.route===id?'active':''}" data-route="${id}">${r.label}</button>`;
   }).join('');
   tabs.querySelectorAll('.tab').forEach(el=>{
-    el.onclick = ()=>{ state.route = el.dataset.route; state.form = defaultForm(state.route); renderTabs(); renderContent(); };
+    el.onclick = ()=>{
+      state.formCache[state.route] = state.form; // черновик текущего направления не теряется при переключении
+      state.route = el.dataset.route;
+      state.form = state.formCache[state.route] || defaultForm(state.route);
+      renderTabs(); renderContent();
+    };
   });
 }
 
@@ -692,13 +698,41 @@ function renderCalc(c){
     </div>
 
     <div class="card">
+      <h2>Доп. данные по авто (для клиента)</h2>
+      <div class="toggle-row field">
+        <div style="font-size:12.5px;">Указать данные по авто</div>
+        <div class="switch ${f.showCarDetails?'on':''}" id="carDetailsToggle"><div class="knob"></div></div>
+      </div>
+      ${f.showCarDetails ? `
+      <div class="row2">
+        ${field('Комплектация', `<input type="text" id="f_carTrim" value="${f.carTrim}">`)}
+        ${field('Пробег, км', `<input type="number" id="f_mileage" value="${f.mileage}" inputmode="numeric">`)}
+      </div>
+      <div class="field">
+        <label>Дата производства</label>
+        <div class="row2" style="gap:6px;">
+          <input type="number" id="f_prodMonth" value="${f.prodMonth}" placeholder="мес." min="1" max="12" inputmode="numeric">
+          <input type="number" id="f_prodYear" value="${f.prodYear}" placeholder="год" inputmode="numeric">
+        </div>
+      </div>
+      <div class="row2">
+        ${field('Привод', `<input type="text" id="f_drivetrain" value="${f.drivetrain}" placeholder="напр. полный">`)}
+        ${field('Трансмиссия', `<select id="f_transmission"><option value="">—</option>${Object.keys(TRANSMISSION_LABELS).map(k=>`<option value="${k}" ${f.transmission===k?'selected':''}>${TRANSMISSION_LABELS[k]}</option>`).join('')}</select>`)}
+      </div>
+      ${field('Состояние', `<input type="text" id="f_condition" value="${f.condition}">`)}
+      ${field('Примечания', `<input type="text" id="f_notes" value="${f.notes}">`)}
+      ` : ''}
+    </div>
+
+    <div class="card">
       <h2>Таможенные платежи</h2>
-      <div class="notice info">${isEaeu?'Утилизационный сбор считается':'Пошлина и утилизационный сбор считаются'} автоматически по нажатию «Рассчитать» — приложение отправляет параметры авто на alta.ru/auto-vat/ (тот же официальный расчёт по Решению ЕЭК №107 и Постановлению №1291, на которые ссылается и tks.ru — его собственную форму напрямую использовать нельзя, она защищена антибот-капчей). Поле «Пошлина» — это сумма всех строк таможенных платежей с сайта, кроме утильсбора (сбор за оформление + пошлина, а для отдельных случаев вроде электромобилей ещё и акциз с НДС — сколько бы строк сайт ни показал, они все войдут в сумму). Поля ниже можно поправить вручную в любой момент.</div>
-      <a class="linkbtn" id="openAlta" href="javascript:void(0)">alta.ru / auto-vat ↗<small>тот же расчёт, глазами</small></a>
-      <a class="linkbtn" id="openTks" href="javascript:void(0)">tks.ru / auto/calc ↗<small>перепроверка вручную</small></a>
-      ${!isEaeu ? field('Пошлина, ₽', `<input type="number" id="f_dutyManual" value="${f.dutyManual}" inputmode="numeric">`) : ''}
-      ${field('Утилизационный сбор, ₽', `<input type="number" id="f_utilManual" value="${f.utilManual}" inputmode="numeric">`)}
-      <div id="customsStatus" style="font-size:11.5px;color:var(--muted);"></div>
+      <div class="rline" style="padding:6px 0;"><div class="k">Расчёт tks/alta<span class="hint">пошлина + утильсбор (и всё, что ещё покажет сайт) — обновляется по кнопке «Рассчитать» внизу</span></div><div class="v">${fmt(num(f.customsAuto),'₽')}</div></div>
+      <div class="toggle-row field" style="margin-top:8px;">
+        <div style="font-size:12.5px;">Указать вручную</div>
+        <div class="switch ${f.customsOverride?'on':''}" id="customsOverrideToggle"><div class="knob"></div></div>
+      </div>
+      ${f.customsOverride ? field('Таможенные платежи, ₽ (вручную)', `<input type="number" id="f_customsManual" value="${f.customsManual}" inputmode="numeric">`) : ''}
+      <div id="customsStatus" style="font-size:11.5px;color:var(--muted);margin-top:6px;"></div>
     </div>
 
     <div class="card">
@@ -729,7 +763,8 @@ function renderCalc(c){
     <div id="resultZone"></div>
   `;
 
-  ['model','carPrice','extraCosts','volumeCm3','power','powerElectric','dutyManual','utilManual','deliveryManual','agentFee','brokerFee'].forEach(k=>{
+  ['model','carPrice','extraCosts','volumeCm3','power','powerElectric','customsManual','deliveryManual','agentFee','brokerFee',
+   'carTrim','mileage','prodMonth','prodYear','drivetrain','condition','notes'].forEach(k=>{
     const el = document.getElementById('f_'+k);
     if(el) el.oninput = ()=> f[k]=el.value;
   });
@@ -739,37 +774,55 @@ function renderCalc(c){
   document.querySelectorAll('#powerElUnitSeg button').forEach(b=> b.onclick = ()=>{ f.powerElectricUnit=b.dataset.unit; renderCalc(c); });
   document.querySelectorAll('#hybridDomSeg button').forEach(b=> b.onclick = ()=>{ f.hybridDominant=b.dataset.dom; renderCalc(c); });
   const phevT = document.getElementById('phevToggle'); if(phevT) phevT.onclick = ()=>{ f.phev=!f.phev; renderCalc(c); };
+  const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
+  const transEl = document.getElementById('f_transmission'); if(transEl) transEl.onchange = ()=>{ f.transmission=transEl.value; };
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
   const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; renderCalc(c); };
   const delT = document.getElementById('delOverrideToggle'); if(delT) delT.onclick = ()=>{ f.deliveryOverride=!f.deliveryOverride; renderCalc(c); };
-  const openAltaEl = document.getElementById('openAlta'); if(openAltaEl) openAltaEl.onclick = ()=> openExternal(CONFIG.customsCalculators[0].url);
-  const openTksEl = document.getElementById('openTks'); if(openTksEl) openTksEl.onclick = ()=> openExternal(CONFIG.customsCalculators[1].url);
+  const customsT = document.getElementById('customsOverrideToggle'); if(customsT) customsT.onclick = ()=>{ f.customsOverride=!f.customsOverride; renderCalc(c); };
 
   document.getElementById('calcBtn').onclick = async ()=>{
     const btn = document.getElementById('calcBtn');
-    const statusEl = document.getElementById('customsStatus');
     btn.disabled = true; btn.textContent = 'Запрашиваю расчёт на alta.ru…';
-    if(statusEl){ statusEl.textContent = ''; statusEl.style.color = 'var(--muted)'; }
+    let statusText = '', statusColor = 'var(--muted)';
     try{
       const res = await fetchCustomsFromAlta(route, f);
-      if(!isEaeu && res.duty!=null) f.dutyManual = String(Math.round(res.duty));
-      if(res.util!=null) f.utilManual = String(Math.round(res.util));
-      const breakdown = (!isEaeu && res.dutyItems && res.dutyItems.length)
-        ? ' · Пошлина = '+res.dutyItems.map(x=>x.label.replace(/:$/,'')+' '+fmt(x.amount)).join(' + ')
-        : '';
-      if(statusEl) statusEl.textContent = 'Получено с alta.ru (те же ставки, что у tks.ru)'+breakdown+' · '+ new Date().toLocaleTimeString('ru-RU');
+      const autoTotal = (isEaeu ? 0 : (res.duty||0)) + (res.util||0);
+      f.customsAuto = String(Math.round(autoTotal));
+      const dutyBreakdown = (!isEaeu && res.dutyItems && res.dutyItems.length)
+        ? res.dutyItems.map(x=>x.label.replace(/:$/,'')+' '+fmt(x.amount)).join(' + ')+' + Утильсбор '+fmt(res.util||0)
+        : 'Утильсбор '+fmt(res.util||0);
+      statusText = 'Получено с alta.ru (те же ставки, что у tks.ru): '+dutyBreakdown+' · '+ new Date().toLocaleTimeString('ru-RU');
     }catch(e){
-      if(statusEl){ statusEl.textContent = 'Не удалось получить расчёт ('+e.message+') — использованы значения из полей выше.'; statusEl.style.color = 'var(--danger)'; }
+      statusText = 'Не удалось получить расчёт ('+e.message+') — используется значение из поля «вручную» (если включено) или 0.';
+      statusColor = 'var(--danger)';
     }
     btn.disabled = false; btn.textContent = 'Рассчитать';
+    renderCalc(c);
+    const statusEl = document.getElementById('customsStatus');
+    if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
     showResult(route, f);
   };
+}
+
+function carDetailLines(f){
+  if(!f.showCarDetails) return [];
+  const lines = [];
+  if(f.carTrim) lines.push(['Комплектация', f.carTrim]);
+  if(f.prodMonth || f.prodYear) lines.push(['Дата производства', [f.prodMonth?String(f.prodMonth).padStart(2,'0'):'', f.prodYear].filter(Boolean).join('.')]);
+  if(f.mileage) lines.push(['Пробег', fmt(num(f.mileage),'км')]);
+  if(f.drivetrain) lines.push(['Привод', f.drivetrain]);
+  if(f.transmission) lines.push(['Трансмиссия', TRANSMISSION_LABELS[f.transmission] || f.transmission]);
+  if(f.condition) lines.push(['Состояние', f.condition]);
+  if(f.notes) lines.push(['Примечания', f.notes]);
+  return lines;
 }
 
 function showResult(route, f){
   const r = calcDeal(route, f);
   const cfg = CONFIG.routes[route];
   const zone = document.getElementById('resultZone');
+  const carLines = carDetailLines(f);
 
   zone.innerHTML = `
     <div class="receipt">
@@ -777,10 +830,10 @@ function showResult(route, f){
         <div class="model">${f.model || 'Без названия'}</div>
         <div class="meta">${cfg.label} · ${AGE_LABELS[f.age]} · ${(ENGINE_TYPES[f.engineType]||ENGINE_TYPES.ben).label}${f.volumeCm3?(' · '+(num(f.volumeCm3)/1000).toFixed(1)+' л'):''}${f.power?(' · '+f.power+' '+(f.powerUnit==='kvt'?'кВт':'л.с.')):''}</div>
       </div>
+      ${carLines.length ? `<div class="receipt-body" style="padding-bottom:2px;border-bottom:1px dashed var(--border);">${carLines.map(([k,v])=>`<div class="rline"><div class="k">${k}</div><div class="v" style="font-weight:400;">${v}</div></div>`).join('')}</div>` : ''}
       <div class="receipt-body">
         <div class="rline"><div class="k">Цена ТС с расходами до РФ<span class="hint">переведено в рубли по текущим курсам, банк. комиссия учтена</span></div><div class="v">${fmt(r.invoiceRub,'₽')}</div></div>
-        ${cfg.dutyMode!=='utilOnly' ? `<div class="rline"><div class="k">Пошлина<span class="hint">включает все платежи с alta.ru кроме утильсбора: сбор за оформление, а для отдельных случаев ещё акциз/НДС</span></div><div class="v">${fmt(r.duty,'₽')}</div></div>` : ''}
-        <div class="rline"><div class="k">Утилизационный сбор</div><div class="v">${fmt(r.util,'₽')}</div></div>
+        <div class="rline"><div class="k">${r.customsLabel}${f.customsOverride?' (вручную)':''}</div><div class="v">${fmt(r.customsTotal,'₽')}</div></div>
         <div class="rline"><div class="k">Брокер</div><div class="v">${fmt(r.broker,'₽')}</div></div>
         <div class="rline"><div class="k">Наша комиссия</div><div class="v">${fmt(r.agent,'₽')}</div></div>
         <div class="rline"><div class="k">Доставка по РФ${f.deliveryOverride?' (вручную)':' · '+f.deliveryCity}</div><div class="v">${fmt(r.delivery,'₽')}</div></div>
@@ -796,22 +849,30 @@ function showResult(route, f){
   `;
   zone.scrollIntoView({behavior:'smooth', block:'nearest'});
 
+  function resetAfterDone(){
+    state.form = defaultForm(route);
+    state.formCache[route] = state.form;
+    renderCalc(document.getElementById('content'));
+  }
+
   document.getElementById('saveBtn').onclick = ()=>{
     state.history.unshift({ id:Date.now(), route, model:f.model||'Без названия', total:r.total, date:new Date().toISOString(), form:{...f} });
     if(state.history.length>300) state.history.length = 300;
     saveHistory();
     toast('Сохранено в историю');
+    resetAfterDone();
   };
-  document.getElementById('shareBtn').onclick = ()=> shareResult(route, f, r);
+  document.getElementById('shareBtn').onclick = ()=>{ shareResult(route, f, r, carLines); resetAfterDone(); };
 }
 
-function shareResult(route, f, r){
+function shareResult(route, f, r, carLines){
   const cfg = CONFIG.routes[route];
+  carLines = carLines || carDetailLines(f);
   const text = [
     `${f.model || 'Расчёт'} — ${cfg.label}`,
+    ...carLines.map(([k,v])=>`${k}: ${v}`),
     `Цена ТС с расходами до РФ: ${fmt(r.invoiceRub,'₽')}`,
-    cfg.dutyMode!=='utilOnly' ? `Пошлина: ${fmt(r.duty,'₽')}` : null,
-    `Утильсбор: ${fmt(r.util,'₽')}`,
+    `${r.customsLabel}: ${fmt(r.customsTotal,'₽')}`,
     `Брокер: ${fmt(r.broker,'₽')}`,
     `Комиссия: ${fmt(r.agent,'₽')}`,
     `Доставка: ${fmt(r.delivery,'₽')}`,
@@ -842,6 +903,7 @@ function renderHistory(c){
     el.onclick = ()=>{
       const h = state.history.find(x=>x.id==el.dataset.id);
       state.route = h.route; state.form = {...defaultForm(h.route), ...h.form};
+      state.formCache[h.route] = state.form;
       state.view='calc';
       document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view==='calc'));
       renderTabs(); renderContent();
@@ -870,11 +932,8 @@ function renderSettingsView(c){
       ${Object.keys(CONFIG.routes).map(id=>routeSettingsBlock(id)).join('<div style="height:14px"></div>')}
     </div>
     <div class="card">
-      <h2>Расчёт пошлины и утильсбора</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0;">Считается автоматически на сервере (<code>api/customs.js</code>) через официальный калькулятор alta.ru/auto-vat/ — тот же расчёт, что и по ссылкам ниже, и по тем же ставкам, на которые ссылается tks.ru. Ключа/настроек не требует.</p>
-    </div>
-    <div class="card">
-      <h2>Таможенные калькуляторы (резерв / проверка)</h2>
+      <h2>Расчёт tks/alta</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">На вкладке «Расчёт» таможенные платежи считаются автоматически на сервере (<code>api/customs.js</code>) — приложение отправляет параметры авто на alta.ru/auto-vat/ и суммирует всё, что тот покажет (сбор за оформление, пошлина, а для отдельных случаев вроде электромобилей ещё акциз и НДС), кроме утильсбора. Это тот же официальный расчёт по Решению ЕЭК №107 и Постановлению №1291, на которые ссылается и tks.ru — его форму использовать напрямую нельзя, она защищена антибот-капчей. Значение всегда можно поправить вручную тумблером «Указать вручную» в карточке «Таможенные платежи».</p>
       ${CONFIG.customsCalculators.map(x=>`<a class="linkbtn" href="javascript:void(0)" onclick="openExternal('${x.url}')">${x.label} ↗</a>`).join('')}
     </div>
     <div class="card">

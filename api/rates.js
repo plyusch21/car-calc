@@ -56,12 +56,16 @@ async function getJpy() {
   return per100 / 100; // page quotes per 100 JPY, app wants per 1 JPY
 }
 
-// Naver search result widget for "usdt"
+// Naver search result widget for "usdt" — the price sits in
+// <div class="price_info_box"><div><strong class="price">1,374</strong>
+// <span class="unit">원</span></div>...</div>, i.e. digits and "원" are
+// separated by closing/opening tags, not just whitespace.
 async function getUsdtKrw() {
   const url = 'https://search.naver.com/search.naver?where=nexearch&sm=top_sug.pre&fbm=0&acr=1&acq=usdt&qdt=0&ie=utf8&query=usdt&ackey=op24n8r1';
   const html = await fetchText(url);
-  const m = html.match(/([\d]{1,3}(?:,\d{3})*)\s*원/);
-  if (!m) throw new Error('usdtKrw: pattern not found; got: ' + JSON.stringify(html.slice(0, 400)));
+  let m = html.match(/class="price">([\d,]+)<\/strong>\s*<span class="unit">\s*원/);
+  if (!m) m = html.match(/class="price">([\d,]+)</); // запасной вариант, если поменяется разметка вокруг "원"
+  if (!m) throw new Error('usdtKrw: pattern not found');
   return parseFloat(m[1].replace(/,/g, ''));
 }
 
