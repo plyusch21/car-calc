@@ -401,6 +401,7 @@ const ENGINE_TYPES = {
   dis_hybrid: { label:'Дизельный гибрид (+ электро)',  hybrid:true, dtype:'dis' }
 };
 const TRANSMISSION_LABELS = { auto:'Автомат', robot:'Робот', variator:'Вариатор', reductor:'Редуктор', manual:'Механика' };
+const DRIVETRAIN_LABELS = { front:'Передний', rear:'Задний', full:'Полный' };
 
 /* ---------------------------------------------------------------------
    3. Helpers
@@ -716,7 +717,7 @@ function renderCalc(c){
         </div>
       </div>
       <div class="row2">
-        ${field('Привод', `<input type="text" id="f_drivetrain" value="${f.drivetrain}" placeholder="напр. полный">`)}
+        ${field('Привод', `<select id="f_drivetrain"><option value="">—</option>${Object.keys(DRIVETRAIN_LABELS).map(k=>`<option value="${k}" ${f.drivetrain===k?'selected':''}>${DRIVETRAIN_LABELS[k]}</option>`).join('')}</select>`)}
         ${field('Трансмиссия', `<select id="f_transmission"><option value="">—</option>${Object.keys(TRANSMISSION_LABELS).map(k=>`<option value="${k}" ${f.transmission===k?'selected':''}>${TRANSMISSION_LABELS[k]}</option>`).join('')}</select>`)}
       </div>
       ${field('Состояние', `<input type="text" id="f_condition" value="${f.condition}">`)}
@@ -764,10 +765,11 @@ function renderCalc(c){
   `;
 
   ['model','carPrice','extraCosts','volumeCm3','power','powerElectric','customsManual','deliveryManual','agentFee','brokerFee',
-   'carTrim','mileage','prodMonth','prodYear','drivetrain','condition','notes'].forEach(k=>{
+   'carTrim','mileage','prodMonth','prodYear','condition','notes'].forEach(k=>{
     const el = document.getElementById('f_'+k);
     if(el) el.oninput = ()=> f[k]=el.value;
   });
+  const drivetrainEl = document.getElementById('f_drivetrain'); if(drivetrainEl) drivetrainEl.onchange = ()=>{ f.drivetrain=drivetrainEl.value; };
   document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ f.age=b.dataset.age; renderCalc(c); });
   const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ f.engineType=engineEl.value; renderCalc(c); };
   document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ f.powerUnit=b.dataset.unit; renderCalc(c); });
@@ -811,7 +813,7 @@ function carDetailLines(f){
   if(f.carTrim) lines.push(['Комплектация', f.carTrim]);
   if(f.prodMonth || f.prodYear) lines.push(['Дата производства', [f.prodMonth?String(f.prodMonth).padStart(2,'0'):'', f.prodYear].filter(Boolean).join('.')]);
   if(f.mileage) lines.push(['Пробег', fmt(num(f.mileage),'км')]);
-  if(f.drivetrain) lines.push(['Привод', f.drivetrain]);
+  if(f.drivetrain) lines.push(['Привод', DRIVETRAIN_LABELS[f.drivetrain] || f.drivetrain]);
   if(f.transmission) lines.push(['Трансмиссия', TRANSMISSION_LABELS[f.transmission] || f.transmission]);
   if(f.condition) lines.push(['Состояние', f.condition]);
   if(f.notes) lines.push(['Примечания', f.notes]);
