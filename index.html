@@ -262,9 +262,10 @@ const DEFAULT_CONFIG = {
     },
     USDT_RUB: {
       label:'USDT / ₽', short:'USDT/₽',
-      sourceUrl:'https://ru.investing.com/?country=us',
-      sourceNote:'Investing.com, курс USDT/RUB, плюс 3 (по договорённости с площадкой обмена).',
-      autoAvailable:true, manualOverride:false, proxyKey:'usdtRub', adjustment:3, adjustmentLabel:'+ 3',
+      sourceUrl:'https://www.cbr.ru/currency_base/daily/',
+      sourceNote:'Официальный курс доллара США ЦБ РФ, плюс 3 (по договорённости с площадкой обмена). Раньше брали с Investing.com, но тот блокирует запросы с сервера — курс ЦБ надёжнее и всё равно уже используется в приложении для евро.',
+      autoAvailable:true, manualOverride:false, direct:true, directUrl:'https://www.cbr-xml-daily.ru/daily_json.js', directPath:'Valute.USD.Value',
+      adjustment:3, adjustmentLabel:'+ 3',
       raw: 86.83, autoRaw:86.83, value:89.83, updatedAt:null
     },
     EUR: {

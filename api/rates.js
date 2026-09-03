@@ -5,11 +5,17 @@
  * Called by the app (same-origin, no CORS problem) to refresh:
  *   - jpy      → ATB Bank, "для денежных переводов" tab, продажа (за 1 йену)
  *   - usdtKrw  → Naver search result for "usdt"  (raw value, app applies -5)
- *   - usdtRub  → Investing.com USDT/RUB           (raw value, app applies +3)
  *
  * ЮАНЬ / VTB is intentionally NOT scraped here: vtb.ru's robots.txt
  * disallows automated access, so this proxy does not fetch it. That
  * rate stays quick-link + manual in the app, by design.
+ *
+ * USDT/₽ is also NOT scraped here any more — investing.com returns a
+ * flat 403 from Vercel's server IPs (Cloudflare bot detection), so the
+ * app instead computes it client-side straight from the same official
+ * ЦБ РФ feed EUR already uses (курс USD + 3), which is both more
+ * reliable and one fewer thing that can silently go stale — see
+ * CONFIG.rates.USDT_RUB in index.html.
  *
  * IMPORTANT — these are HTML scrapes of pages you don't control.
  * Bank and finance sites redesign often and may rate-limit or block
@@ -50,30 +56,20 @@ async function getJpy() {
   return per100 / 100; // page quotes per 100 JPY, app wants per 1 JPY
 }
 
-// Investing.com USDT/RUB page
-async function getUsdtRub() {
-  const html = await fetchText('https://www.investing.com/crypto/tether/usdt-rub');
-  let m = html.match(/data-test="instrument-price-last"[^>]*>([\d][\d.,]*)</i);
-  if (!m) m = html.match(/"last"\s*:\s*"?([\d]+\.?[\d]*)"?/i);
-  if (!m) throw new Error('usdtRub: pattern not found');
-  return parseFloat(m[1].replace(',', ''));
-}
-
 // Naver search result widget for "usdt"
 async function getUsdtKrw() {
   const url = 'https://search.naver.com/search.naver?where=nexearch&sm=top_sug.pre&fbm=0&acr=1&acq=usdt&qdt=0&ie=utf8&query=usdt&ackey=op24n8r1';
   const html = await fetchText(url);
   const m = html.match(/([\d]{1,3}(?:,\d{3})*)\s*원/);
-  if (!m) throw new Error('usdtKrw: pattern not found');
+  if (!m) throw new Error('usdtKrw: pattern not found; got: ' + JSON.stringify(html.slice(0, 400)));
   return parseFloat(m[1].replace(/,/g, ''));
 }
 
 module.exports = async (req, res) => {
-  const out = { jpy: null, usdtRub: null, usdtKrw: null, timestamp: Date.now(), errors: {} };
+  const out = { jpy: null, usdtKrw: null, timestamp: Date.now(), errors: {} };
 
   await Promise.all([
     getJpy().then(v => (out.jpy = v)).catch(e => (out.errors.jpy = String(e.message || e))),
-    getUsdtRub().then(v => (out.usdtRub = v)).catch(e => (out.errors.usdtRub = String(e.message || e))),
     getUsdtKrw().then(v => (out.usdtKrw = v)).catch(e => (out.errors.usdtKrw = String(e.message || e)))
   ]);
 
