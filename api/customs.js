@@ -39,14 +39,23 @@
  *     hybrid1: '1'|'2'|'3',                 // 1 = not hybrid, 2 = electro-hybrid, 3 = PHEV
  *     hybrid2: 'a'|'b',                     // ДВС>ЭД / ДВС<ЭД, only used if hybrid1 != '1'
  *     power: number, powerUnit: 'ls'|'kvt',
- *     powerElectric: number, powerElectricUnit: 'ls'|'kvt',
- *     jeep: boolean                         // "повышенной проходимости"
+ *     powerElectric: number, powerElectricUnit: 'ls'|'kvt'
  *   }
  *
- * Output: { duty, util, fee, dutyBasis, utilBasis } or { error }
- *   fee = сбор за таможенное оформление (Постановление №1637), tiered by
- *   declared value — small, but it's part of the same "таможенные платежи"
- *   bucket as duty+util in the reference cost sheet this app matches.
+ * Output: { duty, util, dutyItems, utilBasis } or { error }
+ *   The results table on alta.ru is not always the same 2-3 rows — which
+ *   rows appear depends on the inputs. A plain petrol/diesel car for an
+ *   individual gets "Таможенный сбор" + "Пошлина"; an electric car under
+ *   the same "физлицо для личного пользования" mode additionally gets
+ *   "Акциз" and "НДС" rows (Решение №107's flat per-cm³ duty only applies
+ *   to combustion-engine cars — electric/other cases fall back to the
+ *   general ad-valorem scheme with excise + VAT). Rather than whitelist
+ *   row labels and risk silently dropping a row we haven't seen yet,
+ *   parseResult() sums every row in the table except the utilisation-fee
+ *   one into `duty` — so whatever alta.ru charges under "Таможенные
+ *   платежи" for the given inputs, the total always matches exactly.
+ *   dutyItems carries the individual {label, amount} rows that made up
+ *   that sum, for the "Получено с alta.ru" breakdown shown in the app.
  */
 
 const ALTA_URL = 'https://www.alta.ru/auto-vat/';
@@ -63,27 +72,35 @@ function stripTags(html) {
   return html.replace(/<[^>]+>/g, ' ').replace(/&shy;/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 }
 function parseSum(cellHtml) {
-  const digits = cellHtml.replace(/&nbsp;/g, ' ').replace(/[^\d.,]/g, '').replace(/,/g, '.');
-  // last dot is the decimal separator, earlier dots (if any) are junk from stripping
-  const parts = digits.split('.');
-  const num = parts.length > 1 ? parts.slice(0, -1).join('') + '.' + parts[parts.length - 1] : digits;
-  const v = parseFloat(num);
+  // Numbers are formatted like "267 736.68 руб." — space-grouped thousands,
+  // dot/comma decimal, followed by a unit abbreviation that itself ends in
+  // a period ("руб."). Match the number by its own shape (digits/spaces,
+  // then exactly the decimal point) instead of stripping-then-guessing —
+  // guessing "last dot = decimal" broke on "руб." adding a second dot.
+  const text = cellHtml.replace(/&nbsp;/g, ' ');
+  const m = text.match(/[\d][\d\s ]*(?:[.,]\d{1,2})?/);
+  if (!m) return null;
+  const cleaned = m[0].replace(/[\s ]/g, '').replace(',', '.');
+  const v = parseFloat(cleaned);
   return isNaN(v) ? null : v;
 }
 
 function parseResult(html) {
   const rows = html.match(/<tr[\s\S]*?<\/tr>/g) || [];
-  let duty = null, util = null, fee = null, dutyBasis = null, utilBasis = null;
+  let util = null, utilBasis = null;
+  const dutyItems = [];
   for (const row of rows) {
-    if (!/пошлина/i.test(row) && !/утилиза/i.test(row) && !/таможенный сбор/i.test(row)) continue;
     const cells = cellTexts(row);
-    if (cells.length < 4) continue;
+    if (cells.length < 4) continue; // parameter-echo rows (2 cells) and "Итого" (colspan, 2 cells) are always skipped
+    const label = stripTags(cells[0]);
+    if (!label) continue;
     const sum = parseSum(cells[3]);
-    if (/пошлина/i.test(cells[0])) { duty = sum; dutyBasis = stripTags(cells[2]); }
-    else if (/утилиза/i.test(row)) { util = sum; utilBasis = stripTags(cells[0]); }
-    else if (/таможенный сбор/i.test(cells[0])) { fee = sum; }
+    if (sum === null) continue;
+    if (/утилиза/i.test(row)) { util = sum; utilBasis = label; }
+    else { dutyItems.push({ label, amount: sum }); }
   }
-  return { duty, util, fee, dutyBasis, utilBasis };
+  const duty = dutyItems.length ? dutyItems.reduce((s, x) => s + x.amount, 0) : null;
+  return { duty, util, dutyItems, utilBasis };
 }
 
 module.exports = async (req, res) => {
@@ -101,7 +118,7 @@ module.exports = async (req, res) => {
 
   const {
     ageCode, priceRub, volumeCm3, dtype,
-    hybrid1, hybrid2, power, powerUnit, powerElectric, powerElectricUnit, jeep
+    hybrid1, hybrid2, power, powerUnit, powerElectric, powerElectricUnit
   } = body;
 
   if (!ageCode || !dtype) {
@@ -122,8 +139,11 @@ module.exports = async (req, res) => {
     hybrid1: hybrid1 || '1',
     hybrid2: hybrid2 === 'b' ? 'b' : 'a',
     lico: 'fiz_personal_use'
+    // NB: no "jeep" (повышенной проходимости) param — alta.ru silently
+    // fails to render a result at all when it's set (returns the blank
+    // form, no error), so it's left out rather than risk a calc that
+    // always degrades to manual entry for SUV/off-road bodies.
   });
-  if (jeep) params.set('jeep', 'on');
 
   try {
     const altaRes = await fetch(ALTA_URL, {
@@ -142,10 +162,10 @@ module.exports = async (req, res) => {
     const totalIdx = html.indexOf('Итого:', startIdx);
     const resultHtml = html.slice(startIdx, totalIdx === -1 ? startIdx + 6000 : totalIdx + 50);
 
-    const { duty, util, fee, dutyBasis, utilBasis } = parseResult(resultHtml);
-    if (duty === null && util === null) throw new Error('не нашли строки "Пошлина"/"Утилизационный сбор" в ответе — вёрстка alta.ru могла измениться');
+    const { duty, util, dutyItems, utilBasis } = parseResult(resultHtml);
+    if (duty === null && util === null) throw new Error('не нашли ни одной строки платежей в ответе — вёрстка alta.ru могла измениться');
 
-    res.status(200).send(JSON.stringify({ duty, util, fee, dutyBasis, utilBasis }));
+    res.status(200).send(JSON.stringify({ duty, util, dutyItems, utilBasis }));
   } catch (e) {
     res.status(200).send(JSON.stringify({ error: 'Не удалось получить расчёт с alta.ru: ' + (e.message || e) }));
   }
