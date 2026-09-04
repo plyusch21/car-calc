@@ -75,12 +75,13 @@ body{
 .field label{ display:block; font-size:12.5px; color:var(--muted); margin-bottom:5px; }
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
 .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;}
-input[type=text], input[type=number], select{
+input[type=text], input[type=number], select, textarea{
   width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:9px;
   padding:10px 11px; font-size:14.5px; font-family:'IBM Plex Mono',monospace; outline:none;
 }
 select{font-family:'Inter',sans-serif;}
-input:focus, select:focus{border-color:var(--accent);}
+textarea{font-family:'Inter',sans-serif; resize:vertical;}
+input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
 .seg{ display:flex; background:var(--panel-2); border-radius:9px; padding:3px; border:1px solid var(--border); }
 .seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:8px 4px; border-radius:7px; font-size:12.5px; cursor:pointer; font-family:'Inter',sans-serif; }
@@ -294,6 +295,10 @@ const DEFAULT_CONFIG = {
   // проксирует alta.ru, а не tks.ru напрямую).
   customsProxyUrl: '/api/customs',
 
+  // Разбор вставленного текста объявления (комплектация/пробег/дата/привод/
+  // трансмиссия/состояние + марка-модель) через api/parse-listing.js (Gemini).
+  parseListingUrl: '/api/parse-listing',
+
   customsCalculators: [
     { label:'alta.ru — auto-vat', url:'https://www.alta.ru/auto-vat/' },
     { label:'tks.ru — auto/calc', url:'https://www.tks.ru/auto/calc/' }
@@ -449,7 +454,8 @@ function defaultForm(route){
     deliveryOverride:false, deliveryManual:'', deliveryEnabled:false,
     brokerFee: r.brokerFee, agentFee: r.agentFee, bankPct: r.bankCommissionPct,
     showCarDetails:false,
-    carTrim:'', prodMonth:'', prodYear:'', mileage:'', drivetrain:'', transmission:'', condition:'', notes:''
+    carTrim:'', prodMonth:'', prodYear:'', mileage:'', drivetrain:'', transmission:'', condition:'', notes:'',
+    listingText:''
   };
 }
 const ENGINE_TYPES = {
@@ -486,6 +492,7 @@ function formatNumInput(raw){
 }
 function cleanNumInput(v){ return String(v==null?'':v).replace(/[^\d.,]/g,''); }
 const GROUPED_NUM_FIELDS = ['carPrice','extraCosts','volumeCm3','power','mileage','customsManual','deliveryManual','brokerFee','agentFee','customsValueManual'];
+function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function openExternal(url){
   if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink){ window.Telegram.WebApp.openLink(url); }
   else{ window.open(url, '_blank'); }
@@ -788,7 +795,15 @@ function renderCalc(c){
 
     <div class="card">
       <h2>Доп. данные по авто (для клиента)</h2>
-      <div class="toggle-row field">
+      <div class="field">
+        <label>Текст объявления — вставьте как есть (RU/EN/CN), поля ниже заполнятся сами</label>
+        <textarea id="f_listingText" rows="4" placeholder="Комплектация, пробег, дата производства, привод, трансмиссия, состояние...">${escapeHtml(f.listingText)}</textarea>
+      </div>
+      <div class="row2" style="align-items:center; margin-bottom:2px;">
+        <button class="btn secondary" id="parseListingBtn" type="button">Распознать и заполнить</button>
+        <div id="parseListingStatus" style="font-size:11px;color:var(--muted);"></div>
+      </div>
+      <div class="toggle-row field" style="margin-top:10px;">
         <div style="font-size:12.5px;">Указать данные по авто</div>
         <div class="switch ${f.showCarDetails?'on':''}" id="carDetailsToggle"><div class="knob"></div></div>
       </div>
@@ -887,6 +902,47 @@ function renderCalc(c){
   const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; renderCalc(c); };
   const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
+  const listingTa = document.getElementById('f_listingText'); if(listingTa) listingTa.oninput = ()=> f.listingText = listingTa.value;
+  const parseBtn = document.getElementById('parseListingBtn');
+  if(parseBtn) parseBtn.onclick = async ()=>{
+    const text = (f.listingText||'').trim();
+    if(!text){
+      const st0 = document.getElementById('parseListingStatus');
+      if(st0){ st0.textContent = 'Вставьте текст объявления'; st0.style.color = 'var(--danger)'; }
+      return;
+    }
+    parseBtn.disabled = true; parseBtn.textContent = 'Распознаю…';
+    let statusText = '', statusColor = 'var(--muted)';
+    try{
+      const res = await fetch(CONFIG.parseListingUrl, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text})
+      });
+      const data = await res.json();
+      if(data.error) throw new Error(data.error);
+      // Подставляем только в пустые поля — то, что пользователь уже ввёл
+      // вручную, разбор текста не перезаписывает.
+      const FIELD_MAP = ['model','carTrim','mileage','prodMonth','prodYear','drivetrain','transmission','condition','notes'];
+      let filled = 0;
+      FIELD_MAP.forEach(k=>{
+        const v = data[k];
+        if(v===null || v===undefined || v==='') return;
+        if(f[k]) return;
+        if(k==='drivetrain' && !DRIVETRAIN_LABELS[v]) return;
+        if(k==='transmission' && !TRANSMISSION_LABELS[v]) return;
+        f[k] = (k==='mileage') ? String(Math.round(num(v))) : String(v);
+        filled++;
+      });
+      if(filled>0) f.showCarDetails = true;
+      statusText = filled>0 ? ('Заполнено полей: '+filled) : 'Новых данных не нашли — либо их нет в тексте, либо все поля уже заполнены';
+      statusColor = filled>0 ? 'var(--good)' : 'var(--muted)';
+    }catch(e){
+      statusText = 'Ошибка: '+e.message;
+      statusColor = 'var(--danger)';
+    }
+    renderCalc(c);
+    const statusEl = document.getElementById('parseListingStatus');
+    if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
+  };
   const transEl = document.getElementById('f_transmission'); if(transEl) transEl.onchange = ()=>{ f.transmission=transEl.value; };
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
   const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; renderCalc(c); };
