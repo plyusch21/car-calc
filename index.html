@@ -426,7 +426,7 @@ function defaultForm(route){
     customsAuto:'', customsManual:'', customsOverride:false, eaeuFullDuty:false,
     deliveryCity: CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : '',
     bodyTypeIdx: 1,
-    deliveryOverride:false, deliveryManual:'', noDelivery:false,
+    deliveryOverride:false, deliveryManual:'', deliveryEnabled:false,
     brokerFee: r.brokerFee, agentFee: r.agentFee, bankPct: r.bankCommissionPct,
     showCarDetails:false,
     carTrim:'', prodMonth:'', prodYear:'', mileage:'', drivetrain:'', transmission:'', condition:'', notes:''
@@ -615,7 +615,7 @@ function calcDeal(route, f){
 
   const broker = num(f.brokerFee);
   const agent = num(f.agentFee);
-  const delivery = f.noDelivery ? 0 : (f.deliveryOverride ? num(f.deliveryManual) : deliveryPrice(f.deliveryCity, f.bodyTypeIdx));
+  const delivery = f.deliveryEnabled ? (f.deliveryOverride ? num(f.deliveryManual) : deliveryPrice(f.deliveryCity, f.bodyTypeIdx)) : 0;
   const downPayment = broker; // by policy, the deposit always equals the broker fee
 
   const total = invoiceRub + customsTotal + broker + agent + delivery;
@@ -794,12 +794,12 @@ function renderCalc(c){
     </div>
 
     <div class="card">
-      <h2>Доставка по РФ — считается автоматически</h2>
+      <h2>Доставка по РФ</h2>
       <div class="toggle-row field">
-        <div style="font-size:12.5px;">Без доставки</div>
-        <div class="switch ${f.noDelivery?'on':''}" id="noDeliveryToggle"><div class="knob"></div></div>
+        <div style="font-size:12.5px;">Учитывать доставку по РФ</div>
+        <div class="switch ${f.deliveryEnabled?'on':''}" id="deliveryEnabledToggle"><div class="knob"></div></div>
       </div>
-      ${f.noDelivery ? '' : `
+      ${!f.deliveryEnabled ? '' : `
       <div class="field"><label>Отправка из</label><input type="text" value="${CONFIG.delivery.originLabel}" disabled></div>
       <div class="row2">
         ${field('Город доставки', `<select id="f_city">${cityOptions(f.deliveryCity)}</select>`)}
@@ -859,7 +859,7 @@ function renderCalc(c){
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
   const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; renderCalc(c); };
   const delT = document.getElementById('delOverrideToggle'); if(delT) delT.onclick = ()=>{ f.deliveryOverride=!f.deliveryOverride; renderCalc(c); };
-  const noDelT = document.getElementById('noDeliveryToggle'); if(noDelT) noDelT.onclick = ()=>{ f.noDelivery=!f.noDelivery; renderCalc(c); };
+  const delEnT = document.getElementById('deliveryEnabledToggle'); if(delEnT) delEnT.onclick = ()=>{ f.deliveryEnabled=!f.deliveryEnabled; renderCalc(c); };
   const customsT = document.getElementById('customsOverrideToggle'); if(customsT) customsT.onclick = ()=>{ f.customsOverride=!f.customsOverride; renderCalc(c); };
 
   document.getElementById('calcBtn').onclick = async ()=>{
@@ -920,7 +920,7 @@ function showResult(route, f){
         <div class="rline"><div class="k">${r.customsLabel}${f.customsOverride?' (вручную)':''}</div><div class="v">${fmt(r.customsTotal,'₽')}</div></div>
         <div class="rline"><div class="k">Брокер</div><div class="v">${fmt(r.broker,'₽')}</div></div>
         <div class="rline"><div class="k">Наша комиссия</div><div class="v">${fmt(r.agent,'₽')}</div></div>
-        ${f.noDelivery ? '' : `<div class="rline"><div class="k">Доставка по РФ${f.deliveryOverride?' (вручную)':' · '+f.deliveryCity}</div><div class="v">${fmt(r.delivery,'₽')}</div></div>`}
+        ${f.deliveryEnabled ? `<div class="rline"><div class="k">Доставка по РФ${f.deliveryOverride?' (вручную)':' · '+f.deliveryCity}</div><div class="v">${fmt(r.delivery,'₽')}</div></div>` : ''}
         <div class="rline"><div class="k">Банковская комиссия (${r.bankPct}%)<span class="hint">уже включена в цену ТС выше, справочно</span></div><div class="v">${fmt(r.bankCommissionRub,'₽')}</div></div>
         <div class="rline"><div class="k">Первоначальный взнос<span class="hint">справочно, равен сумме брокера, не добавляется к итогу</span></div><div class="v">${fmt(r.downPayment,'₽')}</div></div>
       </div>
@@ -959,7 +959,7 @@ function shareResult(route, f, r, carLines){
     `${r.customsLabel}: ${fmt(r.customsTotal,'₽')}`,
     `Брокер: ${fmt(r.broker,'₽')}`,
     `Комиссия: ${fmt(r.agent,'₽')}`,
-    f.noDelivery ? null : `Доставка: ${fmt(r.delivery,'₽')}`,
+    f.deliveryEnabled ? `Доставка: ${fmt(r.delivery,'₽')}` : null,
     `ИТОГО: ${fmt(r.total,'₽')}`
   ].filter(Boolean).join('\n');
 
