@@ -1209,23 +1209,21 @@ async function shareResult(route, f, r, channel){
   // а не флаг Китая — флаг отражает фактический маршрут, а не текст подписи.
   const shareRouteLabel = route==='eaeu' ? 'Китай' : CONFIG.routes[route].label;
   const dateStr = new Date().toLocaleDateString('ru-RU');
-  const isTelegram = channel==='telegram';
   // WhatsApp разбирает *звёздочки* в готовом вставленном тексте и правда
-  // показывает жирный шрифт. Telegram так не умеет: он выделяет markdown
-  // только пока текст печатают вручную в его собственном поле ввода — у
-  // готового текста, который приходит через share/буфер, звёздочки остаются
-  // видимыми символами. Настоящий жирный текст в Telegram при этом всё же
-  // достижим — не звёздочками, а отдельным сообщением от бота с
-  // parse_mode:'HTML' (см. ветку channel==='telegram' ниже), поэтому здесь
-  // для Telegram сразу строим HTML с <b>. В MAX бота нет и звёздочки там
-  // тоже не работают — просто отправляем чистый текст без разметки.
+  // показывает жирный шрифт. У Telegram и MAX такого нет: оба выделяют
+  // markdown только пока текст печатают вручную в их собственном поле
+  // ввода — у готового текста, который приходит через share/буфер,
+  // звёздочки остаются видимыми символами. Настоящий жирный текст в
+  // Telegram технически достижим только через сообщение от бота
+  // (подпись "via @бот") или отправку сначала в чат с ботом с последующей
+  // ручной пересылкой — оба варианта владелец отклонил как неудобные,
+  // поэтому для Telegram, как и для MAX, просто не добавляем звёздочки.
   const mark = channel==='whatsapp' ? '*' : '';
-  const b = s => isTelegram ? `<b>${s}</b>` : mark+s+mark;
-  // Значения из "Доп. данных" (ручной ввод или разбор ИИ) — произвольный
-  // текст. Для WhatsApp/MAX вычищаем случайные "*", которые сломали бы
-  // жирный шрифт до конца сообщения; для Telegram вместо этого экранируем
-  // HTML-спецсимволы, иначе Telegram отклонит сообщение как невалидный HTML.
-  const esc = isTelegram ? escapeHtml : (s => String(s).replace(/\*/g, ''));
+  const b = s => mark+s+mark;
+  // Значения из "Доп. данных" (ручной ввод или разбор ИИ) могут случайно
+  // содержать "*" — непарный символ сломает жирный шрифт до конца
+  // сообщения, поэтому вычищаем его из произвольного текста.
+  const esc = s => String(s).replace(/\*/g, '');
 
   const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
   const isElectric = em.dtype === 'electric';
@@ -1285,30 +1283,15 @@ async function shareResult(route, f, r, channel){
     openExternal('https://wa.me/?text='+encodeURIComponent(text));
     return;
   }
-  if(channel==='telegram'){
-    // Ссылки-шэры (switchInlineQuery/t.me/share) передают только голый
-    // текст без форматирования — тот же тупик со звёздочками. Вместо этого
-    // бот присылает это же сообщение с реальным жирным шрифтом (HTML) сюда
-    // же, в чат с ботом, откуда его достаточно переслать клиенту, не
-    // покидая Telegram.
-    try{
-      const res = await fetch('/api/send-telegram', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), html:text})});
-      const data = await res.json();
-      if(data.error) throw new Error(data.error);
-      toast('Отправлено вам в чат с ботом — перешлите клиенту (сендер можно скрыть при пересылке)', 4500);
-    } catch(e){
-      toast('Не удалось отправить: '+(e.message||e), 3000);
-      if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.switchInlineQuery){
-        try{ window.Telegram.WebApp.switchInlineQuery(text.replace(/<\/?b>/g,'')); }catch(e2){}
-      }
-    }
-    return;
-  }
-  // MAX: официальной ссылки-шаблона для передачи готового текста в MAX не
-  // нашлось, поэтому используем системное окно "Поделиться" — MAX появится
-  // там как один из вариантов, если установлен.
+  // Telegram и MAX: официальной ссылки-шаблона для передачи готового текста
+  // в выбранный чат в обход системного окна для них нет (у Telegram есть
+  // switchInlineQuery, но он идёт через inline-режим бота и всегда
+  // подписывает сообщение "via @бот" — владелец это отклонил). Поэтому для
+  // обоих используем системное окно "Поделиться": нужный мессенджер и чат
+  // выбираются там же, одним шагом, без бота и подписей — но без жирного
+  // шрифта, т.к. оба игнорируют markdown в готовом вставленном тексте.
   if(navigator.share){ navigator.share({title:'Расчёт стоимости авто', text}).catch(()=>{}); return; }
-  navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена — вставьте в MAX'));
+  navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена — вставьте в '+(channel==='telegram'?'Telegram':'MAX')));
 }
 
 function renderHistory(c){
