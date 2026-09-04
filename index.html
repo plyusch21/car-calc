@@ -96,6 +96,10 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .btn{ width:100%; background:var(--accent); color:#08131c; border:none; border-radius:11px; padding:13px; font-size:14.5px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; }
 .btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
 .btn.small{padding:9px; font-size:12.5px;}
+.row3 .btn{ padding:11px 4px; font-size:12.5px; }
+.btn-wa{ background:#25D366; color:#fff; }
+.btn-tg{ background:#2AABEE; color:#fff; }
+.btn-max{ background:#E8722C; color:#fff; }
 .linkbtn{
   display:flex; align-items:center; justify-content:space-between; gap:8px;
   background:var(--teal-soft); border:1px solid var(--teal); color:var(--teal);
@@ -471,7 +475,7 @@ function defaultForm(route){
     brokerFee: r.brokerFee, agentFee: r.agentFee, bankPct: r.bankCommissionPct,
     showCarDetails:false,
     carTrim:'', prodMonth:'', prodYear:'', mileage:'', drivetrain:'', transmission:'', condition:'', notes:'',
-    listingText:'', showListingParser:false, shareFormat:'whatsapp'
+    listingText:'', showListingParser:false
   };
 }
 const ENGINE_TYPES = {
@@ -1163,9 +1167,10 @@ function showResult(route, f){
     <button class="btn secondary" id="saveBtn" style="width:100%;">Сохранить в историю</button>
     <div class="field" style="margin-top:14px;">
       <label>Отправить расчёт</label>
-      <div class="row2">
-        <button class="btn secondary" id="shareWhatsappBtn">WhatsApp</button>
-        <button class="btn secondary" id="shareTgMaxBtn">Telegram / MAX</button>
+      <div class="row3">
+        <button class="btn btn-wa" id="shareWhatsappBtn">WhatsApp</button>
+        <button class="btn btn-tg" id="shareTelegramBtn">Telegram</button>
+        <button class="btn btn-max" id="shareMaxBtn">MAX</button>
       </div>
     </div>
   `;
@@ -1184,8 +1189,9 @@ function showResult(route, f){
     toast('Сохранено в историю');
     resetAfterDone();
   };
-  document.getElementById('shareWhatsappBtn').onclick = ()=>{ f.shareFormat = 'whatsapp'; shareResult(route, f, r); resetAfterDone(); };
-  document.getElementById('shareTgMaxBtn').onclick = ()=>{ f.shareFormat = 'tgmax'; shareResult(route, f, r); resetAfterDone(); };
+  document.getElementById('shareWhatsappBtn').onclick = ()=>{ shareResult(route, f, r, 'whatsapp'); resetAfterDone(); };
+  document.getElementById('shareTelegramBtn').onclick = ()=>{ shareResult(route, f, r, 'telegram'); resetAfterDone(); };
+  document.getElementById('shareMaxBtn').onclick = ()=>{ shareResult(route, f, r, 'max'); resetAfterDone(); };
 }
 
 // Формат курса: у копеечных курсов (напр. вона) 2 знака после запятой
@@ -1194,7 +1200,7 @@ function fmtRate(rate){
   return (rate>=1 ? rate.toFixed(2) : rate.toFixed(4)).replace('.', ',');
 }
 
-function shareResult(route, f, r){
+function shareResult(route, f, r, channel){
   const suf = CUR_SUFFIX[route];
   // По просьбе владельца: клиенту направление ЕАЭС всегда подписывается
   // "Китай" в тексте расчёта — по факту это тот же китайский автомобиль,
@@ -1204,15 +1210,14 @@ function shareResult(route, f, r){
   const shareRouteLabel = route==='eaeu' ? 'Китай' : CONFIG.routes[route].label;
   const dateStr = new Date().toLocaleDateString('ru-RU');
   // WhatsApp разбирает *звёздочки* в готовом вставленном тексте и правда
-  // показывает жирный шрифт. Double-asterisk-гипотеза для Telegram/MAX не
-  // подтвердилась на практике: оба приложения выделяют markdown только пока
-  // текст печатают вручную в их собственном поле ввода — у готового текста,
-  // который приходит через "Поделиться"/вставку из буфера, звёздочки остаются
-  // видимыми символами, а не превращаются в форматирование. Настоящий жирный
-  // текст в Telegram/MAX без бота с Bot API (parse_mode) недостижим, поэтому
-  // для этого формата звёздочки просто не добавляем — так текст читается
-  // чисто, без мусора из символов.
-  const mark = f.shareFormat==='tgmax' ? '' : '*';
+  // показывает жирный шрифт. У Telegram и MAX такого нет: оба выделяют
+  // markdown только пока текст печатают вручную в их собственном поле
+  // ввода — у готового текста, который приходит через share/буфер,
+  // звёздочки остаются видимыми символами. Настоящий жирный текст в
+  // Telegram потребовал бы слать сообщение от бота (подпись "via @бот" —
+  // от неё владелец отказался), в MAX бота вообще нет, поэтому для обоих
+  // просто не добавляем звёздочки — текст читается чисто, без мусора.
+  const mark = channel==='whatsapp' ? '*' : '';
   const b = s => mark+s+mark;
   // Значения из "Доп. данных" (ручной ввод или разбор ИИ) могут случайно
   // содержать "*" — непарный символ сломает жирный шрифт до конца
@@ -1270,11 +1275,27 @@ function shareResult(route, f, r){
   lines.push(`с учётом всех расходов до ${destGenitive} на дату расчета`);
   const text = lines.join('\n');
 
-  if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.switchInlineQuery){
-    try{ window.Telegram.WebApp.switchInlineQuery(text); return; }catch(e){}
+  if(channel==='whatsapp'){
+    // wa.me — официальная ссылка WhatsApp: сразу открывает именно его
+    // (приложение или web.whatsapp.com) с готовым текстом, без общего
+    // системного окна выбора приложения.
+    openExternal('https://wa.me/?text='+encodeURIComponent(text));
+    return;
   }
+  if(channel==='telegram'){
+    // Внутри Telegram Mini App свой нативный пикер чатов — им и пользуемся,
+    // это лучше, чем внешняя ссылка t.me/share, раз мы уже внутри Telegram.
+    if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.switchInlineQuery){
+      try{ window.Telegram.WebApp.switchInlineQuery(text); return; }catch(e){}
+    }
+    openExternal('https://t.me/share/url?url=&text='+encodeURIComponent(text));
+    return;
+  }
+  // MAX: официальной ссылки-шаблона для передачи готового текста в MAX не
+  // нашлось, поэтому используем системное окно "Поделиться" — MAX появится
+  // там как один из вариантов, если установлен.
   if(navigator.share){ navigator.share({title:'Расчёт стоимости авто', text}).catch(()=>{}); return; }
-  navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена'));
+  navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена — вставьте в MAX'));
 }
 
 function renderHistory(c){
