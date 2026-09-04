@@ -105,6 +105,22 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .linkbtn:last-child{margin-bottom:0;}
 .linkbtn small{display:block; font-weight:400; color:var(--teal); opacity:0.8; font-size:11px; margin-top:1px;}
 
+.smartfill{ background:var(--panel-2); border:1px dashed var(--border); border-radius:12px; padding:12px; }
+.smartfill textarea{ margin-bottom:10px; }
+.smartfill .btn{ margin-bottom:6px; }
+.smartfill .row2 .btn{ margin-bottom:0; }
+.smartfill-status{ font-size:11px; color:var(--muted); min-height:14px; }
+.smartfill-divider{ display:flex; align-items:center; gap:8px; margin:12px 0 10px; color:var(--muted); font-size:11px; }
+.smartfill-divider::before, .smartfill-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
+.filepick{
+  display:flex; align-items:center; justify-content:center; text-align:center;
+  background:var(--panel); border:1px solid var(--border); border-radius:11px;
+  padding:13px 8px; font-size:12.5px; color:var(--muted); cursor:pointer; font-family:'Inter',sans-serif;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.filepick.has-file{ color:var(--text); border-color:var(--accent); }
+.smartfill-hint{ font-size:10.5px; color:var(--muted); margin-top:10px; line-height:1.4; }
+
 .receipt{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:14px; }
 .receipt-head{ padding:16px 16px 12px; border-bottom:1px dashed var(--border); }
 .receipt-head .model{font-family:'Fraunces',serif; font-size:17px; font-weight:600;}
@@ -747,16 +763,32 @@ function resizeImageToBase64(file, maxDim, quality){
       const img = new Image();
       img.onerror = ()=> reject(new Error('не удалось декодировать изображение'));
       img.onload = ()=>{
-        let w = img.width, h = img.height;
-        if(w > maxDim || h > maxDim){
-          const scale = maxDim / Math.max(w, h);
-          w = Math.round(w*scale); h = Math.round(h*scale);
+        // Vercel обрывает соединение на слишком большом теле запроса (~4.5 МБ)
+        // ещё до ответа — браузер видит это как generic "Load failed", а не
+        // понятную ошибку. Поэтому сжимаем итеративно, ступень за ступенью,
+        // пока base64 не влезет с запасом, а не одним фиксированным качеством.
+        const MAX_BASE64 = 2.5 * 1024 * 1024;
+        const attempts = [
+          {dim:maxDim, q:quality}, {dim:1400, q:0.75}, {dim:1100, q:0.6}, {dim:900, q:0.5}
+        ];
+        let result = null;
+        for(const a of attempts){
+          let w = img.width, h = img.height;
+          if(w > a.dim || h > a.dim){
+            const scale = a.dim / Math.max(w, h);
+            w = Math.round(w*scale); h = Math.round(h*scale);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          result = canvas.toDataURL('image/jpeg', a.q).split(',')[1];
+          if(result.length <= MAX_BASE64) break;
         }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+        if(!result || result.length > MAX_BASE64){
+          reject(new Error('фото слишком большое даже после сжатия — попробуйте переснять при более простом освещении или обрезать лишнее по краям'));
+          return;
+        }
+        resolve({ base64: result, mimeType: 'image/jpeg' });
       };
       img.src = reader.result;
     };
@@ -863,29 +895,25 @@ function renderCalc(c){
     <div class="card">
       <h2>Доп. данные по авто (для клиента)</h2>
       <div class="toggle-row field">
-        <div style="font-size:12.5px;">${route==='japan' ? 'Заполнить по тексту или фото объявления' : 'Заполнить по тексту объявления'}</div>
+        <div style="font-size:12.5px;">✨ ${route==='japan' ? 'Автозаполнение по объявлению' : 'Автозаполнение по тексту объявления'}</div>
         <div class="switch ${f.showListingParser?'on':''}" id="listingParserToggle"><div class="knob"></div></div>
       </div>
       ${f.showListingParser ? `
-      <div class="field">
-        <label>Текст объявления — вставьте как есть (RU/EN/CN), поля ниже заполнятся сами</label>
-        <textarea id="f_listingText" rows="4" placeholder="Комплектация, пробег, дата производства, привод, трансмиссия, состояние...">${escapeHtml(f.listingText)}</textarea>
+      <div class="smartfill">
+        <textarea id="f_listingText" rows="4" placeholder="Вставьте текст объявления как есть (RU/EN/CN) — комплектация, пробег, дата производства, привод, трансмиссия, состояние определятся сами">${escapeHtml(f.listingText)}</textarea>
+        <button class="btn secondary" id="parseListingBtn" type="button">Распознать текст</button>
+        <div id="parseListingStatus" class="smartfill-status"></div>
+        ${route==='japan' ? `
+        <div class="smartfill-divider"><span>или фото аукционного листа</span></div>
+        <div class="row2">
+          <label class="filepick" for="f_listingImage" id="listingImageLabel">Выбрать фото</label>
+          <input type="file" accept="image/*" id="f_listingImage" style="display:none;">
+          <button class="btn secondary" id="parseListingImageBtn" type="button">Распознать фото</button>
+        </div>
+        <div id="parseListingImageStatus" class="smartfill-status"></div>
+        <div class="smartfill-hint">Лист всегда на японском — читается автоматически. На нём указана дата первой регистрации, а не выпуска — так она и попадёт в расчёт.</div>
+        ` : ''}
       </div>
-      <div class="row2" style="align-items:center; margin-bottom:2px;">
-        <button class="btn secondary" id="parseListingBtn" type="button">Распознать и заполнить</button>
-        <div id="parseListingStatus" style="font-size:11px;color:var(--muted);"></div>
-      </div>
-      ${route==='japan' ? `
-      <div class="field" style="margin-top:8px;">
-        <label>Или фото аукционного листа (лист всегда на японском — распознаётся автоматически)</label>
-        <input type="file" accept="image/*" id="f_listingImage">
-      </div>
-      <div class="row2" style="align-items:center; margin-bottom:2px;">
-        <button class="btn secondary" id="parseListingImageBtn" type="button">Распознать фото и заполнить</button>
-        <div id="parseListingImageStatus" style="font-size:11px;color:var(--muted);"></div>
-      </div>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">На листе указана дата первой регистрации, а не дата выпуска — так это и попадёт в итоговый расчёт для Японии.</div>
-      ` : ''}
       ` : ''}
       <div class="toggle-row field" style="margin-top:10px;">
         <div style="font-size:12.5px;">Указать данные по авто</div>
@@ -1001,6 +1029,12 @@ function renderCalc(c){
     renderCalc(c);
     const statusEl = document.getElementById('parseListingStatus');
     if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
+  };
+  const listingImgInput = document.getElementById('f_listingImage');
+  if(listingImgInput) listingImgInput.onchange = ()=>{
+    const lbl = document.getElementById('listingImageLabel');
+    const file = listingImgInput.files && listingImgInput.files[0];
+    if(lbl){ lbl.textContent = file ? file.name : 'Выбрать фото'; lbl.classList.toggle('has-file', !!file); }
   };
   const parseImgBtn = document.getElementById('parseListingImageBtn');
   if(parseImgBtn) parseImgBtn.onclick = async ()=>{

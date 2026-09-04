@@ -170,7 +170,7 @@ const FUNCTION_SCHEMA = {
 
 const PROMPT = `Ты помощник по разбору объявлений о продаже автомобилей для калькулятора импорта. Текст объявления ниже может быть на русском, английском или китайском языке, и может быть оформлен как список полей вида "【название поля】значение" (типично для китайских объявлений) — разбери каждое такое поле по смыслу, не пропускай их. Вызови функцию extract_car_listing_fields и передай в неё только те поля, которые реально удалось определить из текста — не выдумывай и не заполняй поля, которых в тексте нет.
 
-Важно про язык результата: model и carTrim — ВСЕГДА пиши на английском языке (переведи/транслитерируй бренд и модель в их стандартное международное написание), а condition и notes — ВСЕГДА на русском языке (переведи). Ни в одном текстовом поле не должно остаться китайских иероглифов или непереведённых английских слов, кроме самого названия марки/модели/комплектации, которые как раз должны быть на английском.
+Важно про язык результата: model и carTrim — ВСЕГДА пиши на английском языке (переведи/транслитерируй бренд и модель в их стандартное международное написание), а condition и notes — ВСЕГДА на русском языке (переведи). Это касается и списков опций/особенностей из объявления (напр. "4WD, 1.4T engine, cruise control" — переведи КАЖДЫЙ пункт списка, а не оставляй список как есть просто потому что он уже выглядит как готовый текст). Ни в одном текстовом поле не должно остаться китайских иероглифов или непереведённых английских слов, кроме самого названия марки/модели/комплектации, которые как раз должны быть на английском.
 
 Текст объявления:
 """
@@ -279,7 +279,7 @@ async function callGigaChatVision(accessToken, fileId) {
   }
   delete parsed.isAuctionSheet;
   parsed.source = 'ai';
-  return parsed;
+  return enforceRussianFields(parsed);
 }
 
 async function callGigaChat(accessToken, text) {
@@ -310,7 +310,7 @@ async function callGigaChat(accessToken, text) {
   }
   const parsed = typeof fc.arguments === 'string' ? JSON.parse(fc.arguments) : fc.arguments;
   parsed.source = 'ai';
-  return parsed;
+  return enforceRussianFields(parsed);
 }
 
 // ---------------------------------------------------------------------
@@ -320,9 +320,9 @@ async function callGigaChat(accessToken, text) {
 const CJK_RE = /[一-鿿]/;
 const CYRILLIC_RE = /[Ѐ-ӿ]/;
 
-async function translateText(text, sourceLang) {
+async function translateText(text, sourceLang, targetLang) {
   const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text.slice(0, 500)) +
-    '&langpair=' + sourceLang + '|en';
+    '&langpair=' + sourceLang + '|' + (targetLang || 'en');
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
@@ -335,6 +335,31 @@ async function translateText(text, sourceLang) {
   } catch (e) {
     return null;
   }
+}
+
+// Подстраховка: GigaChat периодически игнорирует инструкцию "condition/notes
+// всегда на русском" (живой пример: длинный список опций на английском —
+// "4WD powerful, 1.4T engine, tire pressure monitoring..." — ушёл клиенту
+// как есть). Промпт/схема одни не гарантируют соблюдение — поэтому здесь
+// после ответа модели явно проверяем долю кириллицы в этих двух полях и,
+// если перевода явно не произошло, переводим сами через MyMemory.
+function looksUntranslatedToRussian(text) {
+  if (!text) return false;
+  const cyrillic = (text.match(/[Ѐ-ӿ]/g) || []).length;
+  const letters = (text.match(/[a-zA-Zа-яА-ЯЀ-ӿ一-鿿]/g) || []).length;
+  if (letters < 3) return false; // слишком коротко, чтобы судить (напр. одно слово/аббревиатура)
+  return cyrillic / letters < 0.3;
+}
+async function enforceRussianFields(parsed) {
+  for (const key of ['condition', 'notes']) {
+    const val = parsed[key];
+    if (typeof val === 'string' && looksUntranslatedToRussian(val)) {
+      const srcLang = CJK_RE.test(val) ? 'zh' : 'en';
+      const translated = await translateText(val, srcLang, 'ru');
+      if (translated) parsed[key] = translated;
+    }
+  }
+  return parsed;
 }
 
 function firstMatch(text, patterns) {
