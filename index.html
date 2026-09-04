@@ -895,7 +895,7 @@ function renderCalc(c){
     <div class="card">
       <h2>Доп. данные по авто (для клиента)</h2>
       <div class="toggle-row field">
-        <div style="font-size:12.5px;">✨ ${route==='japan' ? 'Автозаполнение по объявлению' : 'Автозаполнение по тексту объявления'}</div>
+        <div style="font-size:12.5px;">${route==='japan' ? 'Автозаполнение по объявлению' : 'Автозаполнение по тексту объявления'}</div>
         <div class="switch ${f.showListingParser?'on':''}" id="listingParserToggle"><div class="knob"></div></div>
       </div>
       ${f.showListingParser ? `
