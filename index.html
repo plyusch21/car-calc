@@ -443,6 +443,7 @@ function defaultForm(route){
     model:'', carPrice:'', extraCosts:r.defaultExtraCosts||'', volumeCm3:'', age:'t3to5',
     engineType:'ben', power:'', powerUnit:'ls',
     customsAuto:'', customsManual:'', customsOverride:false, eaeuFullDuty:false,
+    customsValueOverride:false, customsValueManual:'',
     deliveryCity: CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : '',
     bodyTypeIdx: 1,
     deliveryOverride:false, deliveryManual:'', deliveryEnabled:false,
@@ -484,7 +485,7 @@ function formatNumInput(raw){
   return parts.length>1 ? intPart+','+parts.slice(1).join('') : intPart;
 }
 function cleanNumInput(v){ return String(v==null?'':v).replace(/[^\d.,]/g,''); }
-const GROUPED_NUM_FIELDS = ['carPrice','extraCosts','volumeCm3','power','mileage','customsManual','deliveryManual','brokerFee','agentFee'];
+const GROUPED_NUM_FIELDS = ['carPrice','extraCosts','volumeCm3','power','mileage','customsManual','deliveryManual','brokerFee','agentFee','customsValueManual'];
 function openExternal(url){
   if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink){ window.Telegram.WebApp.openLink(url); }
   else{ window.open(url, '_blank'); }
@@ -545,7 +546,12 @@ async function fetchCustomsQuote(route, f){
   // исходной валюте сделки, БЕЗ нашей комиссии банка (это наша маржа, не
   // часть стоимости авто для таможни) и без наших собственных курсов ВТБ/АТБ.
   const routeCfg = CONFIG.routes[route];
-  const carValue = num(f.carPrice) + num(f.extraCosts);
+  // Таможенная стоимость по каталогу (для авто младше 3 лет, когда цена по
+  // факту ниже каталожной) — если тумблер включён и значение введено, именно
+  // оно уходит в расчёт пошлины/утильсбора вместо цены сделки. Цена сделки и
+  // итоговая стоимость для клиента (calcDeal) от этого не меняются.
+  const catalogValue = num(f.customsValueManual);
+  const carValue = (f.customsValueOverride && catalogValue > 0) ? catalogValue : (num(f.carPrice) + num(f.extraCosts));
   const carCurrency = routeCfg.currency === 'USDT' ? 'USD' : routeCfg.currency;
   const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
   const isElectric = em.dtype === 'electric';
@@ -772,6 +778,12 @@ function renderCalc(c){
         <div class="switch ${f.eaeuFullDuty?'on':''}" id="eaeuFullDutyToggle"><div class="knob"></div></div>
       </div>
       <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">По умолчанию ЕАЭС — только утильсбор. Включите, если по сделке нужна полная пошлина + утильсбор, как для Японии/Кореи/Китая.</div>` : ''}
+      <div class="toggle-row field" style="margin-top:8px;">
+        <div style="font-size:12.5px;">Указать таможенную стоимость по каталогу</div>
+        <div class="switch ${f.customsValueOverride?'on':''}" id="customsValueOverrideToggle"><div class="knob"></div></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">Актуально для авто младше 3 лет: если фактическая цена ниже каталожной, таможня посчитает пошлину от каталожной стоимости. Включите и укажите её, чтобы расчёт пошлины/утильсбора не разошёлся с реальностью — цена сделки для клиента не меняется.</div>
+      ${f.customsValueOverride ? field('Таможенная стоимость авто ('+suf+')', `<input type="text" id="f_customsValueManual" value="${formatNumInput(f.customsValueManual)}" inputmode="decimal">`) : ''}
     </div>
 
     <div class="card">
@@ -847,7 +859,7 @@ function renderCalc(c){
   `;
 
   ['model','carPrice','extraCosts','volumeCm3','power','customsManual','deliveryManual','agentFee','brokerFee',
-   'carTrim','mileage','prodMonth','prodYear','condition','notes'].forEach(k=>{
+   'customsValueManual','carTrim','mileage','prodMonth','prodYear','condition','notes'].forEach(k=>{
     const el = document.getElementById('f_'+k);
     if(!el) return;
     if(GROUPED_NUM_FIELDS.includes(k)){
@@ -873,6 +885,7 @@ function renderCalc(c){
   const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ f.engineType=engineEl.value; renderCalc(c); };
   document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ f.powerUnit=b.dataset.unit; renderCalc(c); });
   const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; renderCalc(c); };
+  const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
   const transEl = document.getElementById('f_transmission'); if(transEl) transEl.onchange = ()=>{ f.transmission=transEl.value; };
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
@@ -895,7 +908,10 @@ function renderCalc(c){
       const sourceLabel = res.source==='alta'
         ? 'alta.ru (резерв, TKS был недоступен'+(res.tksError ? ': '+res.tksError : '')+')'
         : 'официального API TKS.RU';
-      statusText = 'Получено из '+sourceLabel+': '+dutyBreakdown+' · '+ new Date().toLocaleTimeString('ru-RU');
+      const catalogNote = (f.customsValueOverride && num(f.customsValueManual)>0)
+        ? ' · по каталожной стоимости '+fmt(num(f.customsValueManual))+' '+suf
+        : '';
+      statusText = 'Получено из '+sourceLabel+': '+dutyBreakdown+catalogNote+' · '+ new Date().toLocaleTimeString('ru-RU');
     }catch(e){
       statusText = 'Не удалось получить расчёт ('+e.message+') — используется значение из поля «вручную» (если включено) или 0.';
       statusColor = 'var(--danger)';
