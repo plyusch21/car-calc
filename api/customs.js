@@ -111,10 +111,8 @@ async function fetchFromTks(p) {
   const dutyItems = [];
   if (data.tam_oform && data.tam_oform.value_rub != null) dutyItems.push({ label: 'Таможенное оформление', amount: num(data.tam_oform.value_rub) });
   if (data.poshl && data.poshl.value_rub != null) dutyItems.push({ label: 'Пошлина' + (data.poshl.name ? ' (' + data.poshl.name + ')' : ''), amount: num(data.poshl.value_rub) });
-  // акциз/НДС не входят в data.sum для физлиц (ЕТС) — Решение №107 их не предусматривает для этой категории,
-  // поэтому в dutyItems их не добавляем, даже если TKS вернул их как справочные ненулевые значения.
 
-  return {
+  const result = {
     duty: sum,
     util,
     dutyItems,
@@ -123,6 +121,8 @@ async function fetchFromTks(p) {
       : null,
     source: 'tks'
   };
+  if (p.debug) result.raw = data;
+  return result;
 }
 
 // ---------------------------------------------------------------------
