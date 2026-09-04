@@ -267,23 +267,16 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // Пустое тело (все курсы валют null, sum_util:{}) — это TKS ограничивает частоту
+  // запросов по ключу и в ответ на превышение отдаёт HTTP 200 с пустышкой вместо
+  // ошибки/429. Подтверждено: та же самая комбинация параметров сразу отработала
+  // после паузы без запросов, и не отработала при мгновенном повторе — то есть
+  // повтор без задержки в тот же момент только удваивает нагрузку и не помогает.
+  // Поэтому здесь один запрос к TKS, и при сбое — сразу резерв alta.ru (тоже
+  // на официальном курсе ЦБ, даёт те же цифры).
   try {
-    let tksErr;
-    // TKS иногда отвечает 200 с "пустым" телом (все курсы валют null, sum_util:{})
-    // вместо реального расчёта — похоже на кратковременный сбой на их бэкенде,
-    // а не на проблему с параметрами запроса. Одна быстрая повторная попытка
-    // почти всегда обходит это, не заставляя падать сразу в резервный alta.ru.
-    try {
-      const result = await fetchFromTks(body);
-      res.status(200).send(JSON.stringify(result));
-      return;
-    } catch (e) { tksErr = e; }
-    try {
-      const result = await fetchFromTks(body);
-      res.status(200).send(JSON.stringify(result));
-      return;
-    } catch (e) { tksErr = e; }
-    throw tksErr;
+    const result = await fetchFromTks(body);
+    res.status(200).send(JSON.stringify(result));
   } catch (tksErr) {
     try {
       const result = await fetchFromAlta(body);
