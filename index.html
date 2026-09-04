@@ -736,6 +736,73 @@ function cityOptions(selected){
   return CONFIG.delivery.cities.map(c=>`<option value="${c.name}" ${c.name===selected?'selected':''}>${c.name}</option>`).join('');
 }
 
+// Сжимаем фото перед отправкой на сервер: Vercel ограничивает тело запроса
+// (~4.5 МБ), а фото с телефона легко больше. Для чтения текста/таблиц
+// разрешения 1800px по длинной стороне более чем достаточно.
+function resizeImageToBase64(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=> reject(new Error('не удалось прочитать файл'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=> reject(new Error('не удалось декодировать изображение'));
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        if(w > maxDim || h > maxDim){
+          const scale = maxDim / Math.max(w, h);
+          w = Math.round(w*scale); h = Math.round(h*scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Общая логика для текстового и фото-разбора объявления: шлёт payload на
+// /api/parse-listing и подставляет результат в форму f (только в пустые
+// поля — см. комментарий у FIELD_DEFAULTS). Никогда не бросает исключение —
+// всегда возвращает готовый статус-текст для показа пользователю.
+async function runListingParse(payload, f){
+  try{
+    const res = await fetch(CONFIG.parseListingUrl, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
+    // engineType/powerUnit в defaultForm НЕ пустые ('ben'/'ls' — значения по
+    // умолчанию для селектов без явного "не выбрано"), поэтому для них
+    // "пусто" — это "всё ещё значение по умолчанию", а не truthy-проверка.
+    const FIELD_DEFAULTS = { engineType:'ben', powerUnit:'ls' };
+    const FIELD_MAP = ['model','carTrim','mileage','prodMonth','prodYear','drivetrain','transmission',
+      'engineType','volumeCm3','power','powerUnit','condition','notes'];
+    let filled = 0;
+    FIELD_MAP.forEach(k=>{
+      const v = data[k];
+      if(v===null || v===undefined || v==='') return;
+      const isEmpty = k in FIELD_DEFAULTS ? f[k]===FIELD_DEFAULTS[k] : !f[k];
+      if(!isEmpty) return;
+      if(k==='drivetrain' && !DRIVETRAIN_LABELS[v]) return;
+      if(k==='transmission' && !TRANSMISSION_LABELS[v]) return;
+      if(k==='engineType' && !ENGINE_TYPES[v]) return;
+      if(k==='powerUnit' && v!=='ls' && v!=='kvt') return;
+      f[k] = (k==='mileage' || k==='volumeCm3' || k==='power') ? String(Math.round(num(v))) : String(v);
+      filled++;
+    });
+    if(filled>0) f.showCarDetails = true;
+    const sourceNote = data.source==='heuristic' ? ' · резервный разбор без ИИ (GigaChat недоступен'+(data.aiError?': '+data.aiError:'')+'), часть полей могла не заполниться' : '';
+    const statusText = (filled>0 ? ('Заполнено полей: '+filled) : 'Новых данных не нашли — либо их нет в тексте, либо все поля уже заполнены') + sourceNote;
+    return { statusText, statusColor: filled>0 ? 'var(--good)' : 'var(--muted)' };
+  }catch(e){
+    return { statusText: 'Ошибка: '+e.message, statusColor: 'var(--danger)' };
+  }
+}
+
 function renderCalc(c){
   const route = state.route;
   const cfg = CONFIG.routes[route];
@@ -796,7 +863,7 @@ function renderCalc(c){
     <div class="card">
       <h2>Доп. данные по авто (для клиента)</h2>
       <div class="toggle-row field">
-        <div style="font-size:12.5px;">Заполнить по тексту объявления</div>
+        <div style="font-size:12.5px;">${route==='japan' ? 'Заполнить по тексту или фото объявления' : 'Заполнить по тексту объявления'}</div>
         <div class="switch ${f.showListingParser?'on':''}" id="listingParserToggle"><div class="knob"></div></div>
       </div>
       ${f.showListingParser ? `
@@ -808,6 +875,17 @@ function renderCalc(c){
         <button class="btn secondary" id="parseListingBtn" type="button">Распознать и заполнить</button>
         <div id="parseListingStatus" style="font-size:11px;color:var(--muted);"></div>
       </div>
+      ${route==='japan' ? `
+      <div class="field" style="margin-top:8px;">
+        <label>Или фото аукционного листа (лист всегда на японском — распознаётся автоматически)</label>
+        <input type="file" accept="image/*" id="f_listingImage">
+      </div>
+      <div class="row2" style="align-items:center; margin-bottom:2px;">
+        <button class="btn secondary" id="parseListingImageBtn" type="button">Распознать фото и заполнить</button>
+        <div id="parseListingImageStatus" style="font-size:11px;color:var(--muted);"></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">На листе указана дата первой регистрации, а не дата выпуска — так это и попадёт в итоговый расчёт для Японии.</div>
+      ` : ''}
       ` : ''}
       <div class="toggle-row field" style="margin-top:10px;">
         <div style="font-size:12.5px;">Указать данные по авто</div>
@@ -819,7 +897,7 @@ function renderCalc(c){
         ${field('Пробег, км', `<input type="text" id="f_mileage" value="${formatNumInput(f.mileage)}" inputmode="numeric">`)}
       </div>
       <div class="field">
-        <label>Дата производства</label>
+        <label>${route==='japan' ? 'Дата первой регистрации' : 'Дата производства'}</label>
         <div class="row2" style="gap:6px;">
           <input type="number" id="f_prodMonth" value="${f.prodMonth}" placeholder="мес." min="1" max="12" inputmode="numeric">
           <input type="number" id="f_prodYear" value="${f.prodYear}" placeholder="год" inputmode="numeric">
@@ -919,45 +997,32 @@ function renderCalc(c){
       return;
     }
     parseBtn.disabled = true; parseBtn.textContent = 'Распознаю…';
+    const {statusText, statusColor} = await runListingParse({text}, f);
+    renderCalc(c);
+    const statusEl = document.getElementById('parseListingStatus');
+    if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
+  };
+  const parseImgBtn = document.getElementById('parseListingImageBtn');
+  if(parseImgBtn) parseImgBtn.onclick = async ()=>{
+    const fileInput = document.getElementById('f_listingImage');
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    const st0 = document.getElementById('parseListingImageStatus');
+    if(!file){
+      if(st0){ st0.textContent = 'Выберите фото аукционного листа'; st0.style.color = 'var(--danger)'; }
+      return;
+    }
+    parseImgBtn.disabled = true; parseImgBtn.textContent = 'Распознаю…';
     let statusText = '', statusColor = 'var(--muted)';
     try{
-      const res = await fetch(CONFIG.parseListingUrl, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text})
-      });
-      const data = await res.json();
-      if(data.error) throw new Error(data.error);
-      // Подставляем только в пустые поля — то, что пользователь уже ввёл
-      // вручную, разбор текста не перезаписывает. НО engineType/powerUnit в
-      // defaultForm НЕ пустые ('ben'/'ls' — значения по умолчанию для селектов
-      // без явного "не выбрано"), поэтому для них "пусто" — это "всё ещё
-      // значение по умолчанию", а не truthy-проверка, иначе разбор никогда не
-      // мог их поправить (баг: тумблер кВт/л.с. не переключался).
-      const FIELD_DEFAULTS = { engineType:'ben', powerUnit:'ls' };
-      const FIELD_MAP = ['model','carTrim','mileage','prodMonth','prodYear','drivetrain','transmission',
-        'engineType','volumeCm3','power','powerUnit','condition','notes'];
-      let filled = 0;
-      FIELD_MAP.forEach(k=>{
-        const v = data[k];
-        if(v===null || v===undefined || v==='') return;
-        const isEmpty = k in FIELD_DEFAULTS ? f[k]===FIELD_DEFAULTS[k] : !f[k];
-        if(!isEmpty) return;
-        if(k==='drivetrain' && !DRIVETRAIN_LABELS[v]) return;
-        if(k==='transmission' && !TRANSMISSION_LABELS[v]) return;
-        if(k==='engineType' && !ENGINE_TYPES[v]) return;
-        if(k==='powerUnit' && v!=='ls' && v!=='kvt') return;
-        f[k] = (k==='mileage' || k==='volumeCm3' || k==='power') ? String(Math.round(num(v))) : String(v);
-        filled++;
-      });
-      if(filled>0) f.showCarDetails = true;
-      const sourceNote = data.source==='heuristic' ? ' · резервный разбор без ИИ (GigaChat недоступен'+(data.aiError?': '+data.aiError:'')+'), часть полей могла не заполниться' : '';
-      statusText = (filled>0 ? ('Заполнено полей: '+filled) : 'Новых данных не нашли — либо их нет в тексте, либо все поля уже заполнены') + sourceNote;
-      statusColor = filled>0 ? 'var(--good)' : 'var(--muted)';
+      const {base64, mimeType} = await resizeImageToBase64(file, 1800, 0.85);
+      const result = await runListingParse({image:base64, mimeType}, f);
+      statusText = result.statusText; statusColor = result.statusColor;
     }catch(e){
       statusText = 'Ошибка: '+e.message;
       statusColor = 'var(--danger)';
     }
     renderCalc(c);
-    const statusEl = document.getElementById('parseListingStatus');
+    const statusEl = document.getElementById('parseListingImageStatus');
     if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
   };
   const transEl = document.getElementById('f_transmission'); if(transEl) transEl.onchange = ()=>{ f.transmission=transEl.value; };
@@ -997,11 +1062,16 @@ function renderCalc(c){
   };
 }
 
-function carDetailLines(f){
+function carDetailLines(f, route){
   if(!f.showCarDetails) return [];
   const lines = [];
   if(f.carTrim) lines.push(['Комплектация', f.carTrim]);
-  if(f.prodMonth || f.prodYear) lines.push(['Дата производства', [f.prodMonth?String(f.prodMonth).padStart(2,'0'):'', f.prodYear].filter(Boolean).join('.')]);
+  // Для Японии аукционные листы (и то, что с них считывается) показывают дату
+  // первой регистрации, а не дату выпуска — эти даты могут отличаться, и
+  // выдавать за клиенту одно как другое было бы неточно. См. обсуждение с
+  // владельцем: для остальных направлений это по-прежнему дата производства.
+  const prodDateLabel = route==='japan' ? 'Дата первой регистрации' : 'Дата производства';
+  if(f.prodMonth || f.prodYear) lines.push([prodDateLabel, [f.prodMonth?String(f.prodMonth).padStart(2,'0'):'', f.prodYear].filter(Boolean).join('.')]);
   if(f.mileage) lines.push(['Пробег', fmt(num(f.mileage),'км')]);
   if(f.drivetrain) lines.push(['Привод', DRIVETRAIN_LABELS[f.drivetrain] || f.drivetrain]);
   if(f.transmission) lines.push(['Трансмиссия', TRANSMISSION_LABELS[f.transmission] || f.transmission]);
@@ -1014,7 +1084,7 @@ function showResult(route, f){
   const r = calcDeal(route, f);
   const cfg = CONFIG.routes[route];
   const zone = document.getElementById('resultZone');
-  const carLines = carDetailLines(f);
+  const carLines = carDetailLines(f, route);
 
   zone.innerHTML = `
     <div class="receipt">
@@ -1059,7 +1129,7 @@ function showResult(route, f){
 
 function shareResult(route, f, r, carLines){
   const cfg = CONFIG.routes[route];
-  carLines = carLines || carDetailLines(f);
+  carLines = carLines || carDetailLines(f, route);
   const text = [
     `${f.model || 'Расчёт'} — ${cfg.label}`,
     ...carLines.map(([k,v])=>`${k}: ${v}`),

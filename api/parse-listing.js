@@ -64,6 +64,7 @@ const crypto = require('crypto');
 
 const GIGACHAT_AUTH_KEY = process.env.GIGACHAT_AUTH_KEY; // Vercel env var — см. Settings → Environment Variables, never hardcode this here
 const GIGACHAT_MODEL = 'GigaChat-2'; // подтверждено GET /v1/models — plain "GigaChat" даёт 404 "No such model"
+const GIGACHAT_VISION_MODEL = 'GigaChat-2-Pro'; // документация GigaChat заявляет vision именно у Pro-уровня; список моделей "GigaChat-Pro" в чистом виде не содержит
 const OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
 const CHAT_URL = 'https://api.giga.chat/v1/chat/completions';
 
@@ -175,6 +176,74 @@ const PROMPT = `Ты помощник по разбору объявлений �
 """
 {{TEXT}}
 """`;
+
+// Промпт для аукционного листа (только Япония) — те же поля, но с
+// поправкой на японскую специфику: лист всегда на японском, даты в нём —
+// это ЭРЫ (令和 Рэйва/平成 Хэйсэй/昭和 Сёва), а главное — там указана дата
+// ПЕРВОЙ РЕГИСТРАЦИИ (初度登録), а не дата выпуска — это осознанное решение
+// (см. обсуждение с владельцем): не пытаемся вычислить настоящую дату
+// выпуска через сторонние декодеры номера кузова (это инструмент прямого
+// конкурента, встраивать его в наш калькулятор не будем) — приложение само
+// подписывает это поле как "Дата первой регистрации" только для Японии.
+const VISION_PROMPT = `Ты помощник по разбору японских аукционных листов (オークションシート) для калькулятора импорта авто. На фото — стандартный лист японского автоаукциона, весь текст на японском языке. Вызови функцию extract_car_listing_fields и передай в неё только то, что реально удалось прочитать на листе.
+
+Важные японские обозначения:
+- 初度登録 / 年式 — это ГОД И МЕСЯЦ ПЕРВОЙ РЕГИСТРАЦИИ автомобиля (НЕ дата выпуска — это разные вещи, но здесь для простоты запиши это значение в поля prodYear/prodMonth как есть, дальше это учтёт сам калькулятор).
+- Даты на листе часто в форме японских эр: 令和(R) — Рэйва, 1-й год = 2019; 平成(H) — Хэйсэй, 1-й год = 1989; 昭和(S) — Сёва, 1-й год = 1926. Например "R3.5" = Рэйва 3 = 2019+3-1 = 2021 год, 5-й месяц. Переведи такие даты в обычный год/месяц.
+- 走行距離 — пробег (обычно в км, если указано "万km" — умножь на 10000).
+- シフト/ミッション — трансмиссия (AT/CVT/MT/DCT).
+- 駆動 — привод (4WD/2WD, FF=передний, FR=задний).
+- 車台番号 — номер кузова/рамы (это НЕ обычный VIN у японских авто для внутреннего рынка) — если виден, добавь в notes.
+- Итоговая оценка листа (总合评価/総合評価, обычно число или буква вроде "4.5", "R", "RA") и любые пометки о повреждениях на схеме кузова — кратко перескажи в notes на русском.
+
+Язык результата — как и для текстовых объявлений: model и carTrim ВСЕГДА на английском (переведи/транслитерируй), condition и notes ВСЕГДА на русском (переведи с японского). Не выдумывай значения, которых не видно на листе.`;
+
+async function uploadFile(accessToken, base64Data, mimeType) {
+  const buf = Buffer.from(base64Data, 'base64');
+  const boundary = '----gigaupload' + crypto.randomUUID().replace(/-/g, '');
+  const ext = mimeType && mimeType.includes('png') ? 'png' : 'jpg';
+  const head = `--${boundary}\r\nContent-Disposition: form-data; name="purpose"\r\n\r\ngeneral\r\n` +
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="listing.${ext}"\r\nContent-Type: ${mimeType || 'image/jpeg'}\r\n\r\n`;
+  const tail = `\r\n--${boundary}--\r\n`;
+  const body = Buffer.concat([Buffer.from(head, 'utf8'), buf, Buffer.from(tail, 'utf8')]);
+  const { status, json } = await httpsPostViaRussianCA('https://api.giga.chat/v1/files', {
+    'Content-Type': 'multipart/form-data; boundary=' + boundary,
+    'Accept': 'application/json',
+    'Authorization': 'Bearer ' + accessToken
+  }, body);
+  if (status !== 200 || !json || !json.id) {
+    throw new Error('GigaChat /files: не удалось загрузить изображение (http ' + status + (json && json.message ? ': ' + json.message : '') + ')');
+  }
+  return json.id;
+}
+
+async function callGigaChatVision(accessToken, fileId) {
+  const reqBody = JSON.stringify({
+    model: GIGACHAT_VISION_MODEL,
+    messages: [
+      { role: 'user', content: VISION_PROMPT, attachments: [fileId] }
+    ],
+    function_call: { name: FUNCTION_SCHEMA.name },
+    functions: [FUNCTION_SCHEMA],
+    temperature: 0.1
+  });
+  const { status, json } = await httpsPostViaRussianCA(CHAT_URL, {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Authorization': 'Bearer ' + accessToken
+  }, reqBody);
+  if (status !== 200) {
+    throw new Error('GigaChat (фото) http ' + status + (json && json.message ? ': ' + json.message : ''));
+  }
+  const msg = json && json.choices && json.choices[0] && json.choices[0].message;
+  const fc = msg && msg.function_call;
+  if (!fc || fc.arguments == null) {
+    throw new Error('GigaChat не распознал лист (пустой ответ)');
+  }
+  const parsed = typeof fc.arguments === 'string' ? JSON.parse(fc.arguments) : fc.arguments;
+  parsed.source = 'ai';
+  return parsed;
+}
 
 async function callGigaChat(accessToken, text) {
   const reqBody = JSON.stringify({
@@ -323,6 +392,27 @@ module.exports = async (req, res) => {
   let body = req.body;
   if (!body || typeof body === 'string') {
     try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }
+  }
+
+  // Фото аукционного листа (пока только маршрут "Япония" на клиенте) — своя
+  // ветка: картинку не разобрать регуляркой-резервом (heuristicParse работает
+  // только с текстом), поэтому здесь при сбое GigaChat просто честная ошибка,
+  // без попытки подстраховки.
+  const image = (body.image || '').toString();
+  if (image) {
+    if (!GIGACHAT_AUTH_KEY) {
+      res.status(200).send(JSON.stringify({ error: 'GIGACHAT_AUTH_KEY не настроен на сервере' }));
+      return;
+    }
+    try {
+      const token = await getAccessToken();
+      const fileId = await uploadFile(token, image, (body.mimeType || '').toString());
+      const parsed = await callGigaChatVision(token, fileId);
+      res.status(200).send(JSON.stringify(parsed));
+    } catch (e) {
+      res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+    }
+    return;
   }
 
   const text = (body.text || '').toString().trim();
