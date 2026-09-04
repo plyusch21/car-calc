@@ -338,8 +338,42 @@ const DEFAULT_CONFIG = {
   }
 };
 
-let CONFIG = Store.get('cfg_v2', null) || JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-CONFIG = deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), CONFIG);
+// Курсы валют — как их брать (источник, автообновляемость, корректировка,
+// текст-подсказка) — это решение из кода и должно обновляться с каждым
+// релизом, а не застревать на том, что когда-то сохранилось у пользователя
+// в localStorage/на сервере. Синхронизируем только сами значения (raw/
+// value/manualOverride и т.п.), а метаданные источника всегда берём
+// из свежего DEFAULT_CONFIG — иначе, например, включив автообновление
+// юаня в коде, все уже открывавшие приложение так и останутся с
+// «вручную», потому что старая сохранённая копия каждый раз перекрывает
+// новый код при подгрузке.
+function mergeRatesState(defaultRates, storedRates){
+  const out = {};
+  for(const id in defaultRates){
+    const def = defaultRates[id];
+    out[id] = {...def};
+    const st = (storedRates && storedRates[id]) || {};
+    ['raw','value','autoRaw','autoUpdatedAt','updatedAt','manualOverride'].forEach(k=>{
+      if(st[k]!==undefined) out[id][k] = st[k];
+    });
+    // Раньше у части курсов (например, юаня) автообновления вообще не было,
+    // и manualOverride был принудительным, а не осознанным выбором. Если код
+    // теперь умеет обновлять курс сам, а автозначения при этом никогда не
+    // было (autoRaw пусто) — это точно старый вынужденный режим, а не то,
+    // что человек сам когда-то включил, поэтому снимаем галочку один раз.
+    if(st.manualOverride===true && (st.autoRaw===undefined || st.autoRaw===null) && def.autoAvailable===true){
+      out[id].manualOverride = false;
+    }
+  }
+  return out;
+}
+function applyStoredConfig(stored){
+  const merged = deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), stored || {});
+  merged.rates = mergeRatesState(DEFAULT_CONFIG.rates, stored && stored.rates);
+  return merged;
+}
+
+let CONFIG = applyStoredConfig(Store.get('cfg_v2', null));
 
 // Доступ и синхронизация между устройствами через Telegram Mini App —
 // см. bootGate() в конце файла и api/auth.js, api/state.js, api/admin.js.
@@ -1158,7 +1192,7 @@ async function bootGate(){
     const r2 = await fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'get'})});
     const data = await r2.json();
     if(data && data.config){
-      CONFIG = deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), data.config);
+      CONFIG = applyStoredConfig(data.config);
       Store.set('cfg_v2', CONFIG);
     } else {
       fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveConfig', config:CONFIG})}).catch(()=>{});
