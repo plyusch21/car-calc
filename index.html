@@ -521,10 +521,18 @@ async function fetchCustomsQuote(route, f){
     dtype: em.dtype,
     hybrid1: !em.hybrid ? '1' : (f.phev ? '3' : '2'),
     hybrid2: f.hybridDominant === 'b' ? 'b' : 'a',
-    power: isElectric ? 0 : num(f.power),
+    // Единственное поле мощности на форме ("Мощность электродвигателя" для
+    // электро, "Мощность двигателя (ДВС)" для остальных) всегда пишет в
+    // f.power. TKS всегда берёт мощность из "power" независимо от типа
+    // двигателя (раньше здесь стоял 0 для электро — TKS получал мощность 0
+    // и не мог посчитать акциз/утильсбор, отсюда пустой ответ). Дублируем
+    // то же значение в powerElectric для чистого электро — это поле alta.ru
+    // уже использовало для электромобилей до этого фикса и давало верный
+    // результат, так что оставляем и его для надёжности резерва.
+    power: num(f.power),
     powerUnit: f.powerUnit,
     powerElectric: isElectric ? num(f.power) : (em.hybrid ? num(f.powerElectric) : 0),
-    powerElectricUnit: isElectric ? f.powerUnit : f.powerElectricUnit
+    powerElectricUnit: isElectric ? f.powerUnit : (em.hybrid ? f.powerElectricUnit : f.powerUnit)
   };
 
   const res = await fetch(CONFIG.customsProxyUrl, {
