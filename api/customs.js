@@ -108,9 +108,22 @@ async function fetchFromTks(p) {
   const util = data.util_sbor && data.util_sbor.value_rub != null ? num(data.util_sbor.value_rub) : null;
   if (sum === null && util === null) throw new Error('api1.tks.ru: не нашли полей sum/util_sbor в ответе — формат мог измениться');
 
+  // Для большинства легковых авто физлица (ЕТС) платят единую ставку по объёму
+  // двигателя и в data.sum акциз/НДС не входят — но у электромобилей нет объёма
+  // (см3=0), под ЕТС-таблицу они не попадают, и TKS считает их как в общем
+  // порядке: пошлина + акциз (по мощности) + НДС — все три входят в data.sum.
+  // Поэтому явно проверяем каждое поле и сверяем сумму с data.sum, а не
+  // полагаемся на заранее заданный список компонентов.
   const dutyItems = [];
   if (data.tam_oform && data.tam_oform.value_rub != null) dutyItems.push({ label: 'Таможенное оформление', amount: num(data.tam_oform.value_rub) });
   if (data.poshl && data.poshl.value_rub != null) dutyItems.push({ label: 'Пошлина' + (data.poshl.name ? ' (' + data.poshl.name + ')' : ''), amount: num(data.poshl.value_rub) });
+  if (data.akciz && data.akciz.value_rub != null) dutyItems.push({ label: 'Акциз' + (data.akciz.name ? ' (' + data.akciz.name + ')' : ''), amount: num(data.akciz.value_rub) });
+  if (data.nds && data.nds.value_rub != null) dutyItems.push({ label: 'НДС' + (data.nds.name ? ' (' + data.nds.name + ')' : ''), amount: num(data.nds.value_rub) });
+  if (sum !== null) {
+    const known = dutyItems.reduce((s, x) => s + x.amount, 0);
+    const rest = Math.round((sum - known) * 100) / 100;
+    if (Math.abs(rest) >= 1) dutyItems.push({ label: 'Прочее', amount: rest });
+  }
 
   const result = {
     duty: sum,
@@ -121,7 +134,6 @@ async function fetchFromTks(p) {
       : null,
     source: 'tks'
   };
-  if (p.debug) result.raw = data;
   return result;
 }
 

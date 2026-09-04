@@ -503,8 +503,9 @@ async function fetchAutoRates(){
 const CUSTOMS_AGE_CODE = { lt3:'age0', t3to5:'age3', gt5:'age5' };
 
 async function fetchCustomsQuote(route, f){
-  const routeCfg = CONFIG.routes[route];
-  const priceRub = convertToRub(route, num(f.carPrice), num(f.extraCosts), routeCfg.bankCommissionPct);
+  // Таможенная стоимость считается по фактической цене без нашей комиссии банка —
+  // комиссия это наша маржа, а не часть стоимости авто, и не должна завышать пошлину/НДС.
+  const priceRub = convertToRub(route, num(f.carPrice), num(f.extraCosts), 0);
   const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
   const isElectric = em.dtype === 'electric';
 
