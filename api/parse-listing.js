@@ -35,12 +35,27 @@
  *
  * Input (POST JSON body): { text: string }
  * Output: {
- *   model, carTrim, mileage, prodMonth, prodYear,
+ *   model, carTrim,             // ВСЕГДА на английском (см. PROMPT)
+ *   mileage, prodMonth, prodYear,
  *   drivetrain: 'front'|'rear'|'full'|null,
  *   transmission: 'auto'|'robot'|'variator'|'reductor'|'manual'|null,
- *   condition, notes
+ *   engineType: 'ben'|'dis'|'electric'|null,
+ *   volumeCm3, power, powerUnit: 'ls'|'kvt'|null,
+ *   condition, notes,           // ВСЕГДА на русском (см. PROMPT)
+ *   source: 'ai'|'heuristic'
  * } — любое поле null/отсутствует, если в тексте не нашлось. Клиент сам
  * решает, в какие поля подставлять (только пустые — так попросил владелец).
+ * Ответ также содержит source: 'ai'|'heuristic' — см. ниже.
+ *
+ * Резерв без ИИ: если GigaChat недоступен (сбой ключа/токена/лимита/сети),
+ * heuristicParse() ниже пытается вытащить то же самое обычными регулярками
+ * по ключевым словам на RU/EN/CN (пробег/год/привод/трансмиссия/объём/
+ * мощность), а марку-модель переводит на английский через бесплатный
+ * MyMemory Translation API (api.mymemory.translated.net — без ключа и
+ * регистрации). Это заведомо менее полный разбор, чем у ИИ: "состояние" и
+ * "примечания" регулярками связно не собрать, поэтому эти два поля резерв
+ * не заполняет вообще (оставляет пустыми) — честно, это только страховка на
+ * случай сбоя, а не полноценная замена.
  */
 
 const https = require('https');
@@ -134,13 +149,17 @@ const FUNCTION_SCHEMA = {
   parameters: {
     type: 'object',
     properties: {
-      model: { type: 'string', description: 'марка и модель автомобиля, коротко (напр. "Toyota Alphard", "比亚迪 汉")' },
-      carTrim: { type: 'string', description: 'комплектация/trim/грейд, если указан отдельно от модели' },
+      model: { type: 'string', description: 'марка и модель автомобиля, коротко, ВСЕГДА на английском языке — переведи/транслитерируй даже из русского или китайского текста (напр. "Toyota Alphard", "Volkswagen T-ROC", "BYD Han EV"). Не включай сюда слова комплектации (см. carTrim).' },
+      carTrim: { type: 'string', description: 'комплектация/trim/грейд, если он есть в тексте отдельным словом/фразой (часто идёт последним в названии модели, напр. "...豪华智联版", "...Executive Lounge", "...Long Range", "...Elite"). ВСЕГДА на английском языке — переведи даже из русского или китайского.' },
       mileage: { type: 'number', description: 'пробег в километрах (мили переводить в км, 1 миля = 1.60934 км)' },
       prodMonth: { type: 'integer', description: 'месяц производства/выпуска ТС, 1-12' },
       prodYear: { type: 'integer', description: 'год производства/выпуска ТС (или год модели, если даты выпуска нет), 4 цифры' },
       drivetrain: { type: 'string', enum: ['front', 'rear', 'full'], description: 'привод: front — передний/FWD/前驱, rear — задний/RWD/后驱, full — полный/AWD/4WD/全驱/四驱' },
       transmission: { type: 'string', enum: ['auto', 'robot', 'variator', 'reductor', 'manual'], description: 'трансмиссия: auto — автомат/АКПП/AT, robot — робот/DCT/DSG/双离合, variator — вариатор/CVT, reductor — одноступенчатый редуктор (обычно у электромобилей), manual — механика/МКПП/MT/手动' },
+      engineType: { type: 'string', enum: ['ben', 'dis', 'electric'], description: 'тип двигателя: ben — бензиновый/petrol/汽油, dis — дизельный/diesel/柴油, electric — электрический/EV/纯电. Заполняй, только если тип явно понятен из текста.' },
+      volumeCm3: { type: 'number', description: 'объём двигателя в см³ — только если явно указан текстом (напр. "2.0L", "1998cc", "排量2.0升", "объём 2 литра"). НЕ вычисляй объём по маркетинговым индексам комплектации/названия (напр. "280TSI", "GLE450") — они не отражают объём напрямую, в этом случае оставь поле пустым.' },
+      power: { type: 'number', description: 'мощность двигателя числом — только если явно указана (напр. "150 л.с.", "110 кВт", "馬力180"). НЕ вычисляй по маркетинговым индексам комплектации/названия.' },
+      powerUnit: { type: 'string', enum: ['ls', 'kvt'], description: '"kvt" если мощность в тексте указана в кВт/kW, "ls" если в л.с./HP/馬力. Заполняй только вместе с power.' },
       condition: { type: 'string', description: 'краткое описание состояния своими словами (без дтп, требует ремонта и т.п.), если упомянуто. ВСЕГДА на русском языке, даже если исходный текст на английском или китайском — переведи.' },
       notes: { type: 'string', description: 'вся остальная существенная информация из текста, не подошедшая под поля выше (доп. опции, цвет, VIN, история обслуживания и т.д.). ВСЕГДА на русском языке, даже если исходный текст на английском или китайском — переведи.' }
     },
@@ -148,7 +167,9 @@ const FUNCTION_SCHEMA = {
   }
 };
 
-const PROMPT = `Ты помощник по разбору объявлений о продаже автомобилей для калькулятора импорта. Текст объявления ниже может быть на русском, английском или китайском языке. Вызови функцию extract_car_listing_fields и передай в неё только те поля, которые реально удалось определить из текста — не выдумывай и не заполняй поля, которых в тексте нет. Текстовые поля condition и notes ВСЕГДА пиши на русском языке — переведи их значение, даже если исходный текст объявления на английском или китайском.
+const PROMPT = `Ты помощник по разбору объявлений о продаже автомобилей для калькулятора импорта. Текст объявления ниже может быть на русском, английском или китайском языке, и может быть оформлен как список полей вида "【название поля】значение" (типично для китайских объявлений) — разбери каждое такое поле по смыслу, не пропускай их. Вызови функцию extract_car_listing_fields и передай в неё только те поля, которые реально удалось определить из текста — не выдумывай и не заполняй поля, которых в тексте нет.
+
+Важно про язык результата: model и carTrim — ВСЕГДА пиши на английском языке (переведи/транслитерируй бренд и модель в их стандартное международное написание), а condition и notes — ВСЕГДА на русском языке (переведи). Ни в одном текстовом поле не должно остаться китайских иероглифов или непереведённых английских слов, кроме самого названия марки/модели/комплектации, которые как раз должны быть на английском.
 
 Текст объявления:
 """
@@ -181,7 +202,114 @@ async function callGigaChat(accessToken, text) {
   if (!fc || fc.arguments == null) {
     throw new Error('GigaChat не вызвал функцию разбора (пустой ответ)');
   }
-  return typeof fc.arguments === 'string' ? JSON.parse(fc.arguments) : fc.arguments;
+  const parsed = typeof fc.arguments === 'string' ? JSON.parse(fc.arguments) : fc.arguments;
+  parsed.source = 'ai';
+  return parsed;
+}
+
+// ---------------------------------------------------------------------
+// Резерв без ИИ: regex-разбор ключевых слов + бесплатный перевод марки на
+// английский (MyMemory, без ключа). См. комментарий в шапке файла.
+// ---------------------------------------------------------------------
+const CJK_RE = /[一-鿿]/;
+const CYRILLIC_RE = /[Ѐ-ӿ]/;
+
+async function translateText(text, sourceLang) {
+  const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text.slice(0, 500)) +
+    '&langpair=' + sourceLang + '|en';
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    // MyMemory отвечает 200 даже на свои собственные ошибки (лимит, битая
+    // пара языков и т.п.) — реальный успех/неуспех смотрим по responseStatus.
+    if (!data || data.responseStatus !== 200) return null;
+    const out = data.responseData && data.responseData.translatedText;
+    return out || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function firstMatch(text, patterns) {
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m && m[1] != null) return m[1];
+  }
+  return null;
+}
+
+function heuristicParse(text) {
+  const out = {
+    model: null, carTrim: null, mileage: null, prodMonth: null, prodYear: null,
+    drivetrain: null, transmission: null, engineType: null, volumeCm3: null,
+    power: null, powerUnit: null, condition: null, notes: null, source: 'heuristic'
+  };
+
+  const mileageRaw = firstMatch(text, [
+    /(?:пробег|mileage|里程)[^\d]{0,10}(\d[\d,.\s]{2,})/i,
+    /(\d[\d,.\s]{2,})\s*(?:км|km|公里)/i
+  ]);
+  if (mileageRaw) {
+    let n = parseFloat(mileageRaw.replace(/[,\s]/g, ''));
+    if (/mile|миль/i.test(text) && !/км|km|公里/i.test(text)) n *= 1.60934;
+    if (!isNaN(n) && n > 0) out.mileage = Math.round(n);
+  }
+
+  const yearRaw = firstMatch(text, [
+    /(?:год выпуска|year|出厂|年份|производства)[^\d]{0,10}(20\d{2}|19\d{2})/i,
+    /(20\d{2}|19\d{2})\s*(?:год|г\.|year|年|款)/i
+  ]);
+  if (yearRaw) out.prodYear = parseInt(yearRaw, 10);
+
+  if (/4wd|awd|полный привод|全驱|四驱|quattro|4matic/i.test(text)) out.drivetrain = 'full';
+  else if (/задний привод|\brwd\b|后驱/i.test(text)) out.drivetrain = 'rear';
+  else if (/передний привод|\bfwd\b|前驱/i.test(text)) out.drivetrain = 'front';
+
+  if (/робот|\bdsg\b|\bdct\b|双离合/i.test(text)) out.transmission = 'robot';
+  else if (/вариатор|\bcvt\b/i.test(text)) out.transmission = 'variator';
+  else if (/механика|мкпп|\bmt\b|手动/i.test(text)) out.transmission = 'manual';
+  else if (/акпп|автомат|\bat\b|自动挡|自动变速箱/i.test(text)) out.transmission = 'auto';
+
+  if (/электро|electric|\bev\b|纯电|电动/i.test(text)) out.engineType = 'electric';
+  else if (/дизель|diesel|柴油/i.test(text)) out.engineType = 'dis';
+  else if (/бензин|petrol|汽油/i.test(text)) out.engineType = 'ben';
+
+  const volRaw = firstMatch(text, [
+    /(\d\.\d)\s*[LlЛл]\b/,
+    /排量\s*(\d\.\d)\s*升/,
+    /(\d{3,4})\s*(?:cc|см³|см3|куб)/i
+  ]);
+  if (volRaw) {
+    const n = parseFloat(volRaw);
+    out.volumeCm3 = n < 20 ? Math.round(n * 1000) : Math.round(n); // "2.0" -> см3, "1998" уже см3
+  }
+
+  const powerLs = firstMatch(text, [/(\d{2,4})\s*(?:л\.?с\.?|hp|马力)/i]);
+  const powerKvt = firstMatch(text, [/(\d{2,4})\s*(?:кВт|kw|千瓦)/i]);
+  if (powerLs) { out.power = parseInt(powerLs, 10); out.powerUnit = 'ls'; }
+  else if (powerKvt) { out.power = parseInt(powerKvt, 10); out.powerUnit = 'kvt'; }
+
+  // Марку/модель регулярками надёжно не выделить — берём первую содержательную
+  // строку текста (до первой цифры/запятой), чистим китайские скобочные метки
+  // вида "【...】" и переводим на английский, если она не на латинице.
+  const firstLine = text.split(/\n/).map(s => s.trim()).find(s => s.length > 1) || '';
+  const modelGuess = firstLine.replace(/[【][^】]*[】]/g, '').replace(/[,，、].*$/, '').trim().slice(0, 80);
+  out.model = modelGuess || null;
+
+  return out;
+}
+
+async function heuristicParseWithTranslation(text) {
+  const out = heuristicParse(text);
+  if (out.model) {
+    const srcLang = CJK_RE.test(out.model) ? 'zh' : (CYRILLIC_RE.test(out.model) ? 'ru' : null);
+    if (srcLang) {
+      const translated = await translateText(out.model, srcLang);
+      if (translated) out.model = translated;
+    }
+  }
+  return out;
 }
 
 module.exports = async (req, res) => {
@@ -202,16 +330,26 @@ module.exports = async (req, res) => {
     res.status(200).send(JSON.stringify({ error: 'пустой текст объявления' }));
     return;
   }
-  if (!GIGACHAT_AUTH_KEY) {
-    res.status(200).send(JSON.stringify({ error: 'GIGACHAT_AUTH_KEY не настроен на сервере' }));
-    return;
-  }
-
+  // GigaChat — основной путь; при любом сбое (нет ключа, не удалось получить
+  // токен, лимит, сеть, странный ответ) — резерв без ИИ, а не жёсткая ошибка.
+  // См. заголовок файла: резерв заведомо менее полный, но лучше частичный
+  // разбор, чем ничего.
+  let aiError = null;
   try {
+    if (!GIGACHAT_AUTH_KEY) throw new Error('GIGACHAT_AUTH_KEY не настроен на сервере');
     const token = await getAccessToken();
     const parsed = await callGigaChat(token, text);
     res.status(200).send(JSON.stringify(parsed));
+    return;
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+    aiError = e.message || String(e);
+  }
+
+  try {
+    const fallback = await heuristicParseWithTranslation(text);
+    fallback.aiError = aiError;
+    res.status(200).send(JSON.stringify(fallback));
+  } catch (e) {
+    res.status(200).send(JSON.stringify({ error: 'GigaChat недоступен (' + aiError + '), резервный разбор тоже не удался: ' + (e.message || String(e)) }));
   }
 };
