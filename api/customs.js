@@ -58,8 +58,6 @@
  *     carCurrency: 'RUB'|'USD'|'EUR'|'CNY'|'JPY'|'KRW',
  *     volumeCm3: number,
  *     dtype: 'ben'|'dis'|'electric',
- *     hybrid1: '1'|'2'|'3',                 // 1 = not hybrid, 2 = electro-hybrid, 3 = PHEV
- *     hybrid2: 'a'|'b',                     // ДВС>ЭД / ДВС<ЭД, only used if hybrid1 != '1'
  *     power: number, powerUnit: 'ls'|'kvt',
  *     powerElectric: number, powerElectricUnit: 'ls'|'kvt'
  *   }
@@ -121,18 +119,16 @@ async function cbrRateToRub(currency) {
 // TKS.RU — api1.tks.ru/auto.json/json/<key>/  (primary)
 // ---------------------------------------------------------------------
 const TKS_AGE = { age0: '3', age3: '35', age5: '57' };
-function tksEngineType(dtype, hybrid1) {
-  const hybrid = hybrid1 && hybrid1 !== '1';
+function tksEngineType(dtype) {
   if (dtype === 'electric') return 'electric';
-  if (dtype === 'dis') return hybrid ? 'diesel_electric' : 'diesel';
-  return hybrid ? 'petrol_electric' : 'petrol';
+  if (dtype === 'dis') return 'diesel';
+  return 'petrol';
 }
 
 async function fetchFromTks(p) {
   if (!TKS_KEY) throw new Error('TKS_API_KEY не настроен на сервере');
   await acquireTksSlot();
   const isElectric = p.dtype === 'electric';
-  const isHybrid = p.hybrid1 && p.hybrid1 !== '1';
 
   const qs = new URLSearchParams({
     cost: String(Math.max(0, Math.round(num(p.carValue)))),
@@ -140,18 +136,11 @@ async function fetchFromTks(p) {
     volume: String(isElectric ? 0 : Math.max(0, Math.round(p.volumeCm3 || 0))),
     power: String(Math.max(0, Math.round(num(p.power)))),
     power_edizm: p.powerUnit === 'kvt' ? 'kvt' : 'ls',
-    engine_type: tksEngineType(p.dtype, p.hybrid1),
+    engine_type: tksEngineType(p.dtype),
     age: TKS_AGE[p.ageCode] || '35',
     face: 'nat', // физическое лицо (ЕТС) — единственный сценарий, который считает это приложение
     ts_type: '00_8703' // легковой автомобиль
   });
-  if (isHybrid) {
-    qs.set('power_hybrid_dvs', String(Math.max(0, Math.round(num(p.power)))));
-    qs.set('power_hybrid_dvs_edizm', p.powerUnit === 'kvt' ? 'kvt' : 'ls');
-    qs.set('power_hybrid_electro', String(Math.max(0, Math.round(num(p.powerElectric)))));
-    qs.set('power_hybrid_electro_edizm', p.powerElectricUnit === 'ls' ? 'ls' : 'kvt');
-    qs.set('sequential', 'false');
-  }
 
   const url = `https://api1.tks.ru/auto.json/json/${TKS_KEY}/?${qs.toString()}`;
   const controller = new AbortController();
@@ -261,8 +250,8 @@ async function fetchFromAlta(p) {
     pwr: p.powerUnit === 'kvt' ? 'kvt' : 'ls',
     pwr_electric_val: String(p.powerElectric || ''),
     pwr_electric: p.powerElectricUnit === 'ls' ? 'ls' : 'kvt',
-    hybrid1: p.hybrid1 || '1',
-    hybrid2: p.hybrid2 === 'b' ? 'b' : 'a',
+    hybrid1: '1', // это приложение не считает гибриды — форма alta.ru всё равно требует поле
+    hybrid2: 'a',
     lico: 'fiz_personal_use'
   });
 
