@@ -685,6 +685,19 @@ function calcDeal(route, f){
 const CUR_SUFFIX = { japan:'¥', korea:'₩', china:'¥', eaeu:'$' };
 // У ЕАЭС нет единого флага-эмодзи в Unicode (это союз, не страна) — глобус.
 const ROUTE_FLAG = { china:'🇨🇳', japan:'🇯🇵', korea:'🇰🇷', eaeu:'🌐' };
+// Родительный падеж ("до кого/чего?") для текста клиенту — список городов
+// доставки фиксирован (см. CONFIG.delivery.cities), поэтому склонения
+// прописаны вручную, а не общим алгоритмом (для рус. топонимов он ненадёжен).
+const CITY_GENITIVE = {
+  'Чита':'Читы', 'Улан-Удэ':'Улан-Удэ', 'Иркутск':'Иркутска', 'Красноярск':'Красноярска',
+  'Кемерово':'Кемерово', 'Новосибирск':'Новосибирска', 'Омск':'Омска', 'Тюмень':'Тюмени',
+  'Челябинск':'Челябинска', 'Екатеринбург':'Екатеринбурга', 'Уфа':'Уфы', 'Пермь':'Перми',
+  'Тольятти':'Тольятти', 'Самара':'Самары', 'Ижевск':'Ижевска', 'Москва':'Москвы',
+  'Казань':'Казани', 'Нижний Новгород':'Нижнего Новгорода', 'Владимир':'Владимира',
+  'Чебоксары':'Чебоксар', 'Воронеж':'Воронежа', 'Саратов':'Саратова',
+  'Ростов-на-Дону':'Ростова-на-Дону', 'Волгоград':'Волгограда', 'Краснодар':'Краснодара',
+  'Санкт-Петербург':'Санкт-Петербурга', 'Владивосток':'Владивостока'
+};
 const AGE_LABELS = { lt3:'до 3 лет', t3to5:'3–5 лет', gt5:'старше 5 лет' };
 
 function renderDateLine(){
@@ -1177,8 +1190,15 @@ function shareResult(route, f, r){
   // По просьбе владельца: клиенту направление ЕАЭС всегда подписывается
   // "Китай" в тексте расчёта — по факту это тот же китайский автомобиль,
   // ЕАЭС/Киргизия — таможенный маршрут для нас, а не страна для клиента.
+  // Флаг при этом берём настоящий (ROUTE_FLAG[route], т.е. глобус для ЕАЭС),
+  // а не флаг Китая — флаг отражает фактический маршрут, а не текст подписи.
   const shareRouteLabel = route==='eaeu' ? 'Китай' : CONFIG.routes[route].label;
   const dateStr = new Date().toLocaleDateString('ru-RU');
+  const b = s => '*'+s+'*'; // *bold* — так Telegram/WhatsApp понимают жирный шрифт в обычном тексте
+  // Значения из "Доп. данных" (ручной ввод или разбор ИИ) могут случайно
+  // содержать "*" — один непарный символ сломает жирный шрифт до конца
+  // сообщения, поэтому вычищаем его из произвольного текста.
+  const esc = s => String(s).replace(/\*/g, '');
 
   const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
   const isElectric = em.dtype === 'electric';
@@ -1194,14 +1214,14 @@ function shareResult(route, f, r){
 
   const prodDateLabel = route==='japan' ? 'Дата первой регистрации' : 'Дата производства';
   const details = [
-    f.carTrim ? ['Комплектация', f.carTrim] : null,
+    f.carTrim ? ['Комплектация', esc(f.carTrim)] : null,
     (f.prodMonth || f.prodYear) ? [prodDateLabel, [f.prodMonth?String(f.prodMonth).padStart(2,'0'):'', f.prodYear].filter(Boolean).join('.')] : null,
     f.mileage ? ['Пробег', fmt(num(f.mileage),'км')] : null,
     engineLine ? ['Двигатель', engineLine] : null,
     f.drivetrain ? ['Привод', DRIVETRAIN_LABELS[f.drivetrain]||f.drivetrain] : null,
     f.transmission ? ['Трансмиссия', TRANSMISSION_LABELS[f.transmission]||f.transmission] : null,
-    f.condition ? ['Состояние', f.condition] : null,
-    f.notes ? ['Примечания', f.notes] : null
+    f.condition ? ['Состояние', esc(f.condition)] : null,
+    f.notes ? ['Примечания', esc(f.notes)] : null
   ].filter(Boolean);
 
   // Комиссию за перевод в валюте сделки просят показывать только для
@@ -1210,18 +1230,26 @@ function shareResult(route, f, r){
     ? `Комиссия за перевод (${r.bankPct}%): ${fmt(r.nativeCommission, suf)}`
     : `Комиссия за перевод (${r.bankPct}%): ${fmt(r.bankCommissionRub, '₽')}`;
 
-  const lines = [`${shareRouteLabel} (${dateStr})`, '', `🚗 ${f.model || 'Расчёт'}`];
-  if(f.showCarDetails && details.length) lines.push(...details.map(([k,v])=>`${k}: ${v}`));
+  // Город "под ключ" — реально посчитанный город доставки, если доставку
+  // считали; если нет — по умолчанию Владивосток (там принимаем авто).
+  const destCity = f.deliveryEnabled && f.deliveryCity ? f.deliveryCity : 'Владивосток';
+  const destGenitive = CITY_GENITIVE[destCity] || destCity;
+
+  const lines = [b(`${shareRouteLabel} ${ROUTE_FLAG[route]||''} (${dateStr})`), '', `🚘 ${b(f.model ? esc(f.model) : 'Расчёт')}`];
+  if(f.showCarDetails && details.length) lines.push(...details.map(([k,v])=>`${b(k+':')} ${v}`));
   lines.push('');
-  lines.push(`Цена ТС с расходами до РФ: ${fmt(r.invoiceRub,'₽')}`);
+  lines.push(`${b('Цена ТС с расходами до РФ:')} ${fmt(r.invoiceRub,'₽')}`);
   lines.push(`Цена в валюте: ${fmt(r.nativeTotal, suf)}`);
   lines.push(commissionLine);
   lines.push(`Курс на дату расчета: ${fmtRate(r.effectiveRate)} ₽/${suf}`);
-  lines.push(`${r.customsLabel}: ${fmt(r.customsTotal,'₽')}`);
-  lines.push(`Брокер: ${fmt(r.broker,'₽')}`);
-  lines.push(`Комиссия: ${fmt(r.agent,'₽')}`);
-  if(f.deliveryEnabled) lines.push(`Доставка: ${fmt(r.delivery,'₽')}`);
-  lines.push(`ИТОГО: ${fmt(r.total,'₽')}`);
+  lines.push(`${b(r.customsLabel+':')} ${fmt(r.customsTotal,'₽')}`);
+  lines.push(`${b('Брокер:')} ${fmt(r.broker,'₽')}`);
+  lines.push(`${b('Комиссия:')} ${fmt(r.agent,'₽')}`);
+  if(f.deliveryEnabled) lines.push(`${b('Доставка:')} ${fmt(r.delivery,'₽')}`);
+  lines.push('');
+  lines.push(`${b('ИТОГО:')} ${fmt(r.total,'₽')}`);
+  lines.push(b(`Цена под ключ: ${fmt(r.total,'₽')}`));
+  lines.push(`с учётом всех расходов до ${destGenitive} на дату расчета`);
   const text = lines.join('\n');
 
   if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.switchInlineQuery){
