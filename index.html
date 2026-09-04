@@ -586,7 +586,7 @@ async function fetchCustomsQuote(route, f){
     volumeCm3: isElectric ? 0 : num(f.volumeCm3),
     dtype: em.dtype,
     // Единственное поле мощности на форме ("Мощность электродвигателя" для
-    // электро, "Мощность двигателя (ДВС)" для остальных) всегда пишет в
+    // электро, "Мощность двигателя" для остальных) всегда пишет в
     // f.power. TKS всегда берёт мощность из "power" независимо от типа
     // двигателя (раньше здесь стоял 0 для электро — TKS получал мощность 0
     // и не мог посчитать акциз/утильсбор, отсюда пустой ответ). Дублируем
@@ -862,7 +862,7 @@ function renderCalc(c){
       <div class="row2">
         ${isElectric ? '' : field('Объём двигателя (см³)', `<input type="text" id="f_volumeCm3" value="${formatNumInput(f.volumeCm3)}" inputmode="numeric">`)}
         <div class="field">
-          <label>${isElectric?'Мощность электродвигателя':'Мощность двигателя (ДВС)'}</label>
+          <label>${isElectric?'Мощность электродвигателя':'Мощность двигателя'}</label>
           <div class="row2" style="gap:6px;">
             <input type="text" id="f_power" value="${formatNumInput(f.power)}" inputmode="numeric">
             <div class="seg" id="powerUnitSeg">
