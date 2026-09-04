@@ -1,34 +1,32 @@
 /**
  * /api/customs — server-side proxy for import duty + utilisation fee
  * ------------------------------------------------------------
- * Why this calls alta.ru, not tks.ru directly:
- * tks.ru/auto/calc/ (the site the app is meant to match) submits its
- * calculator form through a "cap" anti-bot widget (cap-token field) —
- * automating that submission would mean solving/bypassing a bot-detection
- * challenge, which this app will not do. There is also a separate paid
- * "Расчёт авто" API product from TKS.RU, but TKS did not provide request/
- * response documentation for it, so calling it would mean guessing an
- * undocumented commercial API's contract — too high a risk of silently
- * wrong numbers for a tool that has to match an official calculator
- * exactly.
+ * Primary source: TKS.RU's own official "Расчёт авто" API
+ * (api1.tks.ru/auto.json/json/<ключ>/) — a paid, licensed product this
+ * app's account has a key for. Documented at
+ * github.com/tkssoft/api.tks.ru-docs/blob/main/AUTO.JSON.md.
  *
- * alta.ru/auto-vat/ is a free, public, non-captcha calculator that computes
- * duty and utilisation fee from the *same* legal sources tks.ru itself
- * cites (Решение Совета ЕЭК №107 от 20.12.2017, Постановление Правительства
- * РФ №1291 от 26.12.2013 с изменениями). Submitting its plain HTML form
- * (no captcha, no token) and reading the numbers back off the rendered
- * result table gives an always-current, exact match to an official
- * calculator — verified live spot-checks (03.09.2026) against duty rates
- * confirm this matches Решение №107 precisely (e.g. 2300–3000 см3 · 3–5 лет
- * → 3.0 евро/см3, >5 лет → 5.0 евро/см3, <3 лет → 48% но не менее ставки за
- * см3 по вилке таможенной стоимости в EUR — exactly the public rate table).
+ * Getting here took two wrong turns worth recording:
+ *   1. tks.ru/auto/calc/ (the public web page) submits through a "cap"
+ *      anti-bot widget — automating that would mean bypassing bot
+ *      detection, which this app won't do.
+ *   2. The general "Расчёт таможенных платежей" API at
+ *      calc.tks.ru/calc/<X.509 certificate>/ (api.tks.ru-docs' README.md)
+ *      500s even on its own documented example — wrong product for the
+ *      key we have. Per that repo's own README: TKS runs *two* API
+ *      hosts — api.tks.ru wants a URL-encoded X.509 certificate,
+ *      api1.tks.ru wants a plain licence key matching [a-z0-9]{32}.
+ *      Our key is exactly that shape, so api1.tks.ru is the right host.
+ * AUTO.JSON.md's own example, called live with our key, returned a
+ * clean 200 with real numbers — cross-checked against Решение №107
+ * (1.7 евро/см3 for 1000–1500см3 · 3–5 лет — exact) and against this
+ * same app's independent alta.ru integration for an equivalent case
+ * (сбор за оформление 13541 руб for a ~2 000 000 руб car — exact match
+ * between two unrelated official calculators).
  *
- * IMPORTANT: the utilisation fee for individuals is NOT the flat 3400/5200
- * руб figure that was true for years — a 2024+ reform made it depend on
- * engine volume AND power brackets too, and those brackets can change again
- * by government decree. That is exactly why this proxies live instead of
- * hard-coding a table: whatever alta.ru currently returns is what gets
- * shown, so there is nothing here to go stale.
+ * fetchFromTks() is tried first. alta.ru/auto-vat/ (see fetchFromAlta
+ * below) is kept as an automatic fallback if TKS errors or times out —
+ * cheap insurance, not a sign either is untrusted.
  *
  * Input (POST JSON body):
  *   {
@@ -42,25 +40,94 @@
  *     powerElectric: number, powerElectricUnit: 'ls'|'kvt'
  *   }
  *
- * Output: { duty, util, dutyItems, utilBasis } or { error }
- *   The results table on alta.ru is not always the same 2-3 rows — which
- *   rows appear depends on the inputs. A plain petrol/diesel car for an
- *   individual gets "Таможенный сбор" + "Пошлина"; an electric car under
- *   the same "физлицо для личного пользования" mode additionally gets
- *   "Акциз" and "НДС" rows (Решение №107's flat per-cm³ duty only applies
- *   to combustion-engine cars — electric/other cases fall back to the
- *   general ad-valorem scheme with excise + VAT). Rather than whitelist
- *   row labels and risk silently dropping a row we haven't seen yet,
- *   parseResult() sums every row in the table except the utilisation-fee
- *   one into `duty` — so whatever alta.ru charges under "Таможенные
- *   платежи" for the given inputs, the total always matches exactly.
- *   dutyItems carries the individual {label, amount} rows that made up
- *   that sum, for the "Получено с alta.ru" breakdown shown in the app.
+ * Output: { duty, util, dutyItems, utilBasis, source } or { error }
+ *   duty = every payment TKS/alta.ru charge except the utilisation fee
+ *   (сбор за оформление + пошлина, and where applicable акциз/НДС) —
+ *   summed, so it always equals what the official calculator's own
+ *   "Итого" minus утильсбор would show, regardless of which specific
+ *   payments apply to a given car.
  */
 
+const TKS_KEY = process.env.TKS_API_KEY; // Vercel env var — see Settings → Environment Variables, never hardcode this here
 const ALTA_URL = 'https://www.alta.ru/auto-vat/';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
+function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
+// ---------------------------------------------------------------------
+// TKS.RU — api1.tks.ru/auto.json/json/<key>/  (primary)
+// ---------------------------------------------------------------------
+const TKS_AGE = { age0: '3', age3: '35', age5: '57' };
+function tksEngineType(dtype, hybrid1) {
+  const hybrid = hybrid1 && hybrid1 !== '1';
+  if (dtype === 'electric') return 'electric';
+  if (dtype === 'dis') return hybrid ? 'diesel_electric' : 'diesel';
+  return hybrid ? 'petrol_electric' : 'petrol';
+}
+
+async function fetchFromTks(p) {
+  if (!TKS_KEY) throw new Error('TKS_API_KEY не настроен на сервере');
+  const isElectric = p.dtype === 'electric';
+  const isHybrid = p.hybrid1 && p.hybrid1 !== '1';
+
+  const qs = new URLSearchParams({
+    cost: String(Math.max(0, Math.round(p.priceRub || 0))),
+    currency: '643', // RUB — мы всегда передаём уже сконвертированное значение
+    volume: String(isElectric ? 0 : Math.max(0, Math.round(p.volumeCm3 || 0))),
+    power: String(Math.max(0, Math.round(num(p.power)))),
+    power_edizm: p.powerUnit === 'kvt' ? 'kvt' : 'ls',
+    engine_type: tksEngineType(p.dtype, p.hybrid1),
+    age: TKS_AGE[p.ageCode] || '35',
+    face: 'nat', // физическое лицо (ЕТС) — единственный сценарий, который считает это приложение
+    ts_type: '00_8703' // легковой автомобиль
+  });
+  if (isHybrid) {
+    qs.set('power_hybrid_dvs', String(Math.max(0, Math.round(num(p.power)))));
+    qs.set('power_hybrid_dvs_edizm', p.powerUnit === 'kvt' ? 'kvt' : 'ls');
+    qs.set('power_hybrid_electro', String(Math.max(0, Math.round(num(p.powerElectric)))));
+    qs.set('power_hybrid_electro_edizm', p.powerElectricUnit === 'ls' ? 'ls' : 'kvt');
+    qs.set('sequential', 'false');
+  }
+
+  const url = `https://api1.tks.ru/auto.json/json/${TKS_KEY}/?${qs.toString()}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  let text;
+  try {
+    const r = await fetch(url, { signal: controller.signal });
+    if (!r.ok) throw new Error('api1.tks.ru http ' + r.status);
+    text = await r.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  let data;
+  try { data = JSON.parse(text); } catch (e) { throw new Error('api1.tks.ru: ответ не в формате JSON'); }
+
+  const sum = data.sum && data.sum.value_rub != null ? num(data.sum.value_rub) : null; // сбор+пошлина(+акциз/НДС, если применимо) — уже без утильсбора
+  const util = data.util_sbor && data.util_sbor.value_rub != null ? num(data.util_sbor.value_rub) : null;
+  if (sum === null && util === null) throw new Error('api1.tks.ru: не нашли полей sum/util_sbor в ответе — формат мог измениться');
+
+  const dutyItems = [];
+  if (data.tam_oform && data.tam_oform.value_rub != null) dutyItems.push({ label: 'Таможенное оформление', amount: num(data.tam_oform.value_rub) });
+  if (data.poshl && data.poshl.value_rub != null) dutyItems.push({ label: 'Пошлина' + (data.poshl.name ? ' (' + data.poshl.name + ')' : ''), amount: num(data.poshl.value_rub) });
+  // акциз/НДС не входят в data.sum для физлиц (ЕТС) — Решение №107 их не предусматривает для этой категории,
+  // поэтому в dutyItems их не добавляем, даже если TKS вернул их как справочные ненулевые значения.
+
+  return {
+    duty: sum,
+    util,
+    dutyItems,
+    utilBasis: data.util_sbor && data.util_sbor.value_base != null
+      ? `База ${data.util_sbor.value_base} ₽ × коэф. ${data.util_sbor.value_coef}`
+      : null,
+    source: 'tks'
+  };
+}
+
+// ---------------------------------------------------------------------
+// alta.ru/auto-vat/ (fallback — see file header)
+// ---------------------------------------------------------------------
 function cellTexts(rowHtml) {
   const cells = [];
   const re = /<td[^>]*>([\s\S]*?)<\/td>/g;
@@ -71,36 +138,64 @@ function cellTexts(rowHtml) {
 function stripTags(html) {
   return html.replace(/<[^>]+>/g, ' ').replace(/&shy;/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 }
-function parseSum(cellHtml) {
-  // Numbers are formatted like "267 736.68 руб." — space-grouped thousands,
-  // dot/comma decimal, followed by a unit abbreviation that itself ends in
-  // a period ("руб."). Match the number by its own shape (digits/spaces,
-  // then exactly the decimal point) instead of stripping-then-guessing —
-  // guessing "last dot = decimal" broke on "руб." adding a second dot.
+function parseAltaSum(cellHtml) {
   const text = cellHtml.replace(/&nbsp;/g, ' ');
-  const m = text.match(/[\d][\d\s ]*(?:[.,]\d{1,2})?/);
+  const m = text.match(/[\d][\d\s ]*(?:[.,]\d{1,2})?/);
   if (!m) return null;
-  const cleaned = m[0].replace(/[\s ]/g, '').replace(',', '.');
+  const cleaned = m[0].replace(/[\s ]/g, '').replace(',', '.');
   const v = parseFloat(cleaned);
   return isNaN(v) ? null : v;
 }
-
-function parseResult(html) {
+function parseAltaResult(html) {
   const rows = html.match(/<tr[\s\S]*?<\/tr>/g) || [];
   let util = null, utilBasis = null;
   const dutyItems = [];
   for (const row of rows) {
     const cells = cellTexts(row);
-    if (cells.length < 4) continue; // parameter-echo rows (2 cells) and "Итого" (colspan, 2 cells) are always skipped
+    if (cells.length < 4) continue;
     const label = stripTags(cells[0]);
     if (!label) continue;
-    const sum = parseSum(cells[3]);
+    const sum = parseAltaSum(cells[3]);
     if (sum === null) continue;
     if (/утилиза/i.test(row)) { util = sum; utilBasis = label; }
     else { dutyItems.push({ label, amount: sum }); }
   }
   const duty = dutyItems.length ? dutyItems.reduce((s, x) => s + x.amount, 0) : null;
   return { duty, util, dutyItems, utilBasis };
+}
+
+async function fetchFromAlta(p) {
+  const isElectric = p.dtype === 'electric';
+  const params = new URLSearchParams({
+    age: p.ageCode,
+    price: String(Math.max(0, Math.round(p.priceRub || 0))),
+    currency: '643',
+    dtype: p.dtype,
+    obyem: String(isElectric ? 0 : Math.max(0, Math.round(p.volumeCm3 || 0))),
+    pwr_val: String(p.power || ''),
+    pwr: p.powerUnit === 'kvt' ? 'kvt' : 'ls',
+    pwr_electric_val: String(p.powerElectric || ''),
+    pwr_electric: p.powerElectricUnit === 'ls' ? 'ls' : 'kvt',
+    hybrid1: p.hybrid1 || '1',
+    hybrid2: p.hybrid2 === 'b' ? 'b' : 'a',
+    lico: 'fiz_personal_use'
+  });
+
+  const altaRes = await fetch(ALTA_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA, 'Accept-Language': 'ru-RU,ru;q=0.9' },
+    body: params.toString()
+  });
+  if (!altaRes.ok) throw new Error('alta.ru http ' + altaRes.status);
+  const html = await altaRes.text();
+  const startIdx = html.indexOf('Схема расчета');
+  if (startIdx === -1) throw new Error('не удалось распознать ответ калькулятора (возможно, изменилась вёрстка alta.ru)');
+  const totalIdx = html.indexOf('Итого:', startIdx);
+  const resultHtml = html.slice(startIdx, totalIdx === -1 ? startIdx + 6000 : totalIdx + 50);
+
+  const { duty, util, dutyItems, utilBasis } = parseAltaResult(resultHtml);
+  if (duty === null && util === null) throw new Error('не нашли ни одной строки платежей в ответе — вёрстка alta.ru могла измениться');
+  return { duty, util, dutyItems, utilBasis, source: 'alta' };
 }
 
 module.exports = async (req, res) => {
@@ -116,57 +211,23 @@ module.exports = async (req, res) => {
     try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }
   }
 
-  const {
-    ageCode, priceRub, volumeCm3, dtype,
-    hybrid1, hybrid2, power, powerUnit, powerElectric, powerElectricUnit
-  } = body;
-
+  const { ageCode, dtype } = body;
   if (!ageCode || !dtype) {
     res.status(200).send(JSON.stringify({ error: 'не переданы обязательные параметры (возраст/тип двигателя)' }));
     return;
   }
 
-  const params = new URLSearchParams({
-    age: ageCode,
-    price: String(Math.max(0, Math.round(priceRub || 0))),
-    currency: '643', // RUB — we always pass our own already-converted rouble value
-    dtype,
-    obyem: String(Math.max(0, Math.round(volumeCm3 || 0))),
-    pwr_val: String(power || ''),
-    pwr: powerUnit === 'kvt' ? 'kvt' : 'ls',
-    pwr_electric_val: String(powerElectric || ''),
-    pwr_electric: powerElectricUnit === 'ls' ? 'ls' : 'kvt',
-    hybrid1: hybrid1 || '1',
-    hybrid2: hybrid2 === 'b' ? 'b' : 'a',
-    lico: 'fiz_personal_use'
-    // NB: no "jeep" (повышенной проходимости) param — alta.ru silently
-    // fails to render a result at all when it's set (returns the blank
-    // form, no error), so it's left out rather than risk a calc that
-    // always degrades to manual entry for SUV/off-road bodies.
-  });
-
   try {
-    const altaRes = await fetch(ALTA_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': UA,
-        'Accept-Language': 'ru-RU,ru;q=0.9'
-      },
-      body: params.toString()
-    });
-    if (!altaRes.ok) throw new Error('alta.ru http ' + altaRes.status);
-    const html = await altaRes.text();
-    const startIdx = html.indexOf('Схема расчета');
-    if (startIdx === -1) throw new Error('не удалось распознать ответ калькулятора (возможно, изменилась вёрстка alta.ru)');
-    const totalIdx = html.indexOf('Итого:', startIdx);
-    const resultHtml = html.slice(startIdx, totalIdx === -1 ? startIdx + 6000 : totalIdx + 50);
-
-    const { duty, util, dutyItems, utilBasis } = parseResult(resultHtml);
-    if (duty === null && util === null) throw new Error('не нашли ни одной строки платежей в ответе — вёрстка alta.ru могла измениться');
-
-    res.status(200).send(JSON.stringify({ duty, util, dutyItems, utilBasis }));
-  } catch (e) {
-    res.status(200).send(JSON.stringify({ error: 'Не удалось получить расчёт с alta.ru: ' + (e.message || e) }));
+    const result = await fetchFromTks(body);
+    res.status(200).send(JSON.stringify(result));
+  } catch (tksErr) {
+    try {
+      const result = await fetchFromAlta(body);
+      res.status(200).send(JSON.stringify({ ...result, tksError: tksErr.message || String(tksErr) }));
+    } catch (altaErr) {
+      res.status(200).send(JSON.stringify({
+        error: 'Не удалось получить расчёт ни от TKS (' + (tksErr.message || tksErr) + '), ни от alta.ru (' + (altaErr.message || altaErr) + ')'
+      }));
+    }
   }
 };

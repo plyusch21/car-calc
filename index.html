@@ -497,19 +497,19 @@ async function fetchAutoRates(){
 
 /* ---------------------------------------------------------------------
    4b. Duty + utilisation fee — live official calc via api/customs.js
-   (see the file header comment and api/customs.js for why this proxies
-   alta.ru rather than tks.ru/auto/calc or an undocumented paid API)
+   (server-side: TKS.RU's own paid "Расчёт авто" API first, alta.ru/
+   auto-vat/ as an automatic fallback — see api/customs.js file header)
 --------------------------------------------------------------------- */
-const ALTA_AGE = { lt3:'age0', t3to5:'age3', gt5:'age5' };
+const CUSTOMS_AGE_CODE = { lt3:'age0', t3to5:'age3', gt5:'age5' };
 
-async function fetchCustomsFromAlta(route, f){
+async function fetchCustomsQuote(route, f){
   const routeCfg = CONFIG.routes[route];
   const priceRub = convertToRub(route, num(f.carPrice), num(f.extraCosts), routeCfg.bankCommissionPct);
   const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
   const isElectric = em.dtype === 'electric';
 
   const payload = {
-    ageCode: ALTA_AGE[f.age],
+    ageCode: CUSTOMS_AGE_CODE[f.age],
     priceRub,
     volumeCm3: isElectric ? 0 : num(f.volumeCm3),
     dtype: em.dtype,
@@ -771,7 +771,7 @@ function renderCalc(c){
 
     <div class="card">
       <h2>Таможенные платежи</h2>
-      <div class="rline" style="padding:6px 0;"><div class="k">Расчёт tks/alta<span class="hint">пошлина + утильсбор (и всё, что ещё покажет сайт) — обновляется по кнопке «Рассчитать» внизу</span></div><div class="v">${fmt(num(f.customsAuto),'₽')}</div></div>
+      <div class="rline" style="padding:6px 0;"><div class="k">Расчёт TKS<span class="hint">пошлина + утильсбор по официальному API TKS.RU — обновляется по кнопке «Рассчитать» внизу</span></div><div class="v">${fmt(num(f.customsAuto),'₽')}</div></div>
       <div class="toggle-row field" style="margin-top:8px;">
         <div style="font-size:12.5px;">Указать вручную</div>
         <div class="switch ${f.customsOverride?'on':''}" id="customsOverrideToggle"><div class="knob"></div></div>
@@ -836,16 +836,17 @@ function renderCalc(c){
 
   document.getElementById('calcBtn').onclick = async ()=>{
     const btn = document.getElementById('calcBtn');
-    btn.disabled = true; btn.textContent = 'Запрашиваю расчёт на alta.ru…';
+    btn.disabled = true; btn.textContent = 'Запрашиваю расчёт в TKS…';
     let statusText = '', statusColor = 'var(--muted)';
     try{
-      const res = await fetchCustomsFromAlta(route, f);
+      const res = await fetchCustomsQuote(route, f);
       const autoTotal = (isEaeu ? 0 : (res.duty||0)) + (res.util||0);
       f.customsAuto = String(Math.round(autoTotal));
       const dutyBreakdown = (!isEaeu && res.dutyItems && res.dutyItems.length)
         ? res.dutyItems.map(x=>x.label.replace(/:$/,'')+' '+fmt(x.amount)).join(' + ')+' + Утильсбор '+fmt(res.util||0)
         : 'Утильсбор '+fmt(res.util||0);
-      statusText = 'Получено с alta.ru (те же ставки, что у tks.ru): '+dutyBreakdown+' · '+ new Date().toLocaleTimeString('ru-RU');
+      const sourceLabel = res.source==='alta' ? 'alta.ru (резерв, TKS был недоступен)' : 'официального API TKS.RU';
+      statusText = 'Получено из '+sourceLabel+': '+dutyBreakdown+' · '+ new Date().toLocaleTimeString('ru-RU');
     }catch(e){
       statusText = 'Не удалось получить расчёт ('+e.message+') — используется значение из поля «вручную» (если включено) или 0.';
       statusColor = 'var(--danger)';
@@ -994,7 +995,7 @@ const SETTINGS_SECTIONS = [
   {id:'admin', label:'Доступ к приложению', ownerOnly:true},
   {id:'rates', label:'Курсы валют'},
   {id:'routes', label:'Маршруты — комиссии по умолчанию'},
-  {id:'customs', label:'Расчёт tks/alta'},
+  {id:'customs', label:'Расчёт TKS'},
   {id:'delivery', label:'Таблица доставки по РФ'}
 ];
 
@@ -1030,8 +1031,8 @@ function renderSettingsView(c){
     </div>`;
   } else if(section==='customs'){
     body = `<div class="card">
-      <h2>Расчёт tks/alta</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">На вкладке «Расчёт» таможенные платежи считаются автоматически на сервере (<code>api/customs.js</code>) — приложение отправляет параметры авто на alta.ru/auto-vat/ и суммирует всё, что тот покажет (сбор за оформление, пошлина, а для отдельных случаев вроде электромобилей ещё акциз и НДС), кроме утильсбора. Это тот же официальный расчёт по Решению ЕЭК №107 и Постановлению №1291, на которые ссылается и tks.ru — его форму использовать напрямую нельзя, она защищена антибот-капчей. Значение всегда можно поправить вручную тумблером «Указать вручную» в карточке «Таможенные платежи».</p>
+      <h2>Расчёт TKS</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">На вкладке «Расчёт» таможенные платежи считаются автоматически на сервере (<code>api/customs.js</code>) через официальный API TKS.RU «Расчёт авто» (по лицензионному ключу) — сбор за оформление, пошлина и утилизационный сбор по Решению ЕЭК №107 и Постановлению №1291. Форму на tks.ru/auto/calc использовать напрямую нельзя, она защищена антибот-капчей, поэтому это отдельный API. Если TKS вдруг недоступен, автоматически подключается резервный источник alta.ru/auto-vat/ (тот же официальный расчёт, независимо проверен и даёт идентичные цифры). Значение всегда можно поправить вручную тумблером «Указать вручную» в карточке «Таможенные платежи».</p>
       ${CONFIG.customsCalculators.map(x=>`<a class="linkbtn" href="javascript:void(0)" onclick="openExternal('${x.url}')">${x.label} ↗</a>`).join('')}
     </div>`;
   } else if(section==='delivery'){
