@@ -185,7 +185,27 @@ const PROMPT = `Ты помощник по разбору объявлений �
 // выпуска через сторонние декодеры номера кузова (это инструмент прямого
 // конкурента, встраивать его в наш калькулятор не будем) — приложение само
 // подписывает это поле как "Дата первой регистрации" только для Японии.
-const VISION_PROMPT = `Ты помощник по разбору японских аукционных листов (オークションシート) для калькулятора импорта авто. На фото — стандартный лист японского автоаукциона, весь текст на японском языке. Вызови функцию extract_car_listing_fields и передай в неё только то, что реально удалось прочитать на листе.
+// isAuctionSheet — отдельная защита от галлюцинаций: живой тест показал, что
+// модель без этого поля уверенно "придумывала" полностью правдоподобные
+// Toyota Alphard/пробег/VIN/оценку по картинке, где не было вообще никакого
+// аукционного листа (это была системная иконка Bluetooth). Явное булево
+// поле + жёсткая инструкция резко снижают этот риск — если false, сервер
+// ниже вообще не отдаёт остальные поля клиенту.
+const VISION_FUNCTION_SCHEMA = {
+  name: FUNCTION_SCHEMA.name,
+  description: FUNCTION_SCHEMA.description,
+  parameters: {
+    type: 'object',
+    properties: Object.assign({
+      isAuctionSheet: { type: 'boolean', description: 'true ТОЛЬКО если на фото действительно виден настоящий японский аукционный лист (オークションシート) с читаемыми полями. false — если это любое другое изображение, нечитаемое/размытое фото, случайный скриншот и т.п. Это поле ОБЯЗАТЕЛЬНО в каждом ответе.' }
+    }, FUNCTION_SCHEMA.parameters.properties),
+    required: ['isAuctionSheet']
+  }
+};
+
+const VISION_PROMPT = `Ты помощник по разбору японских аукционных листов (オークションシート) для калькулятора импорта авто. Сначала проверь: действительно ли на фото виден настоящий японский аукционный лист с читаемыми полями? Если НЕТ (это любое другое изображение, случайный скриншот, размытое/нечитаемое фото, вообще не документ) — вызови функцию extract_car_listing_fields с isAuctionSheet=false и ВСЕМИ остальными полями пустыми/null, и НИЧЕГО не придумывай. Категорически запрещено сочинять правдоподобные марку/пробег/VIN/даты, если ты их не видишь на изображении — лучше пустое поле, чем выдуманное значение.
+
+Если лист есть и читаем — вызови функцию с isAuctionSheet=true и передай только то, что реально удалось прочитать.
 
 Важные японские обозначения:
 - 初度登録 / 年式 — это ГОД И МЕСЯЦ ПЕРВОЙ РЕГИСТРАЦИИ автомобиля (НЕ дата выпуска — это разные вещи, но здесь для простоты запиши это значение в поля prodYear/prodMonth как есть, дальше это учтёт сам калькулятор).
@@ -223,8 +243,8 @@ async function callGigaChatVision(accessToken, fileId) {
     messages: [
       { role: 'user', content: VISION_PROMPT, attachments: [fileId] }
     ],
-    function_call: { name: FUNCTION_SCHEMA.name },
-    functions: [FUNCTION_SCHEMA],
+    function_call: { name: VISION_FUNCTION_SCHEMA.name },
+    functions: [VISION_FUNCTION_SCHEMA],
     temperature: 0.1
   });
   const { status, json } = await httpsPostViaRussianCA(CHAT_URL, {
@@ -241,6 +261,10 @@ async function callGigaChatVision(accessToken, fileId) {
     throw new Error('GigaChat не распознал лист (пустой ответ)');
   }
   const parsed = typeof fc.arguments === 'string' ? JSON.parse(fc.arguments) : fc.arguments;
+  if (parsed.isAuctionSheet === false) {
+    throw new Error('На фото не удалось распознать японский аукционный лист — проверьте фото (чёткость, освещение) и попробуйте снова');
+  }
+  delete parsed.isAuctionSheet;
   parsed.source = 'ai';
   return parsed;
 }
