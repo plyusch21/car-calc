@@ -28,6 +28,17 @@
  * below) is kept as an automatic fallback if TKS errors or times out —
  * cheap insurance, not a sign either is untrusted.
  *
+ * Rate limit: per tkssoft/api.tks.ru-docs' README.md, the licence key must
+ * not be used for "более 1 запроса в секунду" (more than 1 request/second) —
+ * exceeding it can get the key throttled or blocked, with no documented
+ * error format (confirmed live: TKS just answers HTTP 200 with an empty/
+ * null stub body instead of real numbers). Since this app's key is shared
+ * across every user of the Mini App, concurrent calc clicks from different
+ * people could exceed 1 req/s even with no bug in this app at all — so
+ * acquireTksSlot() below serialises every TKS call through Upstash Redis
+ * (already used for state/access) to a hard minimum 1.1s gap, regardless
+ * of how many serverless invocations are running at once.
+ *
  * Currency: the car's value is passed in its ORIGINAL currency (carValue +
  * carCurrency), not pre-converted to RUB. TKS converts it itself using the
  * same official CBR rate it uses everywhere else in its response (verified:
@@ -67,6 +78,29 @@ const CBR_URL = 'https://www.cbr-xml-daily.ru/daily_json.js';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Не больше 1 запроса/сек к TKS суммарно по всем пользователям — см. заголовок
+// файла. Атомарный SET ... NX PX через Redis (kv) выступает распределённой
+// блокировкой: кто первый её взял, тот и шлёт запрос в TKS, все остальные
+// параллельные вызовы этой же serverless-функции ждут своей очереди.
+const TKS_MIN_GAP_MS = 1100;
+const TKS_SLOT_WAIT_TIMEOUT_MS = 5000;
+async function acquireTksSlot() {
+  const { kv } = require('./_lib/kv');
+  const start = Date.now();
+  while (Date.now() - start < TKS_SLOT_WAIT_TIMEOUT_MS) {
+    let ok;
+    try {
+      ok = await kv('SET', 'tks:ratelimit', '1', 'NX', 'PX', String(TKS_MIN_GAP_MS));
+    } catch (e) {
+      return; // хранилище недоступно — не блокируем расчёт, просто не лимитируем в этот раз
+    }
+    if (ok === 'OK') return;
+    await sleep(120 + Math.random() * 80);
+  }
+  throw new Error('очередь запросов к TKS не освободилась за ' + (TKS_SLOT_WAIT_TIMEOUT_MS / 1000) + ' с');
+}
 
 // ISO 4217 numeric codes — TKS's "currency" param takes these directly.
 const ISO_NUMERIC = { RUB: '643', USD: '840', EUR: '978', CNY: '156', JPY: '392', KRW: '410' };
@@ -96,6 +130,7 @@ function tksEngineType(dtype, hybrid1) {
 
 async function fetchFromTks(p) {
   if (!TKS_KEY) throw new Error('TKS_API_KEY не настроен на сервере');
+  await acquireTksSlot();
   const isElectric = p.dtype === 'electric';
   const isHybrid = p.hybrid1 && p.hybrid1 !== '1';
 
@@ -267,13 +302,10 @@ module.exports = async (req, res) => {
     return;
   }
 
-  // Пустое тело (все курсы валют null, sum_util:{}) — это TKS ограничивает частоту
-  // запросов по ключу и в ответ на превышение отдаёт HTTP 200 с пустышкой вместо
-  // ошибки/429. Подтверждено: та же самая комбинация параметров сразу отработала
-  // после паузы без запросов, и не отработала при мгновенном повторе — то есть
-  // повтор без задержки в тот же момент только удваивает нагрузку и не помогает.
-  // Поэтому здесь один запрос к TKS, и при сбое — сразу резерв alta.ru (тоже
-  // на официальном курсе ЦБ, даёт те же цифры).
+  // fetchFromTks() уже проходит через acquireTksSlot() (лимит 1 запрос/сек —
+  // см. заголовок файла), так что нормального превышения лимита здесь больше
+  // не должно случаться. Если TKS всё равно ответит пустышкой или ошибкой —
+  // резерв alta.ru (тоже на официальном курсе ЦБ, даёт те же цифры).
   try {
     const result = await fetchFromTks(body);
     res.status(200).send(JSON.stringify(result));
