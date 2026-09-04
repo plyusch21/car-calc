@@ -900,7 +900,7 @@ function renderCalc(c){
       </div>
       ${f.showListingParser ? `
       <div class="smartfill">
-        <textarea id="f_listingText" rows="4" placeholder="Вставьте текст объявления как есть (RU/EN/CN) — комплектация, пробег, дата производства, привод, трансмиссия, состояние определятся сами">${escapeHtml(f.listingText)}</textarea>
+        <textarea id="f_listingText" rows="4" placeholder="Введите данные (RU/EN/CN/JP)">${escapeHtml(f.listingText)}</textarea>
         <button class="btn secondary" id="parseListingBtn" type="button">Распознать текст</button>
         <div id="parseListingStatus" class="smartfill-status"></div>
         ${route==='japan' ? `
