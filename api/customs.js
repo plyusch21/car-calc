@@ -268,8 +268,22 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const result = await fetchFromTks(body);
-    res.status(200).send(JSON.stringify(result));
+    let tksErr;
+    // TKS иногда отвечает 200 с "пустым" телом (все курсы валют null, sum_util:{})
+    // вместо реального расчёта — похоже на кратковременный сбой на их бэкенде,
+    // а не на проблему с параметрами запроса. Одна быстрая повторная попытка
+    // почти всегда обходит это, не заставляя падать сразу в резервный alta.ru.
+    try {
+      const result = await fetchFromTks(body);
+      res.status(200).send(JSON.stringify(result));
+      return;
+    } catch (e) { tksErr = e; }
+    try {
+      const result = await fetchFromTks(body);
+      res.status(200).send(JSON.stringify(result));
+      return;
+    } catch (e) { tksErr = e; }
+    throw tksErr;
   } catch (tksErr) {
     try {
       const result = await fetchFromAlta(body);
