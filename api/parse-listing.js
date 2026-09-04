@@ -48,7 +48,7 @@ const tls = require('tls');
 const crypto = require('crypto');
 
 const GIGACHAT_AUTH_KEY = process.env.GIGACHAT_AUTH_KEY; // Vercel env var — см. Settings → Environment Variables, never hardcode this here
-const GIGACHAT_MODEL = 'GigaChat';
+const GIGACHAT_MODEL = 'GigaChat-2'; // подтверждено GET /v1/models — plain "GigaChat" даёт 404 "No such model"
 const OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
 const CHAT_URL = 'https://api.giga.chat/v1/chat/completions';
 
@@ -114,7 +114,6 @@ function httpsRequestViaRussianCA(url, method, headers, bodyString) {
   });
 }
 function httpsPostViaRussianCA(url, headers, bodyString) { return httpsRequestViaRussianCA(url, 'POST', headers, bodyString); }
-function httpsGetViaRussianCA(url, headers) { return httpsRequestViaRussianCA(url, 'GET', headers, null); }
 
 async function getAccessToken() {
   const { status, json } = await httpsPostViaRussianCA(OAUTH_URL, {
@@ -210,15 +209,6 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getAccessToken();
-    if (text === '__list_models__') {
-      // Временная диагностика: узнать точные id моделей, доступных по ключу.
-      const { status, json, raw } = await httpsGetViaRussianCA('https://api.giga.chat/v1/models', {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer ' + token
-      });
-      res.status(200).send(JSON.stringify({ status, json, raw: json ? undefined : raw }));
-      return;
-    }
     const parsed = await callGigaChat(token, text);
     res.status(200).send(JSON.stringify(parsed));
   } catch (e) {
