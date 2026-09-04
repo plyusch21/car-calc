@@ -148,6 +148,12 @@ input:focus, select:focus{border-color:var(--accent);}
 .histcard .r .t{font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent);}
 .histcard .r .c{font-size:10.5px; color:var(--muted);}
 
+.settings-menu{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:14px; }
+.settings-row{ display:flex; justify-content:space-between; align-items:center; padding:15px 16px; cursor:pointer; border-bottom:1px solid var(--panel-2); }
+.settings-row:last-child{border-bottom:none;}
+.settings-row .lbl{font-size:14px; font-weight:500;}
+.settings-row .arrow{color:var(--muted); font-size:17px;}
+
 .toast{ position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 16px; border-radius:9px; font-size:13px; z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; }
 .toast.show{opacity:1;}
 
@@ -161,7 +167,6 @@ input:focus, select:focus{border-color:var(--accent);}
 <body>
 <div class="app" id="app">
   <div class="topbar">
-    <h1>Растаможка · Калькулятор</h1>
     <div class="sub" id="dateLine">—</div>
   </div>
   <div class="tabs" id="routeTabs"></div>
@@ -174,13 +179,13 @@ input:focus, select:focus{border-color:var(--accent);}
       <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="13" x2="10" y2="13"/><line x1="13" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="10" y2="17"/><line x1="13" y1="17" x2="16" y2="17"/></svg>
       Расчёт
     </button>
-    <button class="navbtn" data-view="rates">
-      <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-      Курсы
-    </button>
     <button class="navbtn" data-view="history">
       <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></svg>
       История
+    </button>
+    <button class="navbtn" data-view="rates">
+      <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Курсы
     </button>
     <button class="navbtn" data-view="settings">
       <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15 1.65 1.65 0 0 0 3 14H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.33.6.55.85"/></svg>
@@ -411,7 +416,7 @@ function deepMerge(base, override){
 /* ---------------------------------------------------------------------
    2. State
 --------------------------------------------------------------------- */
-const state = { view:'calc', route:'japan', history: Store.get('history_v2', []), form: defaultForm('japan'), formCache: {} };
+const state = { view:'calc', route:'japan', history: Store.get('history_v2', []), form: defaultForm('japan'), formCache: {}, settingsSection: null };
 
 function defaultForm(route){
   const r = CONFIG.routes[route];
@@ -422,7 +427,7 @@ function defaultForm(route){
     customsAuto:'', customsManual:'', customsOverride:false,
     deliveryCity: CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : '',
     bodyTypeIdx: 1,
-    deliveryOverride:false, deliveryManual:'',
+    deliveryOverride:false, deliveryManual:'', noDelivery:false,
     brokerFee: r.brokerFee, agentFee: r.agentFee, bankPct: r.bankCommissionPct,
     showCarDetails:false,
     carTrim:'', prodMonth:'', prodYear:'', mileage:'', drivetrain:'', transmission:'', condition:'', notes:''
@@ -580,7 +585,7 @@ function calcDeal(route, f){
 
   const broker = num(f.brokerFee);
   const agent = num(f.agentFee);
-  const delivery = f.deliveryOverride ? num(f.deliveryManual) : deliveryPrice(f.deliveryCity, f.bodyTypeIdx);
+  const delivery = f.noDelivery ? 0 : (f.deliveryOverride ? num(f.deliveryManual) : deliveryPrice(f.deliveryCity, f.bodyTypeIdx));
   const downPayment = broker; // by policy, the deposit always equals the broker fee
 
   const total = invoiceRub + customsTotal + broker + agent + delivery;
@@ -609,8 +614,7 @@ function renderRatesView(c){
   c.innerHTML = `
     <div class="card">
       <h2>Курсы валют</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Автообновляемые курсы подтягиваются через сервер при каждом открытии приложения. Ручная правка всегда в приоритете — нажмите на курс, чтобы поправить.</p>
-      <button class="btn secondary" id="refreshRatesBtn2">Обновить сейчас</button>
+      <p style="font-size:12px;color:var(--muted);margin:0;">Автообновляемые курсы подтягиваются через сервер при каждом открытии приложения. Ручная правка всегда в приоритете — нажмите на курс, чтобы поправить.</p>
     </div>
     ${Object.keys(R).map(id=>{
       const r = R[id];
@@ -628,6 +632,7 @@ function renderRatesView(c){
         </div>
       </div>`;
     }).join('')}
+    <button class="btn secondary" id="refreshRatesBtn2">Обновить сейчас</button>
   `;
   document.getElementById('refreshRatesBtn2').onclick = async ()=>{ toast('Обновляю…'); await fetchAutoRates(); toast('Готово'); };
   c.querySelectorAll('[data-rate]').forEach(el=> el.onclick = ()=> openRateEditor(el.dataset.rate));
@@ -635,6 +640,10 @@ function renderRatesView(c){
 
 function renderTabs(){
   const tabs = document.getElementById('routeTabs');
+  // Вкладки направлений нужны только на расчёте — на истории есть свой
+  // набор (с «Общие»), на курсах/настройках направление не при чём.
+  if(state.view!=='calc'){ tabs.style.display='none'; tabs.innerHTML=''; return; }
+  tabs.style.display='';
   tabs.innerHTML = Object.keys(CONFIG.routes).map(id=>{
     const r = CONFIG.routes[id];
     return `<button class="tab ${state.route===id?'active':''}" data-route="${id}">${r.label}</button>`;
@@ -773,6 +782,11 @@ function renderCalc(c){
 
     <div class="card">
       <h2>Доставка по РФ — считается автоматически</h2>
+      <div class="toggle-row field">
+        <div style="font-size:12.5px;">Без доставки</div>
+        <div class="switch ${f.noDelivery?'on':''}" id="noDeliveryToggle"><div class="knob"></div></div>
+      </div>
+      ${f.noDelivery ? '' : `
       <div class="field"><label>Отправка из</label><input type="text" value="${CONFIG.delivery.originLabel}" disabled></div>
       <div class="row2">
         ${field('Город доставки', `<select id="f_city">${cityOptions(f.deliveryCity)}</select>`)}
@@ -784,6 +798,7 @@ function renderCalc(c){
         <div class="switch ${f.deliveryOverride?'on':''}" id="delOverrideToggle"><div class="knob"></div></div>
       </div>
       ${f.deliveryOverride ? field('Доставка, ₽ (вручную)', `<input type="number" id="f_deliveryManual" value="${f.deliveryManual}" inputmode="numeric">`) : ''}
+      `}
     </div>
 
     <div class="card">
@@ -816,6 +831,7 @@ function renderCalc(c){
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
   const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; renderCalc(c); };
   const delT = document.getElementById('delOverrideToggle'); if(delT) delT.onclick = ()=>{ f.deliveryOverride=!f.deliveryOverride; renderCalc(c); };
+  const noDelT = document.getElementById('noDeliveryToggle'); if(noDelT) noDelT.onclick = ()=>{ f.noDelivery=!f.noDelivery; renderCalc(c); };
   const customsT = document.getElementById('customsOverrideToggle'); if(customsT) customsT.onclick = ()=>{ f.customsOverride=!f.customsOverride; renderCalc(c); };
 
   document.getElementById('calcBtn').onclick = async ()=>{
@@ -873,7 +889,7 @@ function showResult(route, f){
         <div class="rline"><div class="k">${r.customsLabel}${f.customsOverride?' (вручную)':''}</div><div class="v">${fmt(r.customsTotal,'₽')}</div></div>
         <div class="rline"><div class="k">Брокер</div><div class="v">${fmt(r.broker,'₽')}</div></div>
         <div class="rline"><div class="k">Наша комиссия</div><div class="v">${fmt(r.agent,'₽')}</div></div>
-        <div class="rline"><div class="k">Доставка по РФ${f.deliveryOverride?' (вручную)':' · '+f.deliveryCity}</div><div class="v">${fmt(r.delivery,'₽')}</div></div>
+        ${f.noDelivery ? '' : `<div class="rline"><div class="k">Доставка по РФ${f.deliveryOverride?' (вручную)':' · '+f.deliveryCity}</div><div class="v">${fmt(r.delivery,'₽')}</div></div>`}
         <div class="rline"><div class="k">Банковская комиссия (${r.bankPct}%)<span class="hint">уже включена в цену ТС выше, справочно</span></div><div class="v">${fmt(r.bankCommissionRub,'₽')}</div></div>
         <div class="rline"><div class="k">Первоначальный взнос<span class="hint">справочно, равен сумме брокера, не добавляется к итогу</span></div><div class="v">${fmt(r.downPayment,'₽')}</div></div>
       </div>
@@ -912,7 +928,7 @@ function shareResult(route, f, r, carLines){
     `${r.customsLabel}: ${fmt(r.customsTotal,'₽')}`,
     `Брокер: ${fmt(r.broker,'₽')}`,
     `Комиссия: ${fmt(r.agent,'₽')}`,
-    `Доставка: ${fmt(r.delivery,'₽')}`,
+    f.noDelivery ? null : `Доставка: ${fmt(r.delivery,'₽')}`,
     `ИТОГО: ${fmt(r.total,'₽')}`
   ].filter(Boolean).join('\n');
 
@@ -974,42 +990,92 @@ function renderHistory(c){
 /* ---------------------------------------------------------------------
    9. Settings
 --------------------------------------------------------------------- */
+const SETTINGS_SECTIONS = [
+  {id:'admin', label:'Доступ к приложению', ownerOnly:true},
+  {id:'rates', label:'Курсы валют'},
+  {id:'routes', label:'Маршруты — комиссии по умолчанию'},
+  {id:'customs', label:'Расчёт tks/alta'},
+  {id:'delivery', label:'Таблица доставки по РФ'}
+];
+
 function renderSettingsView(c){
-  const adminCardHtml = (ACCESS && ACCESS.isOwner)
-    ? `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div style="font-size:12px;color:var(--muted);">Загрузка…</div></div>`
-    : '';
-  c.innerHTML = adminCardHtml + `
-    <div class="card">
+  const section = state.settingsSection;
+
+  if(!section){
+    const items = SETTINGS_SECTIONS.filter(s=> !s.ownerOnly || (ACCESS && ACCESS.isOwner));
+    c.innerHTML = `<div class="settings-menu">` +
+      items.map(s=>`<div class="settings-row" data-s="${s.id}"><div class="lbl">${s.label}</div><div class="arrow">›</div></div>`).join('') +
+      `</div>
+      <button class="btn secondary" id="resetCfgBtn">Сбросить настройки к значениям по умолчанию</button>`;
+    c.querySelectorAll('.settings-row').forEach(el=> el.onclick = ()=>{ state.settingsSection = el.dataset.s; renderSettingsView(c); });
+    document.getElementById('resetCfgBtn').onclick = openResetConfirm;
+    return;
+  }
+
+  const back = `<button class="btn secondary small" id="settingsBack" style="margin-bottom:14px;">← Назад</button>`;
+  let body = '';
+
+  if(section==='admin' && ACCESS && ACCESS.isOwner){
+    body = `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div style="font-size:12px;color:var(--muted);">Загрузка…</div></div>`;
+  } else if(section==='rates'){
+    body = `<div class="card">
       <h2>Курсы валют</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Источники и ручная корректировка перенесены на отдельную вкладку «Курсы» в нижнем меню.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Источники и ручная корректировка — на отдельной вкладке «Курсы» в нижнем меню.</p>
       <button class="btn secondary" id="refreshRatesBtn">Обновить автоматические курсы</button>
-    </div>
-    <div class="card">
+    </div>`;
+  } else if(section==='routes'){
+    body = `<div class="card">
       <h2>Маршруты — комиссии по умолчанию</h2>
       ${Object.keys(CONFIG.routes).map(id=>routeSettingsBlock(id)).join('<div style="height:14px"></div>')}
-    </div>
-    <div class="card">
+    </div>`;
+  } else if(section==='customs'){
+    body = `<div class="card">
       <h2>Расчёт tks/alta</h2>
       <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">На вкладке «Расчёт» таможенные платежи считаются автоматически на сервере (<code>api/customs.js</code>) — приложение отправляет параметры авто на alta.ru/auto-vat/ и суммирует всё, что тот покажет (сбор за оформление, пошлина, а для отдельных случаев вроде электромобилей ещё акциз и НДС), кроме утильсбора. Это тот же официальный расчёт по Решению ЕЭК №107 и Постановлению №1291, на которые ссылается и tks.ru — его форму использовать напрямую нельзя, она защищена антибот-капчей. Значение всегда можно поправить вручную тумблером «Указать вручную» в карточке «Таможенные платежи».</p>
       ${CONFIG.customsCalculators.map(x=>`<a class="linkbtn" href="javascript:void(0)" onclick="openExternal('${x.url}')">${x.label} ↗</a>`).join('')}
-    </div>
-    <div class="card">
+    </div>`;
+  } else if(section==='delivery'){
+    body = `<div class="card">
       <h2>Таблица доставки по РФ (₽)</h2>
       <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Отправка из: ${CONFIG.delivery.originLabel}. Можно отредактировать любые значения или добавить город.</p>
       ${deliveryTable()}
       <button class="btn secondary small" id="addCityBtn" style="margin-top:10px;">+ Добавить город</button>
-    </div>
-    <button class="btn secondary" id="resetCfgBtn">Сбросить настройки к значениям по умолчанию</button>
-  `;
-  document.getElementById('refreshRatesBtn').onclick = async ()=>{ toast('Обновляю…'); await fetchAutoRates(); toast('Готово'); };
-  document.getElementById('resetCfgBtn').onclick = ()=>{ if(confirm('Сбросить все настройки?')){ CONFIG=JSON.parse(JSON.stringify(DEFAULT_CONFIG)); saveConfig(); renderAll(); } };
-  bindRouteSettings();
-  bindDeliveryTable();
-  document.getElementById('addCityBtn').onclick = ()=>{
-    CONFIG.delivery.cities.push({name:'Новый город', prices:[0,0,0,0]});
-    saveConfig(); renderSettingsView(c);
+    </div>`;
+  }
+
+  c.innerHTML = back + body;
+  document.getElementById('settingsBack').onclick = ()=>{ state.settingsSection = null; renderSettingsView(c); };
+
+  if(section==='admin' && ACCESS && ACCESS.isOwner) loadAdminCard();
+  if(section==='rates'){
+    document.getElementById('refreshRatesBtn').onclick = async ()=>{ toast('Обновляю…'); await fetchAutoRates(); toast('Готово'); };
+  }
+  if(section==='routes') bindRouteSettings();
+  if(section==='delivery'){
+    bindDeliveryTable();
+    document.getElementById('addCityBtn').onclick = ()=>{
+      CONFIG.delivery.cities.push({name:'Новый город', prices:[0,0,0,0]});
+      saveConfig(); renderSettingsView(c);
+    };
+  }
+}
+
+function openResetConfirm(){
+  openSheet(`
+    <h3>Сбросить все настройки?</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;line-height:1.5;">Комиссии по маршрутам, таблица доставки и все источники курсов вернутся к значениям по умолчанию. Отменить это будет нельзя.</p>
+    <button class="btn" id="resetConfirmBtn" style="background:var(--danger);margin-bottom:8px;">Да, сбросить всё</button>
+    <button class="btn secondary" id="resetCancelBtn">Отмена</button>
+  `);
+  document.getElementById('resetConfirmBtn').onclick = ()=>{
+    closeSheet();
+    CONFIG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    saveConfig();
+    state.settingsSection = null;
+    renderAll();
+    toast('Настройки сброшены');
   };
-  if(ACCESS && ACCESS.isOwner) loadAdminCard();
+  document.getElementById('resetCancelBtn').onclick = closeSheet;
 }
 
 async function fetchAdminUsers(){
@@ -1132,7 +1198,12 @@ function openRateEditor(id){
    11. Nav + boot
 --------------------------------------------------------------------- */
 document.querySelectorAll('.navbtn').forEach(btn=>{
-  btn.onclick = ()=>{ document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); state.view = btn.dataset.view; renderContent(); };
+  btn.onclick = ()=>{
+    document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+    state.view = btn.dataset.view;
+    if(state.view==='settings') state.settingsSection = null;
+    renderTabs(); renderContent();
+  };
 });
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
 function renderAll(){ renderDateLine(); renderTabs(); renderContent(); }
