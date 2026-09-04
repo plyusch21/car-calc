@@ -927,14 +927,20 @@ function renderCalc(c){
       const data = await res.json();
       if(data.error) throw new Error(data.error);
       // Подставляем только в пустые поля — то, что пользователь уже ввёл
-      // вручную, разбор текста не перезаписывает.
+      // вручную, разбор текста не перезаписывает. НО engineType/powerUnit в
+      // defaultForm НЕ пустые ('ben'/'ls' — значения по умолчанию для селектов
+      // без явного "не выбрано"), поэтому для них "пусто" — это "всё ещё
+      // значение по умолчанию", а не truthy-проверка, иначе разбор никогда не
+      // мог их поправить (баг: тумблер кВт/л.с. не переключался).
+      const FIELD_DEFAULTS = { engineType:'ben', powerUnit:'ls' };
       const FIELD_MAP = ['model','carTrim','mileage','prodMonth','prodYear','drivetrain','transmission',
         'engineType','volumeCm3','power','powerUnit','condition','notes'];
       let filled = 0;
       FIELD_MAP.forEach(k=>{
         const v = data[k];
         if(v===null || v===undefined || v==='') return;
-        if(f[k]) return;
+        const isEmpty = k in FIELD_DEFAULTS ? f[k]===FIELD_DEFAULTS[k] : !f[k];
+        if(!isEmpty) return;
         if(k==='drivetrain' && !DRIVETRAIN_LABELS[v]) return;
         if(k==='transmission' && !TRANSMISSION_LABELS[v]) return;
         if(k==='engineType' && !ENGINE_TYPES[v]) return;
