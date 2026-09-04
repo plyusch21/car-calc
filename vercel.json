@@ -6,7 +6,8 @@
     { "src": "api/customs.js", "use": "@vercel/node" },
     { "src": "api/auth.js", "use": "@vercel/node" },
     { "src": "api/admin.js", "use": "@vercel/node" },
-    { "src": "api/state.js", "use": "@vercel/node" }
+    { "src": "api/state.js", "use": "@vercel/node" },
+    { "src": "api/tks-test.js", "use": "@vercel/node" }
   ],
   "routes": [
     { "src": "/api/rates", "dest": "/api/rates.js" },
@@ -14,6 +15,7 @@
     { "src": "/api/auth", "dest": "/api/auth.js" },
     { "src": "/api/admin", "dest": "/api/admin.js" },
     { "src": "/api/state", "dest": "/api/state.js" },
+    { "src": "/api/tks-test", "dest": "/api/tks-test.js" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
