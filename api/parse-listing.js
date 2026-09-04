@@ -88,15 +88,16 @@ EYVMxjh8zNbFuoc7fzvvrFILLe7ifvEIUqSVIC/AzplM/Jxw7buXFeGP1qVCBEHq
 391d/9RAfaZ12zkwFsl+IKwE/OZxW8AHa9i1p4GO0YSNuczzEm4=
 -----END CERTIFICATE-----`;
 
-function httpsPostViaRussianCA(url, headers, bodyString) {
+function httpsRequestViaRussianCA(url, method, headers, bodyString) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
+    const reqHeaders = bodyString ? Object.assign({ 'Content-Length': Buffer.byteLength(bodyString) }, headers) : headers;
     const req = https.request({
       hostname: u.hostname,
       port: u.port || 443,
       path: u.pathname + u.search,
-      method: 'POST',
-      headers: Object.assign({ 'Content-Length': Buffer.byteLength(bodyString) }, headers),
+      method,
+      headers: reqHeaders,
       ca: [...tls.rootCertificates, RUSSIAN_TRUSTED_ROOT_CA] // добавляем к обычному доверенному списку, не заменяем его
     }, (res) => {
       let data = '';
@@ -108,10 +109,12 @@ function httpsPostViaRussianCA(url, headers, bodyString) {
       });
     });
     req.on('error', reject);
-    req.write(bodyString);
+    if (bodyString) req.write(bodyString);
     req.end();
   });
 }
+function httpsPostViaRussianCA(url, headers, bodyString) { return httpsRequestViaRussianCA(url, 'POST', headers, bodyString); }
+function httpsGetViaRussianCA(url, headers) { return httpsRequestViaRussianCA(url, 'GET', headers, null); }
 
 async function getAccessToken() {
   const { status, json } = await httpsPostViaRussianCA(OAUTH_URL, {
@@ -207,6 +210,15 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getAccessToken();
+    if (text === '__list_models__') {
+      // Временная диагностика: узнать точные id моделей, доступных по ключу.
+      const { status, json, raw } = await httpsGetViaRussianCA('https://api.giga.chat/v1/models', {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ' + token
+      });
+      res.status(200).send(JSON.stringify({ status, json, raw: json ? undefined : raw }));
+      return;
+    }
     const parsed = await callGigaChat(token, text);
     res.status(200).send(JSON.stringify(parsed));
   } catch (e) {
