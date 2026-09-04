@@ -630,9 +630,8 @@ function calcDeal(route, f){
    8. Rendering
 --------------------------------------------------------------------- */
 const CUR_SUFFIX = { japan:'¥', korea:'₩', china:'¥', eaeu:'$' };
-// У ЕАЭС нет единого флага-эмодзи в Unicode (это союз, не страна) — берём
-// флаг Киргизии, т.к. этот маршрут практически и есть ввоз через Киргизию.
-const ROUTE_FLAG = { china:'🇨🇳', japan:'🇯🇵', korea:'🇰🇷', eaeu:'🇰🇬' };
+// У ЕАЭС нет единого флага-эмодзи в Unicode (это союз, не страна) — глобус.
+const ROUTE_FLAG = { china:'🇨🇳', japan:'🇯🇵', korea:'🇰🇷', eaeu:'🌐' };
 const AGE_LABELS = { lt3:'до 3 лет', t3to5:'3–5 лет', gt5:'старше 5 лет' };
 
 function renderDateLine(){
@@ -661,7 +660,7 @@ function renderRatesView(c){
               ${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}
             </div>
           </div>
-          <div class="mono" style="font-size:19px; font-weight:600; color:${stale?'var(--danger)':'var(--good)'};">${r.value.toFixed(4)}</div>
+          <div class="mono" style="font-size:19px; font-weight:600; color:${stale?'var(--danger)':'var(--good)'};">${id==='KRW_USDT' ? groupInt(Math.round(r.value).toString()) : r.value.toFixed(4)}</div>
         </div>
       </div>`;
     }).join('')}
@@ -753,7 +752,7 @@ function renderCalc(c){
         <div style="font-size:12.5px;">Считать таможенные платежи как в остальных направлениях</div>
         <div class="switch ${f.eaeuFullDuty?'on':''}" id="eaeuFullDutyToggle"><div class="knob"></div></div>
       </div>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">По умолчанию ЕАЭС/Киргизия — только утильсбор. Включите, если по сделке нужна полная пошлина + утильсбор, как для Японии/Кореи/Китая.</div>` : ''}
+      <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">По умолчанию ЕАЭС — только утильсбор. Включите, если по сделке нужна полная пошлина + утильсбор, как для Японии/Кореи/Китая.</div>` : ''}
     </div>
 
     <div class="card">
