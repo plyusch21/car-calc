@@ -336,9 +336,9 @@ const DEFAULT_CONFIG = {
 
   // ---- per-route defaults ------------------------------------------------
   routes: {
+    china: { label:'Китай (напрямую)', currency:'CNY', bankCommissionPct:2.5, brokerFee:90000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'3000' },
     japan: { label:'Япония', currency:'JPY', bankCommissionPct:1.5, brokerFee:80000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'' },
     korea: { label:'Корея',  currency:'KRW', bankCommissionPct:0,   brokerFee:85000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'' },
-    china: { label:'Китай (напрямую)', currency:'CNY', bankCommissionPct:2.5, brokerFee:90000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'3000' },
     eaeu:  { label:'ЕАЭС / Киргизия', currency:'USDT', bankCommissionPct:0, brokerFee:100000, agentFee:50000, dutyMode:'utilOnly', defaultExtraCosts:'' }
   }
 };
@@ -423,7 +423,7 @@ function defaultForm(route){
   return {
     model:'', carPrice:'', extraCosts:r.defaultExtraCosts||'', volumeCm3:'', age:'t3to5',
     engineType:'ben', power:'', powerUnit:'ls',
-    customsAuto:'', customsManual:'', customsOverride:false,
+    customsAuto:'', customsManual:'', customsOverride:false, eaeuFullDuty:false,
     deliveryCity: CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : '',
     bodyTypeIdx: 1,
     deliveryOverride:false, deliveryManual:'', noDelivery:false,
@@ -443,7 +443,15 @@ const DRIVETRAIN_LABELS = { front:'Передний', rear:'Задний', full:
 /* ---------------------------------------------------------------------
    3. Helpers
 --------------------------------------------------------------------- */
-function fmt(n, suffix){ if(n===null||n===undefined||isNaN(n)) return '—'; return Math.round(n).toLocaleString('ru-RU')+(suffix?(' '+suffix):''); }
+function fmt(n, suffix){
+  if(n===null||n===undefined||isNaN(n)) return '—';
+  const rounded = Math.round(n);
+  // Своя группировка по тысячам с узким пробелом (U+202F) — не полагаемся на
+  // toLocaleString('ru-RU'), т.к. в WebView Telegram (особенно на Android)
+  // локальные данные ICU часто старее и группируют обычным широким пробелом.
+  const grouped = Math.abs(rounded).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return (rounded<0?'-':'')+grouped+(suffix?(' '+suffix):'');
+}
 function num(v){ const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?0:n; }
 function openExternal(url){
   if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink){ window.Telegram.WebApp.openLink(url); }
@@ -601,7 +609,7 @@ function calcDeal(route, f){
   return {
     invoiceRub, customsTotal, broker, agent, delivery, total, downPayment,
     bankPct, bankCommissionRub,
-    customsLabel: routeCfg.dutyMode==='utilOnly' ? 'Утилизационный сбор' : 'Таможенные платежи'
+    customsLabel: (routeCfg.dutyMode==='utilOnly' && !f.eaeuFullDuty) ? 'Утилизационный сбор' : 'Таможенные платежи'
   };
 }
 
@@ -686,14 +694,14 @@ function renderCalc(c){
   const cfg = CONFIG.routes[route];
   const f = state.form;
   const suf = CUR_SUFFIX[route];
-  const isEaeu = cfg.dutyMode==='utilOnly';
+  const isEaeu = cfg.dutyMode==='utilOnly' && !f.eaeuFullDuty;
   const deliveryAuto = deliveryPrice(f.deliveryCity, f.bodyTypeIdx);
   const engineMeta = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
   const isElectric = engineMeta.dtype === 'electric';
 
   c.innerHTML = `
     <div class="card">
-      <h2>Параметры сделки — ${cfg.label}</h2>
+      <h2>Параметры авто — ${cfg.label}</h2>
       ${field('Марка / модель', `<input type="text" id="f_model" value="${f.model}" placeholder="напр. Toyota Alphard">`)}
       <div class="row2">
         ${field('Цена авто ('+suf+')', `<input type="number" id="f_carPrice" value="${f.carPrice}" inputmode="decimal">`)}
@@ -724,6 +732,12 @@ function renderCalc(c){
           ${Object.keys(AGE_LABELS).map(k=>`<button data-age="${k}" class="${f.age===k?'active':''}">${AGE_LABELS[k]}</button>`).join('')}
         </div>
       </div>
+      ${route==='eaeu' ? `
+      <div class="toggle-row field">
+        <div style="font-size:12.5px;">Считать таможенные платежи как в остальных направлениях</div>
+        <div class="switch ${f.eaeuFullDuty?'on':''}" id="eaeuFullDutyToggle"><div class="knob"></div></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">По умолчанию ЕАЭС/Киргизия — только утильсбор. Включите, если по сделке нужна полная пошлина + утильсбор, как для Японии/Кореи/Китая.</div>` : ''}
     </div>
 
     <div class="card">
@@ -807,6 +821,7 @@ function renderCalc(c){
   document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ f.age=b.dataset.age; renderCalc(c); });
   const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ f.engineType=engineEl.value; renderCalc(c); };
   document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ f.powerUnit=b.dataset.unit; renderCalc(c); });
+  const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
   const transEl = document.getElementById('f_transmission'); if(transEl) transEl.onchange = ()=>{ f.transmission=transEl.value; };
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
