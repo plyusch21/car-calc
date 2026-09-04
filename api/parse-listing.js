@@ -288,7 +288,7 @@ async function callGigaChatVision(accessToken, fileId) {
   }
   delete parsed.isAuctionSheet;
   parsed.source = 'ai';
-  return enforceRussianFields(parsed);
+  return enforceRussianFields(sanityCheckParsed(parsed));
 }
 
 async function callGigaChat(accessToken, text) {
@@ -319,7 +319,16 @@ async function callGigaChat(accessToken, text) {
   }
   const parsed = typeof fc.arguments === 'string' ? JSON.parse(fc.arguments) : fc.arguments;
   parsed.source = 'ai';
-  return enforceRussianFields(parsed);
+  // Живой тест показал: на плотном японском тексте с датой-эрой (напр.
+  // "初度登録 R4年7月") модель не просто ошибается в арифметике года — она
+  // путает поля местами (пробег в объём двигателя, дату — в "состояние").
+  // Дата по японской эре — это просто арифметика, для неё код надёжнее
+  // угадывания моделью, поэтому здесь принудительно пересчитываем и
+  // подставляем prodYear/prodMonth сами, если в исходном тексте нашлась
+  // такая дата — независимо от того, что там решила вернуть модель.
+  const era = parseEraDate(text);
+  if (era) { parsed.prodYear = era.year; parsed.prodMonth = era.month; }
+  return enforceRussianFields(sanityCheckParsed(parsed, text));
 }
 
 // ---------------------------------------------------------------------
@@ -371,6 +380,30 @@ async function enforceRussianFields(parsed) {
   return parsed;
 }
 
+// Ещё одна подстраховка от того же случая (плотный японский текст сбивает
+// модель): если пробег не нашёлся вообще — пробуем достать его регуляркой
+// (text доступен только для текстового пути, не для фото). А объём
+// двигателя вне разумных пределов для легкового авто — почти наверняка
+// не объём, а случайно попавшее туда другое число (живой пример: модель
+// подставила туда пробег 17297) — в этом случае лучше пустое поле, чем
+// заведомо абсурдное значение в расчёте.
+function sanityCheckParsed(parsed, text) {
+  if (text && (parsed.mileage == null || parsed.mileage === '')) {
+    const mileageRaw = firstMatch(text, [
+      /(?:пробег|mileage|里程|走行距離|走行)[^\d]{0,10}(\d[\d,.\s]{2,})/i,
+      /(\d[\d,.\s]{2,})\s*(?:км|km|公里)/i
+    ]);
+    if (mileageRaw) {
+      const n = parseFloat(mileageRaw.replace(/[,\s]/g, ''));
+      if (!isNaN(n) && n > 0) parsed.mileage = Math.round(n);
+    }
+  }
+  if (parsed.volumeCm3 != null && (parsed.volumeCm3 < 200 || parsed.volumeCm3 > 9000)) {
+    parsed.volumeCm3 = null;
+  }
+  return parsed;
+}
+
 function firstMatch(text, patterns) {
   for (const re of patterns) {
     const m = text.match(re);
@@ -383,15 +416,16 @@ function firstMatch(text, patterns) {
 // год = год начала эры + номер года эры - 1. Поддерживаем и иероглифы, и
 // латинские сокращения (R/H/S), т.к. в объявлениях встречаются оба варианта.
 function parseEraDate(text) {
-  const eras = [['令和', 2019], ['平成', 1989], ['昭和', 1926]];
-  for (const [kanji, start] of eras) {
-    const m = text.match(new RegExp(kanji + '\\s*(\\d{1,2})[\\.\\/年]\\s*(\\d{1,2})?'));
+  // "年"/"月" как разделитель нужен и кандзи-варианту (令和4年7月), и
+  // латинскому (R4年7月 — распространённый смешанный формат на аукционных
+  // листах) — раньше латинский вариант принимал только "." или "/" и не
+  // находил именно эту, самую частую запись.
+  const eras = [['令和', 2019], ['平成', 1989], ['昭和', 1926], ['R', 2019], ['H', 1989], ['S', 1926]];
+  for (const [marker, start] of eras) {
+    const isKanji = /[一-鿿]/.test(marker);
+    const re = new RegExp((isKanji ? marker : '\\b' + marker) + '\\s*(\\d{1,2})[\\.\\/年]\\s*(\\d{1,2})?');
+    const m = text.match(re);
     if (m) return { year: start + parseInt(m[1], 10) - 1, month: m[2] ? parseInt(m[2], 10) : null };
-  }
-  const romaji = [['R', 2019], ['H', 1989], ['S', 1926]];
-  for (const [letter, start] of romaji) {
-    const m = text.match(new RegExp('\\b' + letter + '(\\d{1,2})[\\.\\/](\\d{1,2})\\b'));
-    if (m) return { year: start + parseInt(m[1], 10) - 1, month: parseInt(m[2], 10) };
   }
   return null;
 }
