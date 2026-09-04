@@ -131,11 +131,18 @@ async function fetchFromTks(p) {
   }
 
   let data;
-  try { data = JSON.parse(text); } catch (e) { throw new Error('api1.tks.ru: ответ не в формате JSON'); }
+  try { data = JSON.parse(text); } catch (e) { throw new Error('api1.tks.ru: ответ не в формате JSON: ' + text.slice(0, 300)); }
 
   const sum = data.sum && data.sum.value_rub != null ? num(data.sum.value_rub) : null; // сбор+пошлина(+акциз/НДС, если применимо) — уже без утильсбора
   const util = data.util_sbor && data.util_sbor.value_rub != null ? num(data.util_sbor.value_rub) : null;
-  if (sum === null && util === null) throw new Error('api1.tks.ru: не нашли полей sum/util_sbor в ответе — формат мог измениться');
+  if (sum === null && util === null) {
+    // TKS иногда отвечает 200 с телом-ошибкой вместо расчёта (например, при
+    // недопустимой комбинации параметров или временной проблеме на их стороне).
+    // Показываем реальный ответ, а не общую фразу — иначе причину не найти
+    // без ручного воспроизведения запроса.
+    const hint = data.error || data.message || data.msg || JSON.stringify(data).slice(0, 300);
+    throw new Error('api1.tks.ru: нет полей sum/util_sbor — ответ TKS: ' + hint);
+  }
 
   // Для большинства легковых авто физлица (ЕТС) платят единую ставку по объёму
   // двигателя и в data.sum акциз/НДС не входят — но у электромобилей нет объёма
