@@ -1160,17 +1160,13 @@ function showResult(route, f){
       </div>
       <div class="receipt-total"><div class="lbl">Итого</div><div class="amt">${fmt(r.total,'₽')}</div></div>
     </div>
-    <div class="field">
-      <label>Формат жирного шрифта при отправке</label>
-      <div class="seg" id="shareFormatSeg">
-        <button data-fmt="whatsapp" class="${(f.shareFormat||'whatsapp')==='whatsapp'?'active':''}">WhatsApp</button>
-        <button data-fmt="tgmax" class="${f.shareFormat==='tgmax'?'active':''}">Telegram / MAX</button>
+    <button class="btn secondary" id="saveBtn" style="width:100%;">Сохранить в историю</button>
+    <div class="field" style="margin-top:14px;">
+      <label>Отправить расчёт</label>
+      <div class="row2">
+        <button class="btn secondary" id="shareWhatsappBtn">WhatsApp</button>
+        <button class="btn secondary" id="shareTgMaxBtn">Telegram / MAX</button>
       </div>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">WhatsApp и Telegram/MAX по-разному понимают жирный текст — единого варианта, увы, нет.</div>
-    </div>
-    <div class="row2">
-      <button class="btn secondary" id="saveBtn">Сохранить в историю</button>
-      <button class="btn secondary" id="shareBtn">Поделиться</button>
     </div>
   `;
   zone.scrollIntoView({behavior:'smooth', block:'nearest'});
@@ -1188,8 +1184,8 @@ function showResult(route, f){
     toast('Сохранено в историю');
     resetAfterDone();
   };
-  document.querySelectorAll('#shareFormatSeg button').forEach(btn=> btn.onclick = ()=>{ f.shareFormat = btn.dataset.fmt; showResult(route, f); });
-  document.getElementById('shareBtn').onclick = ()=>{ shareResult(route, f, r); resetAfterDone(); };
+  document.getElementById('shareWhatsappBtn').onclick = ()=>{ f.shareFormat = 'whatsapp'; shareResult(route, f, r); resetAfterDone(); };
+  document.getElementById('shareTgMaxBtn').onclick = ()=>{ f.shareFormat = 'tgmax'; shareResult(route, f, r); resetAfterDone(); };
 }
 
 // Формат курса: у копеечных курсов (напр. вона) 2 знака после запятой
@@ -1207,12 +1203,16 @@ function shareResult(route, f, r){
   // а не флаг Китая — флаг отражает фактический маршрут, а не текст подписи.
   const shareRouteLabel = route==='eaeu' ? 'Китай' : CONFIG.routes[route].label;
   const dateStr = new Date().toLocaleDateString('ru-RU');
-  // Единого синтаксиса жирного шрифта на все мессенджеры нет: WhatsApp
-  // понимает одинарные *звёздочки*, а Telegram и MAX — двойные **звёздочки**
-  // (одинарные у них означают курсив либо вообще не распознаются при вставке
-  // готового текста). Поэтому формат — явный выбор пользователя (переключатель
-  // над кнопкой "Поделиться"), а не что-то одно "универсальное".
-  const mark = f.shareFormat==='tgmax' ? '**' : '*';
+  // WhatsApp разбирает *звёздочки* в готовом вставленном тексте и правда
+  // показывает жирный шрифт. Double-asterisk-гипотеза для Telegram/MAX не
+  // подтвердилась на практике: оба приложения выделяют markdown только пока
+  // текст печатают вручную в их собственном поле ввода — у готового текста,
+  // который приходит через "Поделиться"/вставку из буфера, звёздочки остаются
+  // видимыми символами, а не превращаются в форматирование. Настоящий жирный
+  // текст в Telegram/MAX без бота с Bot API (parse_mode) недостижим, поэтому
+  // для этого формата звёздочки просто не добавляем — так текст читается
+  // чисто, без мусора из символов.
+  const mark = f.shareFormat==='tgmax' ? '' : '*';
   const b = s => mark+s+mark;
   // Значения из "Доп. данных" (ручной ввод или разбор ИИ) могут случайно
   // содержать "*" — непарный символ сломает жирный шрифт до конца
@@ -1264,9 +1264,9 @@ function shareResult(route, f, r){
   lines.push(`${b(r.customsLabel+':')} ${fmt(r.customsTotal,'₽')}`);
   lines.push(`${b('Брокер:')} ${fmt(r.broker,'₽')}`);
   lines.push(`${b('Комиссия:')} ${fmt(r.agent,'₽')}`);
-  if(f.deliveryEnabled) lines.push(`${b('Доставка по РФ:')} ${fmt(r.delivery,'₽')} (страхование авто в пути, по желанию (рекомендуется) - 0,3% от заявленной стоимости ТС)`);
+  if(f.deliveryEnabled) lines.push(`${b('Доставка по РФ:')} ${fmt(r.delivery,'₽')} (страхование авто в пути, по желанию (рекомендуется) / к оплате дополнительно - 0,3% от заявленной стоимости ТС)`);
   lines.push('');
-  lines.push(`${b('ИТОГО (цена под ключ):')} ${fmt(r.total,'₽')}`);
+  lines.push(b(`ИТОГО — цена под ключ: ${fmt(r.total,'₽')}`));
   lines.push(`с учётом всех расходов до ${destGenitive} на дату расчета`);
   const text = lines.join('\n');
 
