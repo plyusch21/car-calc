@@ -135,7 +135,7 @@ async function fetchFromTks(p) {
 
   const sum = data.sum && data.sum.value_rub != null ? num(data.sum.value_rub) : null; // сбор+пошлина(+акциз/НДС, если применимо) — уже без утильсбора
   const util = data.util_sbor && data.util_sbor.value_rub != null ? num(data.util_sbor.value_rub) : null;
-  if (sum === null && util === null) throw new Error('api1.tks.ru: не нашли полей sum/util_sbor в ответе: ' + text.slice(0, 500));
+  if (sum === null && util === null) throw new Error('api1.tks.ru: не нашли полей sum/util_sbor в ответе — формат мог измениться');
 
   // Для большинства легковых авто физлица (ЕТС) платят единую ставку по объёму
   // двигателя и в data.sum акциз/НДС не входят — но у электромобилей нет объёма
