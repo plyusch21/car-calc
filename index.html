@@ -865,6 +865,31 @@ function renderCalc(c){
 
   c.innerHTML = `
     <div class="card">
+      <h2>Автозаполнение</h2>
+      <div class="toggle-row field">
+        <div style="font-size:12.5px;">${route==='japan' ? 'Автозаполнение по объявлению' : 'Автозаполнение по тексту объявления'}</div>
+        <div class="switch ${f.showListingParser?'on':''}" id="listingParserToggle"><div class="knob"></div></div>
+      </div>
+      ${f.showListingParser ? `
+      <div class="smartfill">
+        <textarea id="f_listingText" rows="1" style="text-align:center;" placeholder="Введите данные (RU/EN/CN/JP)">${escapeHtml(f.listingText)}</textarea>
+        <button class="btn secondary" id="parseListingBtn" type="button">Распознать текст</button>
+        <div id="parseListingStatus" class="smartfill-status"></div>
+        ${route==='japan' ? `
+        <div class="smartfill-divider"><span>или фото аукционного листа</span></div>
+        <div class="row2">
+          <label class="filepick" for="f_listingImage" id="listingImageLabel">Выбрать фото</label>
+          <input type="file" accept="image/*" id="f_listingImage" style="display:none;">
+          <button class="btn secondary" id="parseListingImageBtn" type="button">Распознать фото</button>
+        </div>
+        <div id="parseListingImageStatus" class="smartfill-status"></div>
+        <div class="smartfill-hint">Лист всегда на японском — читается автоматически. На нём указана дата первой регистрации, а не выпуска — так она и попадёт в расчёт.</div>
+        ` : ''}
+      </div>
+      ` : ''}
+    </div>
+
+    <div class="card">
       <h2>Параметры авто — ${cfg.label}</h2>
       ${field('Марка / модель', `<input type="text" id="f_model" value="${f.model}" placeholder="напр. Toyota Alphard">`)}
       <div class="row2">
@@ -913,27 +938,6 @@ function renderCalc(c){
     <div class="card">
       <h2>Доп. данные по авто (для клиента)</h2>
       <div class="toggle-row field">
-        <div style="font-size:12.5px;">${route==='japan' ? 'Автозаполнение по объявлению' : 'Автозаполнение по тексту объявления'}</div>
-        <div class="switch ${f.showListingParser?'on':''}" id="listingParserToggle"><div class="knob"></div></div>
-      </div>
-      ${f.showListingParser ? `
-      <div class="smartfill">
-        <textarea id="f_listingText" rows="1" style="text-align:center;" placeholder="Введите данные (RU/EN/CN/JP)">${escapeHtml(f.listingText)}</textarea>
-        <button class="btn secondary" id="parseListingBtn" type="button">Распознать текст</button>
-        <div id="parseListingStatus" class="smartfill-status"></div>
-        ${route==='japan' ? `
-        <div class="smartfill-divider"><span>или фото аукционного листа</span></div>
-        <div class="row2">
-          <label class="filepick" for="f_listingImage" id="listingImageLabel">Выбрать фото</label>
-          <input type="file" accept="image/*" id="f_listingImage" style="display:none;">
-          <button class="btn secondary" id="parseListingImageBtn" type="button">Распознать фото</button>
-        </div>
-        <div id="parseListingImageStatus" class="smartfill-status"></div>
-        <div class="smartfill-hint">Лист всегда на японском — читается автоматически. На нём указана дата первой регистрации, а не выпуска — так она и попадёт в расчёт.</div>
-        ` : ''}
-      </div>
-      ` : ''}
-      <div class="toggle-row field" style="margin-top:10px;">
         <div style="font-size:12.5px;">Указать данные по авто</div>
         <div class="switch ${f.showCarDetails?'on':''}" id="carDetailsToggle"><div class="knob"></div></div>
       </div>
