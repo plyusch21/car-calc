@@ -72,5 +72,26 @@ module.exports = async (req, res) => {
   };
 
   const [a, b, c] = await Promise.all([tryPayload(variantA), tryPayload(variantB), tryPayload(variantC)]);
-  res.status(200).send(JSON.stringify({ variantA_readmeExample: a, variantB_ourCase: b, variantC_withWeight: c }, null, 1));
+
+  // Вариант D: заведомо неверный сертификат — тот же payload, что и A.
+  // Если ошибка отличается от A/B/C, значит сертификат вообще что-то значит
+  // для сервера (проверяется до обработки payload). Если ошибка одинаковая —
+  // сервис ломается ещё до проверки сертификата (сам эндпоинт нерабочий).
+  const invalidKeyStarted = Date.now();
+  let d;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    const tksRes = await fetch('https://calc.tks.ru/calc/invalid00000000000000000000000/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(variantA), signal: controller.signal
+    });
+    clearTimeout(timeout);
+    const text = await tksRes.text();
+    d = { reachable: true, ms: Date.now() - invalidKeyStarted, httpStatus: tksRes.status, bodyPreview: text.slice(0, 1500) };
+  } catch (e) {
+    d = { reachable: false, ms: Date.now() - invalidKeyStarted, error: e.name + ': ' + (e.message || String(e)) };
+  }
+
+  res.status(200).send(JSON.stringify({ variantA_readmeExample: a, variantB_ourCase: b, variantC_withWeight: c, variantD_invalidCert: d }, null, 1));
 };
