@@ -63,7 +63,14 @@ const tls = require('tls');
 const crypto = require('crypto');
 
 const GIGACHAT_AUTH_KEY = process.env.GIGACHAT_AUTH_KEY; // Vercel env var — см. Settings → Environment Variables, never hardcode this here
-const GIGACHAT_MODEL = 'GigaChat-2'; // подтверждено GET /v1/models — plain "GigaChat" даёт 404 "No such model"
+// Базовая GigaChat-2 на плотном японском тексте (без пробелов между
+// смысловыми блоками) регулярно выдумывала числовые поля, которых не было
+// в тексте вообще (объём двигателя, мощность), даже после многократного
+// усиления промпта — похоже на ограничение самой модели, а не формулировки.
+// GigaChat-2-Pro (та же, что уже используется для фото) заметно надёжнее.
+// Бесплатного лимита (десятки миллионов токенов) хватает на Pro с большим
+// запасом при такой редкой и лёгкой задаче, как разбор одного объявления.
+const GIGACHAT_MODEL = 'GigaChat-2-Pro';
 const GIGACHAT_VISION_MODEL = 'GigaChat-2-Pro'; // документация GigaChat заявляет vision именно у Pro-уровня; список моделей "GigaChat-Pro" в чистом виде не содержит
 const OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
 const CHAT_URL = 'https://api.giga.chat/v1/chat/completions';
