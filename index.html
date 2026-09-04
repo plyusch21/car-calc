@@ -1266,7 +1266,7 @@ function shareResult(route, f, r){
   lines.push(`${b('Комиссия:')} ${fmt(r.agent,'₽')}`);
   if(f.deliveryEnabled) lines.push(`${b('Доставка по РФ:')} ${fmt(r.delivery,'₽')} (страхование авто в пути, по желанию (рекомендуется) / к оплате дополнительно - 0,3% от заявленной стоимости ТС)`);
   lines.push('');
-  lines.push(b(`ИТОГО — цена под ключ: ${fmt(r.total,'₽')}`));
+  lines.push(b(`ИТОГО цена под ключ: ${fmt(r.total,'₽')}`));
   lines.push(`с учётом всех расходов до ${destGenitive} на дату расчета`);
   const text = lines.join('\n');
 
