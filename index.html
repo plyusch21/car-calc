@@ -336,10 +336,10 @@ const DEFAULT_CONFIG = {
 
   // ---- per-route defaults ------------------------------------------------
   routes: {
-    china: { label:'Китай (напрямую)', currency:'CNY', bankCommissionPct:2.5, brokerFee:90000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'3000' },
+    china: { label:'Китай', currency:'CNY', bankCommissionPct:2.5, brokerFee:90000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'3000' },
     japan: { label:'Япония', currency:'JPY', bankCommissionPct:1.5, brokerFee:80000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'' },
     korea: { label:'Корея',  currency:'KRW', bankCommissionPct:0,   brokerFee:85000, agentFee:50000, dutyMode:'precise', defaultExtraCosts:'' },
-    eaeu:  { label:'ЕАЭС / Киргизия', currency:'USDT', bankCommissionPct:0, brokerFee:100000, agentFee:50000, dutyMode:'utilOnly', defaultExtraCosts:'' }
+    eaeu:  { label:'ЕАЭС', currency:'USDT', bankCommissionPct:0, brokerFee:100000, agentFee:50000, dutyMode:'utilOnly', defaultExtraCosts:'' }
   }
 };
 
@@ -416,7 +416,7 @@ function deepMerge(base, override){
 /* ---------------------------------------------------------------------
    2. State
 --------------------------------------------------------------------- */
-const state = { view:'calc', route:'japan', history: Store.get('history_v2', []), form: defaultForm('japan'), formCache: {}, settingsSection: null };
+const state = { view:'calc', route:'china', history: Store.get('history_v2', []), form: defaultForm('china'), formCache: {}, settingsSection: null };
 
 function defaultForm(route){
   const r = CONFIG.routes[route];
@@ -443,16 +443,29 @@ const DRIVETRAIN_LABELS = { front:'Передний', rear:'Задний', full:
 /* ---------------------------------------------------------------------
    3. Helpers
 --------------------------------------------------------------------- */
+const NBSP_THIN = '\u202f'; // узкий неразрывный пробел (U+202F)
+// Своя группировка по тысячам этим символом — не полагаемся на
+// toLocaleString('ru-RU'), т.к. в WebView Telegram (особенно на Android)
+// локальные данные ICU часто старее и группируют обычным широким пробелом.
+function groupInt(digits){ return digits.replace(/\B(?=(\d{3})+(?!\d))/g, NBSP_THIN); }
 function fmt(n, suffix){
   if(n===null||n===undefined||isNaN(n)) return '—';
   const rounded = Math.round(n);
-  // Своя группировка по тысячам с узким пробелом (U+202F) — не полагаемся на
-  // toLocaleString('ru-RU'), т.к. в WebView Telegram (особенно на Android)
-  // локальные данные ICU часто старее и группируют обычным широким пробелом.
-  const grouped = Math.abs(rounded).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return (rounded<0?'-':'')+grouped+(suffix?(' '+suffix):'');
+  return (rounded<0?'-':'')+groupInt(Math.abs(rounded).toString())+(suffix?(' '+suffix):'');
 }
 function num(v){ const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?0:n; }
+// Живое форматирование числовых полей ввода той же группировкой — формат
+// только отображается, а в состояние формы (f[key]) всегда пишется «чистое»
+// значение без пробелов, которое понимает num().
+function formatNumInput(raw){
+  const s = String(raw==null?'':raw).replace(/[^\d.,]/g,'');
+  if(!s) return '';
+  const parts = s.split(/[.,]/);
+  const intPart = groupInt(parts[0]||'');
+  return parts.length>1 ? intPart+','+parts.slice(1).join('') : intPart;
+}
+function cleanNumInput(v){ return String(v==null?'':v).replace(/[^\d.,]/g,''); }
+const GROUPED_NUM_FIELDS = ['carPrice','extraCosts','volumeCm3','power','mileage','customsManual','deliveryManual','brokerFee','agentFee'];
 function openExternal(url){
   if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink){ window.Telegram.WebApp.openLink(url); }
   else{ window.open(url, '_blank'); }
@@ -617,6 +630,9 @@ function calcDeal(route, f){
    8. Rendering
 --------------------------------------------------------------------- */
 const CUR_SUFFIX = { japan:'¥', korea:'₩', china:'¥', eaeu:'$' };
+// У ЕАЭС нет единого флага-эмодзи в Unicode (это союз, не страна) — берём
+// флаг Киргизии, т.к. этот маршрут практически и есть ввоз через Киргизию.
+const ROUTE_FLAG = { china:'🇨🇳', japan:'🇯🇵', korea:'🇰🇷', eaeu:'🇰🇬' };
 const AGE_LABELS = { lt3:'до 3 лет', t3to5:'3–5 лет', gt5:'старше 5 лет' };
 
 function renderDateLine(){
@@ -663,7 +679,7 @@ function renderTabs(){
   tabs.style.display='';
   tabs.innerHTML = Object.keys(CONFIG.routes).map(id=>{
     const r = CONFIG.routes[id];
-    return `<button class="tab ${state.route===id?'active':''}" data-route="${id}">${r.label}</button>`;
+    return `<button class="tab ${state.route===id?'active':''}" data-route="${id}">${r.label} ${ROUTE_FLAG[id]||''}</button>`;
   }).join('');
   tabs.querySelectorAll('.tab').forEach(el=>{
     el.onclick = ()=>{
@@ -704,8 +720,8 @@ function renderCalc(c){
       <h2>Параметры авто — ${cfg.label}</h2>
       ${field('Марка / модель', `<input type="text" id="f_model" value="${f.model}" placeholder="напр. Toyota Alphard">`)}
       <div class="row2">
-        ${field('Цена авто ('+suf+')', `<input type="number" id="f_carPrice" value="${f.carPrice}" inputmode="decimal">`)}
-        ${field('Расходы в стране ('+suf+')', `<input type="number" id="f_extraCosts" value="${f.extraCosts}" inputmode="decimal">`)}
+        ${field('Цена авто ('+suf+')', `<input type="text" id="f_carPrice" value="${formatNumInput(f.carPrice)}" inputmode="decimal">`)}
+        ${field('Расходы в стране ('+suf+')', `<input type="text" id="f_extraCosts" value="${formatNumInput(f.extraCosts)}" inputmode="decimal">`)}
       </div>
       <div class="field">
         <label>Тип двигателя</label>
@@ -714,11 +730,11 @@ function renderCalc(c){
         </select>
       </div>
       <div class="row2">
-        ${isElectric ? '' : field('Объём двигателя (см³)', `<input type="number" id="f_volumeCm3" value="${f.volumeCm3}" step="10" inputmode="numeric">`)}
+        ${isElectric ? '' : field('Объём двигателя (см³)', `<input type="text" id="f_volumeCm3" value="${formatNumInput(f.volumeCm3)}" inputmode="numeric">`)}
         <div class="field">
           <label>${isElectric?'Мощность электродвигателя':'Мощность двигателя (ДВС)'}</label>
           <div class="row2" style="gap:6px;">
-            <input type="number" id="f_power" value="${f.power}" inputmode="numeric">
+            <input type="text" id="f_power" value="${formatNumInput(f.power)}" inputmode="numeric">
             <div class="seg" id="powerUnitSeg">
               <button data-unit="ls" class="${f.powerUnit==='ls'?'active':''}">л.с.</button>
               <button data-unit="kvt" class="${f.powerUnit==='kvt'?'active':''}">кВт</button>
@@ -749,7 +765,7 @@ function renderCalc(c){
       ${f.showCarDetails ? `
       <div class="row2">
         ${field('Комплектация', `<input type="text" id="f_carTrim" value="${f.carTrim}">`)}
-        ${field('Пробег, км', `<input type="number" id="f_mileage" value="${f.mileage}" inputmode="numeric">`)}
+        ${field('Пробег, км', `<input type="text" id="f_mileage" value="${formatNumInput(f.mileage)}" inputmode="numeric">`)}
       </div>
       <div class="field">
         <label>Дата производства</label>
@@ -774,7 +790,7 @@ function renderCalc(c){
         <div style="font-size:12.5px;">Указать вручную</div>
         <div class="switch ${f.customsOverride?'on':''}" id="customsOverrideToggle"><div class="knob"></div></div>
       </div>
-      ${f.customsOverride ? field('Таможенные платежи, ₽ (вручную)', `<input type="number" id="f_customsManual" value="${f.customsManual}" inputmode="numeric">`) : ''}
+      ${f.customsOverride ? field('Таможенные платежи, ₽ (вручную)', `<input type="text" id="f_customsManual" value="${formatNumInput(f.customsManual)}" inputmode="numeric">`) : ''}
       <div id="customsStatus" style="font-size:11.5px;color:var(--muted);margin-top:6px;"></div>
     </div>
 
@@ -795,15 +811,15 @@ function renderCalc(c){
         <div style="font-size:12.5px;">Указать доставку вручную</div>
         <div class="switch ${f.deliveryOverride?'on':''}" id="delOverrideToggle"><div class="knob"></div></div>
       </div>
-      ${f.deliveryOverride ? field('Доставка, ₽ (вручную)', `<input type="number" id="f_deliveryManual" value="${f.deliveryManual}" inputmode="numeric">`) : ''}
+      ${f.deliveryOverride ? field('Доставка, ₽ (вручную)', `<input type="text" id="f_deliveryManual" value="${formatNumInput(f.deliveryManual)}" inputmode="numeric">`) : ''}
       `}
     </div>
 
     <div class="card">
       <h2>Комиссии (₽, редактируются)</h2>
       <div class="row2">
-        ${field('Брокер', `<input type="number" id="f_brokerFee" value="${f.brokerFee}" inputmode="numeric">`)}
-        ${field('Наша комиссия', `<input type="number" id="f_agentFee" value="${f.agentFee}" inputmode="numeric">`)}
+        ${field('Брокер', `<input type="text" id="f_brokerFee" value="${formatNumInput(f.brokerFee)}" inputmode="numeric">`)}
+        ${field('Наша комиссия', `<input type="text" id="f_agentFee" value="${formatNumInput(f.agentFee)}" inputmode="numeric">`)}
       </div>
       <div style="font-size:11.5px;color:var(--muted);">Банковская комиссия фиксирована для маршрута (${cfg.bankCommissionPct}%) и учтена в цене ТС — правится в Настройках.</div>
     </div>
@@ -815,7 +831,24 @@ function renderCalc(c){
   ['model','carPrice','extraCosts','volumeCm3','power','customsManual','deliveryManual','agentFee','brokerFee',
    'carTrim','mileage','prodMonth','prodYear','condition','notes'].forEach(k=>{
     const el = document.getElementById('f_'+k);
-    if(el) el.oninput = ()=> f[k]=el.value;
+    if(!el) return;
+    if(GROUPED_NUM_FIELDS.includes(k)){
+      el.oninput = ()=>{
+        const clean = cleanNumInput(el.value);
+        f[k] = clean;
+        const digitsBeforeCursor = cleanNumInput(el.value.slice(0, el.selectionStart)).length;
+        const formatted = formatNumInput(clean);
+        el.value = formatted;
+        let seen = 0, pos = formatted.length;
+        for(let i=0;i<formatted.length;i++){
+          if(/[\d.,]/.test(formatted[i])) seen++;
+          if(seen>=digitsBeforeCursor){ pos = i+1; break; }
+        }
+        el.setSelectionRange(pos, pos);
+      };
+    } else {
+      el.oninput = ()=> f[k]=el.value;
+    }
   });
   const drivetrainEl = document.getElementById('f_drivetrain'); if(drivetrainEl) drivetrainEl.onchange = ()=>{ f.drivetrain=drivetrainEl.value; };
   document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ f.age=b.dataset.age; renderCalc(c); });
@@ -944,7 +977,7 @@ function renderHistory(c){
 
   const filterHtml = `<div class="tabs" id="histFilterSeg" style="padding:0 0 14px; margin:0;">
     <button class="tab ${filter==='all'?'active':''}" data-f="all">Общие</button>
-    ${Object.keys(CONFIG.routes).map(id=>`<button class="tab ${filter===id?'active':''}" data-f="${id}">${CONFIG.routes[id].label}</button>`).join('')}
+    ${Object.keys(CONFIG.routes).map(id=>`<button class="tab ${filter===id?'active':''}" data-f="${id}">${CONFIG.routes[id].label} ${ROUTE_FLAG[id]||''}</button>`).join('')}
   </div>`;
 
   const listHtml = filtered.length ? filtered.map(h=>{
