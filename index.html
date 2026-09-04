@@ -667,9 +667,14 @@ function calcDeal(route, f){
   const downPayment = broker; // by policy, the deposit always equals the broker fee
 
   const total = invoiceRub + customsTotal + broker + agent + delivery;
+  // Для текста "Поделиться" клиенту нужны цена/комиссия в исходной валюте и
+  // эффективный курс — считаем их здесь же, чтобы не дублировать формулу.
+  const nativeTotal = carPrice + extra;
+  const nativeCommission = nativeTotal * bankPct / 100;
+  const effectiveRate = nativeTotal > 0 ? invoiceRubNoCommission / nativeTotal : 0;
   return {
     invoiceRub, customsTotal, broker, agent, delivery, total, downPayment,
-    bankPct, bankCommissionRub,
+    bankPct, bankCommissionRub, nativeTotal, nativeCommission, effectiveRate,
     customsLabel: (routeCfg.dutyMode==='utilOnly' && !f.eaeuFullDuty) ? 'Утилизационный сбор' : 'Таможенные платежи'
   };
 }
@@ -1158,22 +1163,66 @@ function showResult(route, f){
     toast('Сохранено в историю');
     resetAfterDone();
   };
-  document.getElementById('shareBtn').onclick = ()=>{ shareResult(route, f, r, carLines); resetAfterDone(); };
+  document.getElementById('shareBtn').onclick = ()=>{ shareResult(route, f, r); resetAfterDone(); };
 }
 
-function shareResult(route, f, r, carLines){
-  const cfg = CONFIG.routes[route];
-  carLines = carLines || carDetailLines(f, route);
-  const text = [
-    `${f.model || 'Расчёт'} — ${cfg.label}`,
-    ...carLines.map(([k,v])=>`${k}: ${v}`),
-    `Цена ТС с расходами до РФ: ${fmt(r.invoiceRub,'₽')}`,
-    `${r.customsLabel}: ${fmt(r.customsTotal,'₽')}`,
-    `Брокер: ${fmt(r.broker,'₽')}`,
-    `Комиссия: ${fmt(r.agent,'₽')}`,
-    f.deliveryEnabled ? `Доставка: ${fmt(r.delivery,'₽')}` : null,
-    `ИТОГО: ${fmt(r.total,'₽')}`
-  ].filter(Boolean).join('\n');
+// Формат курса: у копеечных курсов (напр. вона) 2 знака после запятой
+// стирают всю величину, поэтому мелким курсам даём больше точности.
+function fmtRate(rate){
+  return (rate>=1 ? rate.toFixed(2) : rate.toFixed(4)).replace('.', ',');
+}
+
+function shareResult(route, f, r){
+  const suf = CUR_SUFFIX[route];
+  // По просьбе владельца: клиенту направление ЕАЭС всегда подписывается
+  // "Китай" в тексте расчёта — по факту это тот же китайский автомобиль,
+  // ЕАЭС/Киргизия — таможенный маршрут для нас, а не страна для клиента.
+  const shareRouteLabel = route==='eaeu' ? 'Китай' : CONFIG.routes[route].label;
+  const dateStr = new Date().toLocaleDateString('ru-RU');
+
+  const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
+  const isElectric = em.dtype === 'electric';
+  let engineLine = null;
+  if(isElectric){
+    engineLine = 'Электричество';
+  } else {
+    const parts = [];
+    if(num(f.volumeCm3)>0) parts.push((num(f.volumeCm3)/1000).toFixed(1).replace('.', ',')+' л');
+    if(num(f.power)>0) parts.push(fmt(num(f.power))+' '+(f.powerUnit==='kvt'?'квт':'лс'));
+    if(parts.length) engineLine = parts.join(' / ');
+  }
+
+  const prodDateLabel = route==='japan' ? 'Дата первой регистрации' : 'Дата производства';
+  const details = [
+    f.carTrim ? ['Комплектация', f.carTrim] : null,
+    (f.prodMonth || f.prodYear) ? [prodDateLabel, [f.prodMonth?String(f.prodMonth).padStart(2,'0'):'', f.prodYear].filter(Boolean).join('.')] : null,
+    f.mileage ? ['Пробег', fmt(num(f.mileage),'км')] : null,
+    engineLine ? ['Двигатель', engineLine] : null,
+    f.drivetrain ? ['Привод', DRIVETRAIN_LABELS[f.drivetrain]||f.drivetrain] : null,
+    f.transmission ? ['Трансмиссия', TRANSMISSION_LABELS[f.transmission]||f.transmission] : null,
+    f.condition ? ['Состояние', f.condition] : null,
+    f.notes ? ['Примечания', f.notes] : null
+  ].filter(Boolean);
+
+  // Комиссию за перевод в валюте сделки просят показывать только для
+  // Китая/ЕАЭС; для Японии/Кореи — как и раньше, только в рублях.
+  const commissionLine = (route==='china' || route==='eaeu')
+    ? `Комиссия за перевод (${r.bankPct}%): ${fmt(r.nativeCommission, suf)}`
+    : `Комиссия за перевод (${r.bankPct}%): ${fmt(r.bankCommissionRub, '₽')}`;
+
+  const lines = [`${shareRouteLabel} (${dateStr})`, '', `🚗 ${f.model || 'Расчёт'}`];
+  if(f.showCarDetails && details.length) lines.push(...details.map(([k,v])=>`${k}: ${v}`));
+  lines.push('');
+  lines.push(`Цена ТС с расходами до РФ: ${fmt(r.invoiceRub,'₽')}`);
+  lines.push(`Цена в валюте: ${fmt(r.nativeTotal, suf)}`);
+  lines.push(commissionLine);
+  lines.push(`Курс на дату расчета: ${fmtRate(r.effectiveRate)} ₽/${suf}`);
+  lines.push(`${r.customsLabel}: ${fmt(r.customsTotal,'₽')}`);
+  lines.push(`Брокер: ${fmt(r.broker,'₽')}`);
+  lines.push(`Комиссия: ${fmt(r.agent,'₽')}`);
+  if(f.deliveryEnabled) lines.push(`Доставка: ${fmt(r.delivery,'₽')}`);
+  lines.push(`ИТОГО: ${fmt(r.total,'₽')}`);
+  const text = lines.join('\n');
 
   if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.switchInlineQuery){
     try{ window.Telegram.WebApp.switchInlineQuery(text); return; }catch(e){}
