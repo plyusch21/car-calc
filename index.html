@@ -1575,6 +1575,11 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     state.view = btn.dataset.view;
     if(state.view==='settings') state.settingsSection = null;
     renderTabs(); renderContent();
+    // Страница скроллится сама (напр. до чека расчёта); при переключении
+    // вкладки снизу нужно возвращаться к началу новой вкладки, а не
+    // оставаться на том же scrollY — иначе на более коротких страницах
+    // (например, история) это выглядит как "перекинуло вниз списка".
+    window.scrollTo(0, 0);
   };
 });
 function toast(msg, ms){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), ms||1800); }
