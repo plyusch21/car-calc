@@ -28,10 +28,23 @@
  * below) is kept as an automatic fallback if TKS errors or times out —
  * cheap insurance, not a sign either is untrusted.
  *
+ * Currency: the car's value is passed in its ORIGINAL currency (carValue +
+ * carCurrency), not pre-converted to RUB. TKS converts it itself using the
+ * same official CBR rate it uses everywhere else in its response (verified:
+ * TKS's own valuta_usd.kurs/valuta_euro.kurs match cbr-xml-daily.ru exactly
+ * for the same date) — that's the legally correct rate for a customs value.
+ * Our own commercial rates (VTB/ATB/Naver, with bank-commission markup) are
+ * for client invoicing only and must never be used for the customs value —
+ * using them was the root cause of a real duty/НДС mismatch a user found
+ * against a manual tks.ru check. The alta.ru fallback still needs a
+ * pre-converted RUB price (its form has no currency-conversion of its own),
+ * so cbrRateToRub() fetches the same CBR rate for that one case.
+ *
  * Input (POST JSON body):
  *   {
  *     ageCode: 'age0'|'age3'|'age5',      // <3 / 3-5 / >5 years (Решение №107 buckets)
- *     priceRub: number,                    // customs value already converted to RUB
+ *     carValue: number,                    // customs value in its original currency
+ *     carCurrency: 'RUB'|'USD'|'EUR'|'CNY'|'JPY'|'KRW',
  *     volumeCm3: number,
  *     dtype: 'ben'|'dis'|'electric',
  *     hybrid1: '1'|'2'|'3',                 // 1 = not hybrid, 2 = electro-hybrid, 3 = PHEV
@@ -50,9 +63,25 @@
 
 const TKS_KEY = process.env.TKS_API_KEY; // Vercel env var — see Settings → Environment Variables, never hardcode this here
 const ALTA_URL = 'https://www.alta.ru/auto-vat/';
+const CBR_URL = 'https://www.cbr-xml-daily.ru/daily_json.js';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
+// ISO 4217 numeric codes — TKS's "currency" param takes these directly.
+const ISO_NUMERIC = { RUB: '643', USD: '840', EUR: '978', CNY: '156', JPY: '392', KRW: '410' };
+
+// Официальный курс ЦБ РФ (тот же источник, которым пользуется сам tks.ru) —
+// нужен только для priceRub, который передаётся в alta.ru-резерв.
+async function cbrRateToRub(currency) {
+  if (!currency || currency === 'RUB') return 1;
+  const r = await fetch(CBR_URL);
+  if (!r.ok) throw new Error('cbr-xml-daily.ru http ' + r.status);
+  const data = await r.json();
+  const v = data.Valute && data.Valute[currency];
+  if (!v || v.Value == null) throw new Error('cbr-xml-daily.ru: нет курса для ' + currency);
+  return num(v.Value) / num(v.Nominal || 1);
+}
 
 // ---------------------------------------------------------------------
 // TKS.RU — api1.tks.ru/auto.json/json/<key>/  (primary)
@@ -71,8 +100,8 @@ async function fetchFromTks(p) {
   const isHybrid = p.hybrid1 && p.hybrid1 !== '1';
 
   const qs = new URLSearchParams({
-    cost: String(Math.max(0, Math.round(p.priceRub || 0))),
-    currency: '643', // RUB — мы всегда передаём уже сконвертированное значение
+    cost: String(Math.max(0, Math.round(num(p.carValue)))),
+    currency: ISO_NUMERIC[p.carCurrency] || '643', // TKS сам конвертирует по курсу ЦБ на сегодня
     volume: String(isElectric ? 0 : Math.max(0, Math.round(p.volumeCm3 || 0))),
     power: String(Math.max(0, Math.round(num(p.power)))),
     power_edizm: p.powerUnit === 'kvt' ? 'kvt' : 'ls',
@@ -178,9 +207,11 @@ function parseAltaResult(html) {
 
 async function fetchFromAlta(p) {
   const isElectric = p.dtype === 'electric';
+  const rate = await cbrRateToRub(p.carCurrency);
+  const priceRub = num(p.carValue) * rate;
   const params = new URLSearchParams({
     age: p.ageCode,
-    price: String(Math.max(0, Math.round(p.priceRub || 0))),
+    price: String(Math.max(0, Math.round(priceRub))),
     currency: '643',
     dtype: p.dtype,
     obyem: String(isElectric ? 0 : Math.max(0, Math.round(p.volumeCm3 || 0))),
@@ -223,9 +254,9 @@ module.exports = async (req, res) => {
     try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }
   }
 
-  const { ageCode, dtype } = body;
-  if (!ageCode || !dtype) {
-    res.status(200).send(JSON.stringify({ error: 'не переданы обязательные параметры (возраст/тип двигателя)' }));
+  const { ageCode, dtype, carValue, carCurrency } = body;
+  if (!ageCode || !dtype || carValue == null || !carCurrency) {
+    res.status(200).send(JSON.stringify({ error: 'не переданы обязательные параметры (возраст/тип двигателя/стоимость/валюта)' }));
     return;
   }
 

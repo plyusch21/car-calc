@@ -503,15 +503,20 @@ async function fetchAutoRates(){
 const CUSTOMS_AGE_CODE = { lt3:'age0', t3to5:'age3', gt5:'age5' };
 
 async function fetchCustomsQuote(route, f){
-  // Таможенная стоимость считается по фактической цене без нашей комиссии банка —
-  // комиссия это наша маржа, а не часть стоимости авто, и не должна завышать пошлину/НДС.
-  const priceRub = convertToRub(route, num(f.carPrice), num(f.extraCosts), 0);
+  // Таможенную стоимость сервер конвертирует сам по официальному курсу ЦБ РФ
+  // (то же самое использует и сам tks.ru) — поэтому здесь передаём цену в
+  // исходной валюте сделки, БЕЗ нашей комиссии банка (это наша маржа, не
+  // часть стоимости авто для таможни) и без наших собственных курсов ВТБ/АТБ.
+  const routeCfg = CONFIG.routes[route];
+  const carValue = num(f.carPrice) + num(f.extraCosts);
+  const carCurrency = routeCfg.currency === 'USDT' ? 'USD' : routeCfg.currency;
   const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
   const isElectric = em.dtype === 'electric';
 
   const payload = {
     ageCode: CUSTOMS_AGE_CODE[f.age],
-    priceRub,
+    carValue,
+    carCurrency,
     volumeCm3: isElectric ? 0 : num(f.volumeCm3),
     dtype: em.dtype,
     hybrid1: !em.hybrid ? '1' : (f.phev ? '3' : '2'),
@@ -846,7 +851,9 @@ function renderCalc(c){
       const dutyBreakdown = (!isEaeu && res.dutyItems && res.dutyItems.length)
         ? res.dutyItems.map(x=>x.label.replace(/:$/,'')+' '+fmt(x.amount)).join(' + ')+' + Утильсбор '+fmt(res.util||0)
         : 'Утильсбор '+fmt(res.util||0);
-      const sourceLabel = res.source==='alta' ? 'alta.ru (резерв, TKS был недоступен)' : 'официального API TKS.RU';
+      const sourceLabel = res.source==='alta'
+        ? 'alta.ru (резерв, TKS был недоступен'+(res.tksError ? ': '+res.tksError : '')+')'
+        : 'официального API TKS.RU';
       statusText = 'Получено из '+sourceLabel+': '+dutyBreakdown+' · '+ new Date().toLocaleTimeString('ru-RU');
     }catch(e){
       statusText = 'Не удалось получить расчёт ('+e.message+') — используется значение из поля «вручную» (если включено) или 0.';
