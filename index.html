@@ -1220,6 +1220,10 @@ async function shareResult(route, f, r, channel){
   // поэтому для Telegram, как и для MAX, просто не добавляем звёздочки.
   const mark = channel==='whatsapp' ? '*' : '';
   const b = s => mark+s+mark;
+  // Без жирного шрифта в Telegram/MAX три строки после "Цена ТС с
+  // расходами до РФ" визуально теряются в сплошном тексте — тире добавляет
+  // разбивку взгляду. В WhatsApp она не нужна, там их и так выделяет форма.
+  const dash = channel==='whatsapp' ? '' : '- ';
   // Значения из "Доп. данных" (ручной ввод или разбор ИИ) могут случайно
   // содержать "*" — непарный символ сломает жирный шрифт до конца
   // сообщения, поэтому вычищаем его из произвольного текста.
@@ -1264,9 +1268,9 @@ async function shareResult(route, f, r, channel){
   if(f.showCarDetails && details.length) lines.push(...details.map(([k,v])=>`${b(k+':')} ${v}`));
   lines.push('');
   lines.push(`${b('Цена ТС с расходами до РФ:')} ${fmt(r.invoiceRub,'₽')}`);
-  lines.push(`Цена в валюте: ${fmt(r.nativeTotal, suf)}`);
-  lines.push(commissionLine);
-  lines.push(`Курс на дату расчета: ${fmtRate(r.effectiveRate)} ₽/${suf}`);
+  lines.push(`${dash}Цена в валюте: ${fmt(r.nativeTotal, suf)}`);
+  lines.push(`${dash}${commissionLine}`);
+  lines.push(`${dash}Курс на дату расчета: ${fmtRate(r.effectiveRate)} ₽/${suf}`);
   lines.push(`${b(r.customsLabel+':')} ${fmt(r.customsTotal,'₽')}`);
   lines.push(`${b('Брокер:')} ${fmt(r.broker,'₽')}`);
   lines.push(`${b('Комиссия:')} ${fmt(r.agent,'₽')}`);
