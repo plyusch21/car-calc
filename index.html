@@ -372,9 +372,28 @@ function mergeRatesState(defaultRates, storedRates){
   }
   return out;
 }
+// Те же грабли, что чинили для курсов: label/currency/dutyMode/defaultExtraCosts
+// маршрутов — это константы кода, их нельзя редактировать через приложение, и
+// они не должны браться из старого синхронизированного стейта (иначе правка
+// названия вкладки в коде навсегда перекрывается тем, что уже сохранено на
+// устройстве/сервере пользователя). Реально редактируемые через Настройки поля
+// (брокер/комиссия/% банка) — наоборот, обязаны сохраняться между сессиями.
+function mergeRoutesState(defaultRoutes, storedRoutes){
+  const out = {};
+  for(const id in defaultRoutes){
+    const def = defaultRoutes[id];
+    out[id] = {...def};
+    const st = (storedRoutes && storedRoutes[id]) || {};
+    ['brokerFee','agentFee','bankCommissionPct'].forEach(k=>{
+      if(st[k]!==undefined) out[id][k] = st[k];
+    });
+  }
+  return out;
+}
 function applyStoredConfig(stored){
   const merged = deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), stored || {});
   merged.rates = mergeRatesState(DEFAULT_CONFIG.rates, stored && stored.rates);
+  merged.routes = mergeRoutesState(DEFAULT_CONFIG.routes, stored && stored.routes);
   return merged;
 }
 
