@@ -1442,8 +1442,24 @@ async function renderKpImageBlob(route, f, r){
   try{
     const img = holder.querySelector('.kp-logo');
     if(img && !img.complete){ await new Promise(res=>{ img.onload = res; img.onerror = res; }); }
-    const canvas = await html2canvas(holder.firstElementChild, { scale:6, backgroundColor:'#f7f9fc', letterRendering:true });
+    const card = holder.firstElementChild;
+    const w = card.scrollWidth, h = card.scrollHeight;
+    // Мобильные WebKit-браузеры (в т.ч. встроенный в Telegram на iOS) режут
+    // canvas примерно на площади свыше ~16 млн пикселей и на стороне свыше
+    // ~4096px. Фиксированный большой scale (было 6) на длинных чеках (с
+    // параметрами авто) на реальном телефоне почти наверняка превышал этот
+    // предел — рендер тихо проваливался, картинка не прикреплялась вовсе
+    // (это и стояло за тем, что "фото не отправляется"). Теперь scale
+    // подбирается под фактический размер карточки, чтобы гарантированно
+    // остаться в безопасных пределах на любом устройстве.
+    const MAX_SIDE = 4096, MAX_AREA = 16777216;
+    let scale = Math.min(6, MAX_SIDE/w, MAX_SIDE/h, Math.sqrt(MAX_AREA/(w*h)));
+    scale = Math.max(scale, 1);
+    const canvas = await html2canvas(card, { scale, backgroundColor:'#f7f9fc', letterRendering:true });
     return await new Promise(res=> canvas.toBlob(res, 'image/png'));
+  } catch(e){
+    console.error('renderKpImageBlob failed', e);
+    return null;
   } finally {
     document.body.removeChild(holder);
   }
