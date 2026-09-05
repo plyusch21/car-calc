@@ -788,8 +788,8 @@ function openRatesSheet(){
           <div>
             <div style="font-weight:600; font-size:14.5px;">${r.label}</div>
             <div style="font-size:11.5px; color:${stale?'var(--danger)':'var(--muted)'}; margin-top:2px;">
-              ${stale ? 'Не удалось обновить — используется последнее значение' : (r.manualOverride ? 'Вручную' : (r.autoAvailable ? 'Автообновление' : 'Только вручную'))}
-              ${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}
+              ${stale ? 'Не удалось обновить — используется последнее значение' : (r.manualOverride ? 'Указано вручную' : (r.autoAvailable ? 'Автообновление' : 'Только вручную'))}
+              ${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : (r.autoAvailable && !r.manualOverride ? ' · ещё не обновлялось' : '')}
             </div>
           </div>
           <div class="mono" style="font-size:19px; font-weight:600; color:${stale?'var(--danger)':'var(--good)'};">${id==='KRW_USDT' ? groupInt(Math.round(r.value).toString()) : r.value.toFixed(4)}</div>
@@ -817,7 +817,7 @@ function ratesPreviewCardHtml(){
       const r = R[id];
       const stale = r.fetchError;
       return `<div class="rline" style="padding:6px 0;">
-        <div class="k">${r.label}<span class="hint">${stale ? 'ошибка обновления' : (r.manualOverride ? 'вручную' : (r.autoAvailable ? 'авто' : 'только вручную'))}${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}</span></div>
+        <div class="k">${r.label}<span class="hint">${stale ? 'Ошибка обновления — используется последнее значение' : (r.manualOverride ? 'Указано вручную' : (r.autoAvailable ? 'Автообновление' : 'Только вручную'))}${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : (r.autoAvailable && !r.manualOverride ? ' · ещё не обновлялось' : '')}</span></div>
         <div class="v mono" style="color:${stale?'var(--danger)':'var(--good)'};">${id==='KRW_USDT' ? groupInt(Math.round(r.value).toString()) : r.value.toFixed(4)}</div>
       </div>`;
     }).join('')}
