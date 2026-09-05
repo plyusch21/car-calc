@@ -165,7 +165,10 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .emptystate{ text-align:center; padding:50px 20px; color:var(--muted); }
 .emptystate .big{font-family:'Fraunces',serif; font-size:16px; color:var(--text); margin-bottom:6px;}
 
-.histcard{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+.histcard-wrap{ position:relative; border-radius:12px; overflow:hidden; margin-bottom:10px; }
+.histcard-wrap .histcard{ margin-bottom:0; }
+.histcard-del{ position:absolute; top:0; right:0; bottom:0; width:88px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; cursor:pointer; }
+.histcard{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; touch-action:pan-y; will-change:transform; }
 .histcard .l .m{font-weight:600; font-size:14px;}
 .histcard .l .d{color:var(--muted); font-size:11.5px; margin-top:2px;}
 .histcard .r{text-align:right;}
@@ -1511,20 +1514,122 @@ async function shareResult(route, f, r){
   navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена'+(shareData.files?' (фото не прикреплено)':'')));
 }
 
+// Поля описания самого авто, которые переносятся при "Другое направление" —
+// сознательно НЕ весь f целиком: комиссии, таможня и доставка — свойства
+// маршрута/сделки, а не машины, для нового направления их нужно взять
+// заново из дефолтов, а не притащить старые (например, брокер/агент по
+// Японии не должны стать значениями для Китая).
+const HIST_CARRY_FIELDS = ['model','carTrim','engineType','volumeCm3','power','powerUnit','drivetrain','transmission','prodMonth','prodYear','mileage','condition','notes','showCarDetails'];
+
+let historySwipeOpen = null;
+
+function bindHistorySwipe(card){
+  const REVEAL = 88;
+  card._histOpen = false;
+  card._histMoved = false;
+  let tracking = false, startX = 0, startY = 0, startTranslate = 0, axis = null;
+  const setX = (px)=>{ card.style.transform = `translateX(${px}px)`; };
+  card.addEventListener('pointerdown', (e)=>{
+    if(e.pointerType==='mouse' && e.button!==0) return;
+    tracking = true; axis = null; card._histMoved = false;
+    startX = e.clientX; startY = e.clientY;
+    startTranslate = card._histOpen ? -REVEAL : 0;
+    card.style.transition = 'none';
+  });
+  card.addEventListener('pointermove', (e)=>{
+    if(!tracking) return;
+    const dx = e.clientX-startX, dy = e.clientY-startY;
+    if(axis===null){
+      if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+      axis = Math.abs(dx)>Math.abs(dy) ? 'x' : 'y';
+      if(axis==='y'){ tracking=false; return; }
+    }
+    if(axis!=='x') return;
+    card._histMoved = true;
+    setX(Math.min(0, Math.max(-REVEAL, startTranslate+dx)));
+  });
+  const finish = ()=>{
+    if(!tracking) return;
+    tracking = false;
+    if(axis!=='x') return;
+    card.style.transition = 'transform .2s ease';
+    const m = /translateX\((-?\d+(?:\.\d+)?)/.exec(card.style.transform);
+    const cur = m ? parseFloat(m[1]) : 0;
+    const open = cur < -REVEAL/2;
+    setX(open ? -REVEAL : 0);
+    card._histOpen = open;
+    if(open){
+      if(historySwipeOpen && historySwipeOpen!==card){ historySwipeOpen.style.transition='transform .2s ease'; historySwipeOpen.style.transform='translateX(0px)'; historySwipeOpen._histOpen=false; }
+      historySwipeOpen = card;
+    } else if(historySwipeOpen===card) historySwipeOpen = null;
+  };
+  card.addEventListener('pointerup', finish);
+  card.addEventListener('pointercancel', finish);
+}
+
+function openClearHistoryConfirm(filter, c){
+  const label = filter==='all' ? 'всю историю' : `историю «${CONFIG.routes[filter].label}»`;
+  openSheet(`
+    <h3>Точно очистить ${label}?</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;line-height:1.5;">Отменить это будет нельзя.</p>
+    <button class="btn" id="clearHistConfirmBtn" style="background:var(--danger);margin-bottom:8px;">Да, очистить</button>
+    <button class="btn secondary" id="clearHistCancelBtn">Нет, отмена</button>
+  `);
+  document.getElementById('clearHistConfirmBtn').onclick = ()=>{
+    closeSheet();
+    if(filter==='all'){ state.history=[]; } else { state.history = state.history.filter(x=>x.route!==filter); }
+    saveHistory();
+    renderHistory(c);
+    toast('Очищено');
+  };
+  document.getElementById('clearHistCancelBtn').onclick = closeSheet;
+}
+
+function openOtherRoutePicker(h){
+  const otherRoutes = Object.keys(CONFIG.routes).filter(id=>id!==h.route);
+  openSheet(`
+    <h3>Пересчитать в другом направлении</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.5;">${escapeHtml(h.model||'Авто')} — цена авто и расходы в стране очистятся, остальные данные об авто сохранятся.</p>
+    ${otherRoutes.map(id=>`<button class="btn secondary" data-pick-route="${id}" style="margin-bottom:8px;">${CONFIG.routes[id].label} ${ROUTE_FLAG[id]||''}</button>`).join('')}
+    <button class="btn secondary" id="otherRouteCancel">Отмена</button>
+  `);
+  document.getElementById('otherRouteCancel').onclick = closeSheet;
+  document.querySelectorAll('[data-pick-route]').forEach(pb=> pb.onclick = ()=>{
+    const newRoute = pb.dataset.pickRoute;
+    closeSheet();
+    const carried = {};
+    HIST_CARRY_FIELDS.forEach(k=>{ if(h.form[k]!==undefined) carried[k]=h.form[k]; });
+    state.route = newRoute;
+    state.form = {...defaultForm(newRoute), ...carried};
+    state.formCache[newRoute] = state.form;
+    state.view = 'calc';
+    document.querySelectorAll('.navbtn').forEach(nb=>nb.classList.toggle('active', nb.dataset.view==='calc'));
+    renderTabs(); renderContent();
+    toast('Перенесено в «'+CONFIG.routes[newRoute].label+'», укажите цену');
+  });
+}
+
 function renderHistory(c){
   const filter = state.historyFilter || 'all';
   const filtered = filter==='all' ? state.history : state.history.filter(h=>h.route===filter);
+  historySwipeOpen = null;
 
   const filterHtml = `<div class="tabs" id="histFilterSeg" style="padding:0 0 14px; margin:0;">
     <button class="tab ${filter==='all'?'active':''}" data-f="all">Общие</button>
     ${Object.keys(CONFIG.routes).map(id=>`<button class="tab ${filter===id?'active':''}" data-f="${id}">${CONFIG.routes[id].label} ${ROUTE_FLAG[id]||''}</button>`).join('')}
   </div>`;
 
+  // Свайп влево открывает "Удалить" за карточкой (как избранное на iPhone) —
+  // отдельная всегда видимая кнопка удаления больше не нужна, на её месте
+  // теперь "Другое направление".
   const listHtml = filtered.length ? filtered.map(h=>{
     const d = new Date(h.date);
-    return `<div class="histcard" data-id="${h.id}">
-      <div class="l"><div class="m">${h.model}</div><div class="d">${CONFIG.routes[h.route].label} · ${d.toLocaleDateString('ru-RU')}</div></div>
-      <div class="r"><div class="t">${fmt(h.total,'₽')}</div><button class="btn secondary small" data-del="${h.id}" style="margin-top:5px;padding:4px 9px;">Удалить</button></div>
+    return `<div class="histcard-wrap">
+      <div class="histcard-del" data-del="${h.id}">Удалить</div>
+      <div class="histcard" data-id="${h.id}">
+        <div class="l"><div class="m">${h.model}</div><div class="d">${CONFIG.routes[h.route].label} · ${d.toLocaleDateString('ru-RU')}</div></div>
+        <div class="r"><div class="t">${fmt(h.total,'₽')}</div><button class="btn secondary small" data-otherroute="${h.id}" style="margin-top:5px;padding:4px 9px;">Другое направление</button></div>
+      </div>
     </div>`;
   }).join('') + `<button class="btn secondary" id="clearHist" style="margin-top:4px;">${filter==='all'?'Очистить всю историю':'Очистить историю «'+CONFIG.routes[filter].label+'»'}</button>`
     : `<div class="emptystate"><div class="big">Пока пусто</div>Сохранённые расчёты появятся здесь</div>`;
@@ -1534,8 +1639,11 @@ function renderHistory(c){
   c.querySelectorAll('#histFilterSeg .tab').forEach(b=> b.onclick = ()=>{ state.historyFilter = b.dataset.f; renderHistory(c); });
 
   c.querySelectorAll('.histcard').forEach(el=>{
+    bindHistorySwipe(el);
     el.onclick = (e)=>{
-      if(e.target.closest('[data-del]')) return;
+      if(e.target.closest('[data-otherroute]')) return;
+      if(el._histMoved){ el._histMoved=false; return; }
+      if(el._histOpen){ el.style.transition='transform .2s ease'; el.style.transform='translateX(0px)'; el._histOpen=false; historySwipeOpen=null; return; }
       const h = state.history.find(x=>x.id==el.dataset.id);
       state.route = h.route; state.form = {...defaultForm(h.route), ...h.form};
       state.formCache[h.route] = state.form;
@@ -1552,11 +1660,13 @@ function renderHistory(c){
     renderHistory(c);
     toast('Удалено');
   });
+  c.querySelectorAll('[data-otherroute]').forEach(b=> b.onclick = (e)=>{
+    e.stopPropagation();
+    const h = state.history.find(x=>x.id==b.dataset.otherroute);
+    if(h) openOtherRoutePicker(h);
+  });
   const cl = document.getElementById('clearHist');
-  if(cl) cl.onclick = ()=>{
-    if(filter==='all'){ state.history=[]; } else { state.history = state.history.filter(x=>x.route!==filter); }
-    saveHistory(); renderHistory(c);
-  };
+  if(cl) cl.onclick = ()=> openClearHistoryConfirm(filter, c);
 }
 
 /* ---------------------------------------------------------------------
