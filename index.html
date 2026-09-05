@@ -260,10 +260,6 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
       <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></svg>
       История
     </button>
-    <button class="navbtn" data-view="rates">
-      <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-      Курсы
-    </button>
     <button class="navbtn" data-view="settings">
       <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15 1.65 1.65 0 0 0 3 14H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.33.6.55.85"/></svg>
       Настройки
@@ -774,15 +770,16 @@ function renderDateLine(){
   document.getElementById('dateLine').textContent = d.toLocaleDateString('ru-RU',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
 }
 
-function refreshRatesUI(){ if(state.view==='rates') renderContent(); }
+// Курсы больше не отдельная вкладка нижнего меню — карточка-превью живёт
+// в самом верху "Настроек", а полный список (с переходом в редактор
+// конкретного курса) открывается тем же нижним шитом, что и раньше.
+function refreshRatesUI(){ if(state.view==='settings' && !state.settingsSection) renderContent(); }
 
-function renderRatesView(c){
+function openRatesSheet(){
   const R = CONFIG.rates;
-  c.innerHTML = `
-    <div class="card">
-      <h2>Курсы валют</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0;">Автообновляемые курсы подтягиваются через сервер при каждом открытии приложения. Ручная правка всегда в приоритете — нажмите на курс, чтобы поправить.</p>
-    </div>
+  openSheet(`
+    <h3>Курсы валют</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Автообновляемые курсы подтягиваются через сервер при каждом открытии приложения. Ручная правка всегда в приоритете — нажмите на курс, чтобы поправить.</p>
     ${Object.keys(R).map(id=>{
       const r = R[id];
       const stale = r.fetchError;
@@ -800,9 +797,31 @@ function renderRatesView(c){
       </div>`;
     }).join('')}
     <button class="btn secondary" id="refreshRatesBtn2">Обновить сейчас</button>
-  `;
+  `);
   document.getElementById('refreshRatesBtn2').onclick = async ()=>{ toast('Обновляю…'); await fetchAutoRates(); toast('Готово'); };
-  c.querySelectorAll('[data-rate]').forEach(el=> el.onclick = ()=> openRateEditor(el.dataset.rate));
+  document.querySelectorAll('#sheetBody [data-rate]').forEach(el=> el.onclick = ()=> openRateEditor(el.dataset.rate));
+}
+
+// Компактная карточка-превью для верха "Настроек": видно всё сразу
+// (курс, авто/вручную, дата обновления) без захода в отдельный экран;
+// нажатие на карточку открывает полный список (openRatesSheet).
+function ratesPreviewCardHtml(){
+  const R = CONFIG.rates;
+  return `<div class="card" id="ratesPreviewCard" style="cursor:pointer;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+      <h2 style="margin:0;">Курсы валют</h2>
+      <div style="font-size:19px; color:var(--muted);">›</div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">Автообновление 2 раза в сутки при открытии приложения</p>
+    ${Object.keys(R).map(id=>{
+      const r = R[id];
+      const stale = r.fetchError;
+      return `<div class="rline" style="padding:6px 0;">
+        <div class="k">${r.label}<span class="hint">${stale ? 'ошибка обновления' : (r.manualOverride ? 'вручную' : (r.autoAvailable ? 'авто' : 'только вручную'))}${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}</span></div>
+        <div class="v mono" style="color:${stale?'var(--danger)':'var(--good)'};">${id==='KRW_USDT' ? groupInt(Math.round(r.value).toString()) : r.value.toFixed(4)}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 function renderTabs(){
@@ -828,7 +847,6 @@ function renderTabs(){
 function renderContent(){
   const c = document.getElementById('content');
   if(state.view==='calc') return renderCalc(c);
-  if(state.view==='rates') return renderRatesView(c);
   if(state.view==='history') return renderHistory(c);
   if(state.view==='settings') return renderSettingsView(c);
 }
@@ -1688,7 +1706,6 @@ function renderHistory(c){
 --------------------------------------------------------------------- */
 const SETTINGS_SECTIONS = [
   {id:'admin', label:'Доступ к приложению', ownerOnly:true},
-  {id:'rates', label:'Курсы валют'},
   {id:'routes', label:'Маршруты — комиссии по умолчанию'},
   {id:'customs', label:'Расчёт TKS'},
   {id:'delivery', label:'Таблица доставки по РФ'}
@@ -1699,10 +1716,12 @@ function renderSettingsView(c){
 
   if(!section){
     const items = SETTINGS_SECTIONS.filter(s=> !s.ownerOnly || (ACCESS && ACCESS.isOwner));
-    c.innerHTML = `<div class="settings-menu">` +
+    c.innerHTML = ratesPreviewCardHtml() +
+      `<div class="settings-menu">` +
       items.map(s=>`<div class="settings-row" data-s="${s.id}"><div class="lbl">${s.label}</div><div class="arrow">›</div></div>`).join('') +
       `</div>
       <button class="btn secondary" id="resetCfgBtn">Сбросить настройки к значениям по умолчанию</button>`;
+    document.getElementById('ratesPreviewCard').onclick = openRatesSheet;
     c.querySelectorAll('.settings-row').forEach(el=> el.onclick = ()=>{ state.settingsSection = el.dataset.s; renderSettingsView(c); });
     document.getElementById('resetCfgBtn').onclick = openResetConfirm;
     return;
@@ -1713,12 +1732,6 @@ function renderSettingsView(c){
 
   if(section==='admin' && ACCESS && ACCESS.isOwner){
     body = `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div style="font-size:12px;color:var(--muted);">Загрузка…</div></div>`;
-  } else if(section==='rates'){
-    body = `<div class="card">
-      <h2>Курсы валют</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Источники и ручная корректировка — на отдельной вкладке «Курсы» в нижнем меню.</p>
-      <button class="btn secondary" id="refreshRatesBtn">Обновить автоматические курсы</button>
-    </div>`;
   } else if(section==='routes'){
     body = `<div class="card">
       <h2>Маршруты — комиссии по умолчанию</h2>
@@ -1743,9 +1756,6 @@ function renderSettingsView(c){
   document.getElementById('settingsBack').onclick = ()=>{ state.settingsSection = null; renderSettingsView(c); };
 
   if(section==='admin' && ACCESS && ACCESS.isOwner) loadAdminCard();
-  if(section==='rates'){
-    document.getElementById('refreshRatesBtn').onclick = async ()=>{ toast('Обновляю…'); await fetchAutoRates(); toast('Готово'); };
-  }
   if(section==='routes') bindRouteSettings();
   if(section==='delivery'){
     bindDeliveryTable();
