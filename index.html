@@ -1151,7 +1151,12 @@ function renderCalc(c){
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
   const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; renderCalc(c); };
   const delT = document.getElementById('delOverrideToggle'); if(delT) delT.onclick = ()=>{ f.deliveryOverride=!f.deliveryOverride; renderCalc(c); };
-  const delEnT = document.getElementById('deliveryEnabledToggle'); if(delEnT) delEnT.onclick = ()=>{ f.deliveryEnabled=!f.deliveryEnabled; renderCalc(c); };
+  // Вложенный тумблер "вручную" и его значение раньше переживали выключение
+  // родительского "Учитывать доставку" — секция просто скрывалась, а флаг
+  // оставался true, и при повторном включении доставка неожиданно снова
+  // была "вручную". Каждое переключение родителя теперь сбрасывает вложенный
+  // тумблер и его значение — включать "вручную" можно только заново самому.
+  const delEnT = document.getElementById('deliveryEnabledToggle'); if(delEnT) delEnT.onclick = ()=>{ f.deliveryEnabled=!f.deliveryEnabled; f.deliveryOverride=false; f.deliveryManual=''; renderCalc(c); };
   const customsT = document.getElementById('customsOverrideToggle'); if(customsT) customsT.onclick = ()=>{ f.customsOverride=!f.customsOverride; renderCalc(c); };
 
   document.getElementById('calcBtn').onclick = async ()=>{
@@ -1396,7 +1401,7 @@ async function renderKpImageBlob(route, f, r){
   try{
     const img = holder.querySelector('.kp-logo');
     if(img && !img.complete){ await new Promise(res=>{ img.onload = res; img.onerror = res; }); }
-    const canvas = await html2canvas(holder.firstElementChild, { scale:4, backgroundColor:'#f7f9fc' });
+    const canvas = await html2canvas(holder.firstElementChild, { scale:6, backgroundColor:'#f7f9fc', letterRendering:true });
     return await new Promise(res=> canvas.toBlob(res, 'image/png'));
   } finally {
     document.body.removeChild(holder);
