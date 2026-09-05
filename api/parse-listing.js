@@ -138,6 +138,15 @@ function httpsRequestViaRussianCA(url, method, headers, bodyString) {
 }
 function httpsPostViaRussianCA(url, headers, bodyString) { return httpsRequestViaRussianCA(url, 'POST', headers, bodyString); }
 
+// Лимит запросов на стороне самого GigaChat — не наша ошибка и не то, что
+// чинится повтором прямо сейчас (обычно снимается за десятки секунд), так
+// что для него отдельное понятное сообщение вместо голого "http 429".
+function throwIfRateLimited(status) {
+  if (status === 429) {
+    throw new Error('GigaChat временно ограничил число запросов (слишком много подряд) — подождите примерно минуту и попробуйте снова');
+  }
+}
+
 async function getAccessToken() {
   const { status, json } = await httpsPostViaRussianCA(OAUTH_URL, {
     'Content-Type': 'application/x-www-form-urlencoded',
@@ -145,6 +154,7 @@ async function getAccessToken() {
     'RqUID': crypto.randomUUID(),
     'Authorization': 'Basic ' + GIGACHAT_AUTH_KEY
   }, 'scope=GIGACHAT_API_PERS');
+  throwIfRateLimited(status);
   if (status !== 200 || !json || !json.access_token) {
     throw new Error('GigaChat OAuth: не удалось получить токен (http ' + status + (json && json.message ? ': ' + json.message : '') + ')');
   }
@@ -261,6 +271,7 @@ async function uploadFile(accessToken, base64Data, mimeType) {
     'Accept': 'application/json',
     'Authorization': 'Bearer ' + accessToken
   }, body);
+  throwIfRateLimited(status);
   if (status !== 200 || !json || !json.id) {
     throw new Error('GigaChat /files: не удалось загрузить изображение (http ' + status + (json && json.message ? ': ' + json.message : '') + ')');
   }
@@ -282,6 +293,7 @@ async function callGigaChatVisionOnce(accessToken, fileId) {
     'Accept': 'application/json',
     'Authorization': 'Bearer ' + accessToken
   }, reqBody);
+  throwIfRateLimited(status);
   if (status !== 200) {
     throw new Error('GigaChat (фото) http ' + status + (json && json.message ? ': ' + json.message : ''));
   }
@@ -340,6 +352,7 @@ async function callGigaChat(accessToken, text) {
     'Accept': 'application/json',
     'Authorization': 'Bearer ' + accessToken
   }, reqBody);
+  throwIfRateLimited(status);
   if (status !== 200) {
     throw new Error('GigaChat http ' + status + (json && json.message ? ': ' + json.message : ''));
   }
