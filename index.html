@@ -1533,10 +1533,13 @@ async function shareResult(route, f, r, kpFilePromise, channel){
   // вместе для WhatsApp: шлём одно фото, текст просто копируем в буфer —
   // его останется вставить в WhatsApp как подпись перед отправкой.
   if(channel==='whatsapp'){
+    // Никакого текста в самом share() — даже "title" WhatsApp подставляет
+    // в поле сообщения как обычный текст, а он вместе с файлом это как раз
+    // и есть та самая комбинация "файл+текст", которую WhatsApp не берёт.
+    // Поэтому здесь совсем без полей текста/заголовка — просто файл.
     if(navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
-    toast('Текст скопирован — вставьте его как подпись в WhatsApp', 3500);
-    if(file && navigator.share){ navigator.share({files:[file], title}).catch(()=>{}); }
-    else if(navigator.share){ navigator.share({text, title}).catch(()=>{}); }
+    if(file && navigator.share){ navigator.share({files:[file]}).catch(()=>{}); }
+    else if(navigator.share){ navigator.share({text}).catch(()=>{}); }
     return;
   }
 
