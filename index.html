@@ -98,11 +98,9 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
 .btn.small{padding:9px; font-size:12.5px;}
 .row3 .btn{ padding:11px 4px; font-size:12.5px; }
-.btn.share-merged{ display:flex; padding:0; overflow:hidden; }
-.share-merged span{ flex:1; padding:13px 4px; font-size:13.5px; font-weight:600; color:#fff; }
-.share-merged .seg-wa{ background:#25D366; }
-.share-merged .seg-tg{ background:#2AABEE; }
-.share-merged .seg-max{ background:#9B7FE0; }
+.btn-wa{ background:#25D366; color:#fff; }
+.btn-tg{ background:#2AABEE; color:#fff; }
+.btn-max{ background:#9B7FE0; color:#fff; }
 .linkbtn{
   display:flex; align-items:center; justify-content:space-between; gap:8px;
   background:var(--teal-soft); border:1px solid var(--teal); color:var(--teal);
@@ -1255,9 +1253,11 @@ function showResult(route, f, opts){
     <button class="btn secondary" id="saveBtn" style="width:100%;">Сохранить в историю</button>
     <div class="field" style="margin:14px 0;">
       <label style="text-align:center;margin-bottom:14px;">Отправить расчёт</label>
-      <button class="btn share-merged" id="shareBtn">
-        <span class="seg-wa">WhatsApp</span><span class="seg-tg">Telegram</span><span class="seg-max">MAX</span>
-      </button>
+      <div class="row3">
+        <button class="btn btn-wa" id="shareWhatsappBtn">WhatsApp</button>
+        <button class="btn btn-tg" id="shareTelegramBtn">Telegram</button>
+        <button class="btn btn-max" id="shareMaxBtn">MAX</button>
+      </div>
     </div>
   `;
   // При обычном "Рассчитать" прокручиваем к чеку — это и есть результат,
@@ -1293,7 +1293,9 @@ function showResult(route, f, opts){
     toast('Сохранено в историю');
     resetAfterDone();
   };
-  document.getElementById('shareBtn').onclick = async ()=>{ await shareResult(route, f, r, kpFilePromise); resetAfterDone(); };
+  document.getElementById('shareWhatsappBtn').onclick = async ()=>{ await shareResult(route, f, r, kpFilePromise, 'whatsapp'); resetAfterDone(); };
+  document.getElementById('shareTelegramBtn').onclick = async ()=>{ await shareResult(route, f, r, kpFilePromise, 'telegram'); resetAfterDone(); };
+  document.getElementById('shareMaxBtn').onclick = async ()=>{ await shareResult(route, f, r, kpFilePromise, 'max'); resetAfterDone(); };
 }
 
 // Формат курса: у копеечных курсов (напр. вона) 2 знака после запятой
@@ -1447,7 +1449,7 @@ async function renderKpImageBlob(route, f, r){
   }
 }
 
-async function shareResult(route, f, r, kpFilePromise){
+async function shareResult(route, f, r, kpFilePromise, channel){
   const suf = CUR_SUFFIX[route];
   // По просьбе владельца: клиенту направление ЕАЭС всегда подписывается
   // "Китай" в тексте расчёта — по факту это тот же китайский автомобиль,
@@ -1456,10 +1458,8 @@ async function shareResult(route, f, r, kpFilePromise){
   // а не флаг Китая — флаг отражает фактический маршрут, а не текст подписи.
   const shareRouteLabel = route==='eaeu' ? 'Китай' : CONFIG.routes[route].label;
   const dateStr = new Date().toLocaleDateString('ru-RU');
-  // Кнопка отправки теперь одна на все три мессенджера (раньше у WhatsApp
-  // была своя ссылка wa.me и свой формат с *звёздочками* — жирным шрифтом),
-  // так что формат текста тоже один: без звёздочек (WhatsApp их видел бы,
-  // но Telegram/MAX — нет) и с тире перед строками курса/комиссии для
+  // Формат текста один для всех — без звёздочек (см. ниже, почему WhatsApp
+  // всё равно их не увидит) и с тире перед строками курса/комиссии для
   // читаемости без жирного шрифта.
   const b = s => s;
   const dash = '- ';
@@ -1519,26 +1519,31 @@ async function shareResult(route, f, r, kpFilePromise){
   const text = lines.join('\n');
 
   // Фото-КП идёт вложением — прикрепить файл умеет только системное окно
-  // "Поделиться" (ни у wa.me, ни у switchInlineQuery/t.me нет способа
-  // нести вложение), поэтому кнопка одна на все три мессенджера, отправка
-  // всегда через него. Сам рендер картинки запущен заранее (см. showResult)
-  // — здесь просто дожидаемся готового файла, не начиная рендер по клику.
+  // "Поделиться". Сам рендер картинки запущен заранее (см. showResult) —
+  // здесь просто дожидаемся готового файла, не начиная рендер по клику.
   const file = kpFilePromise ? await kpFilePromise : null;
-
   const title = 'Расчёт стоимости авто';
+
+  // WhatsApp на iOS в принципе не умеет принимать файл и текст вместе в
+  // одном "Поделиться" — это задокументированное ограничение самого
+  // WhatsApp (та же проблема известна react-native-share, Flutter
+  // share_plus и другим): он либо забирает текст без фото, либо фото без
+  // текста, и на "Отправить" внутри WhatsApp всё обрывается — то самое,
+  // что и происходило. Чинить нечем, кроме как не отправлять фото+текст
+  // вместе для WhatsApp: шлём одно фото, текст просто копируем в буфer —
+  // его останется вставить в WhatsApp как подпись перед отправкой.
+  if(channel==='whatsapp'){
+    if(navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
+    toast('Текст скопирован — вставьте его как подпись в WhatsApp', 3500);
+    if(file && navigator.share){ navigator.share({files:[file], title}).catch(()=>{}); }
+    else if(navigator.share){ navigator.share({text, title}).catch(()=>{}); }
+    return;
+  }
+
   const fullData = file ? {files:[file], text, title} : {text, title};
   // canShare проверяем на ПОЛНЫЙ набор данных (файл+текст вместе), а не
-  // только на файл отдельно — некоторые приложения принимают файл один или
-  // текст один, но не комбинацию.
-  //
-  // Раньше здесь был повторный navigator.share() при ошибке первого — эта
-  // затея сама и оказалась причиной "зависания" в WhatsApp: пока человек
-  // ещё выбирал чат и жал "отправить" внутри WhatsApp, первый share() иногда
-  // успевал(или нет) сам разрешиться/отклониться раньше, чем WhatsApp
-  // реально завершал отправку, и повторный вызов navigator.share() обрывал
-  // ещё не законченную передачу в WhatsApp — снова открывая системное окно
-  // "Поделиться" вместо того, чтобы просто подождать. Поэтому теперь только
-  // ОДИН вызов, без повторных попыток — так это и работало для Telegram/MAX.
+  // только на файл отдельно — для Telegram/MAX это работает, в отличие
+  // от WhatsApp (см. ветку выше).
   const canFull = !!(file && navigator.canShare && navigator.canShare(fullData));
   const shareData = canFull ? fullData : {text, title};
 
