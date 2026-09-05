@@ -1210,7 +1210,7 @@ function carDetailLines(f, route){
   return lines;
 }
 
-function showResult(route, f){
+function showResult(route, f, opts){
   const r = calcDeal(route, f);
   const cfg = CONFIG.routes[route];
   const zone = document.getElementById('resultZone');
@@ -1242,7 +1242,25 @@ function showResult(route, f){
       </button>
     </div>
   `;
-  zone.scrollIntoView({behavior:'smooth', block:'nearest'});
+  // При обычном "Рассчитать" прокручиваем к чеку — это и есть результат,
+  // который человек только что запросил. При открытии из истории (opts.
+  // scrollTop) чек уже виден без пролистывания — там, наоборот, нужно
+  // начать с самого верха, чтобы можно было спокойно просмотреть и при
+  // желании скорректировать введённые данные перед пересчётом.
+  if(opts && opts.scrollTop){ window.scrollTo(0,0); }
+  else { zone.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+
+  // Картинку-КП (html2canvas — заметная асинхронная работа, не мгновенная)
+  // готовим сразу, как только показан расчёт, а не по клику на "Отправить".
+  // На некоторых платформах Web Share API должен вызываться строго в
+  // пределах "свежего" пользовательского жеста (клика) — рендер, начатый
+  // только по самому клику, успевает израсходовать это окно раньше, чем
+  // доходит до navigator.share(), и шеринг с картинкой рвётся на середине
+  // (замечено на WhatsApp). Стартуя рендер заранее, к моменту клика картинка
+  // обычно уже готова, и navigator.share() вызывается почти сразу за ним.
+  const kpFilePromise = renderKpImageBlob(route, f, r)
+    .then(blob => blob ? new File([blob], 'baikal-auto-kp.png', {type:'image/png'}) : null)
+    .catch(()=>null);
 
   function resetAfterDone(){
     state.form = defaultForm(route);
@@ -1257,7 +1275,7 @@ function showResult(route, f){
     toast('Сохранено в историю');
     resetAfterDone();
   };
-  document.getElementById('shareBtn').onclick = async ()=>{ await shareResult(route, f, r); resetAfterDone(); };
+  document.getElementById('shareBtn').onclick = async ()=>{ await shareResult(route, f, r, kpFilePromise); resetAfterDone(); };
 }
 
 // Формат курса: у копеечных курсов (напр. вона) 2 знака после запятой
@@ -1411,7 +1429,7 @@ async function renderKpImageBlob(route, f, r){
   }
 }
 
-async function shareResult(route, f, r){
+async function shareResult(route, f, r, kpFilePromise){
   const suf = CUR_SUFFIX[route];
   // По просьбе владельца: клиенту направление ЕАЭС всегда подписывается
   // "Китай" в тексте расчёта — по факту это тот же китайский автомобиль,
@@ -1485,13 +1503,9 @@ async function shareResult(route, f, r){
   // Фото-КП идёт вложением — прикрепить файл умеет только системное окно
   // "Поделиться" (ни у wa.me, ни у switchInlineQuery/t.me нет способа
   // нести вложение), поэтому кнопка одна на все три мессенджера, отправка
-  // всегда через него.
-  let file = null;
-  try{
-    toast('Готовим фото КП…', 1500);
-    const blob = await renderKpImageBlob(route, f, r);
-    if(blob) file = new File([blob], 'baikal-auto-kp.png', {type:'image/png'});
-  } catch(e){ /* не получилось — отправим хотя бы текст */ }
+  // всегда через него. Сам рендер картинки запущен заранее (см. showResult)
+  // — здесь просто дожидаемся готового файла, не начиная рендер по клику.
+  const file = kpFilePromise ? await kpFilePromise : null;
 
   const title = 'Расчёт стоимости авто';
   const fullData = file ? {files:[file], text, title} : {text, title};
@@ -1650,7 +1664,7 @@ function renderHistory(c){
       state.view='calc';
       document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view==='calc'));
       renderTabs(); renderContent();
-      setTimeout(()=> showResult(h.route, state.form), 50);
+      setTimeout(()=> showResult(h.route, state.form, {scrollTop:true}), 50);
     };
   });
   c.querySelectorAll('[data-del]').forEach(b=> b.onclick = (e)=>{
