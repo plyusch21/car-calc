@@ -1493,24 +1493,22 @@ async function shareResult(route, f, r){
   const title = 'Расчёт стоимости авто';
   const fullData = file ? {files:[file], text, title} : {text, title};
   // canShare проверяем на ПОЛНЫЙ набор данных (файл+текст вместе), а не
-  // только на файл отдельно: у отдельных приложений (например, замечена
-  // проблема с WhatsApp) комбинация "файл + текст" не проходит, хотя файл
-  // один или текст один — проходят. Если совместный шер невозможен или
-  // не удался, отправляем хотя бы текст, чтобы сообщение не терялось.
+  // только на файл отдельно — некоторые приложения принимают файл один или
+  // текст один, но не комбинацию.
+  //
+  // Раньше здесь был повторный navigator.share() при ошибке первого — эта
+  // затея сама и оказалась причиной "зависания" в WhatsApp: пока человек
+  // ещё выбирал чат и жал "отправить" внутри WhatsApp, первый share() иногда
+  // успевал(или нет) сам разрешиться/отклониться раньше, чем WhatsApp
+  // реально завершал отправку, и повторный вызов navigator.share() обрывал
+  // ещё не законченную передачу в WhatsApp — снова открывая системное окно
+  // "Поделиться" вместо того, чтобы просто подождать. Поэтому теперь только
+  // ОДИН вызов, без повторных попыток — так это и работало для Telegram/MAX.
   const canFull = !!(file && navigator.canShare && navigator.canShare(fullData));
-  const primaryData = canFull ? fullData : {text, title};
+  const shareData = canFull ? fullData : {text, title};
 
-  if(navigator.share){
-    try{
-      await navigator.share(primaryData);
-    }catch(e){
-      if(primaryData.files){
-        try{ await navigator.share({text, title}); }catch(e2){ /* пользователь мог просто отменить шер */ }
-      }
-    }
-    return;
-  }
-  navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена'+(primaryData.files?' (фото не прикреплено)':'')));
+  if(navigator.share){ navigator.share(shareData).catch(()=>{}); return; }
+  navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена'+(shareData.files?' (фото не прикреплено)':'')));
 }
 
 function renderHistory(c){
