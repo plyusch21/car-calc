@@ -267,7 +267,7 @@ async function uploadFile(accessToken, base64Data, mimeType) {
   return json.id;
 }
 
-async function callGigaChatVision(accessToken, fileId) {
+async function callGigaChatVisionOnce(accessToken, fileId) {
   const reqBody = JSON.stringify({
     model: GIGACHAT_VISION_MODEL,
     messages: [
@@ -288,7 +288,16 @@ async function callGigaChatVision(accessToken, fileId) {
   const msg = json && json.choices && json.choices[0] && json.choices[0].message;
   const fc = msg && msg.function_call;
   if (!fc || fc.arguments == null) {
-    throw new Error('GigaChat не распознал лист (пустой ответ)');
+    // Модель иногда вместо вызова функции отвечает обычным текстом (отказ,
+    // "не вижу изображения" и т.п.) — раньше эта информация терялась, и
+    // ошибка всегда звучала одинаково-непонятно ("пустой ответ"), что делало
+    // разбор причины вслепую. Теперь показываем реальный текст ответа модели,
+    // если он есть — по нему видно, отказ это, сбой формата или что-то ещё.
+    const plain = msg && typeof msg.content === 'string' ? msg.content.trim() : '';
+    const suffix = plain ? (': «' + plain.slice(0, 300) + '»') : ' (совсем без текста)';
+    const err = new Error('GigaChat не распознал лист — модель не вызвала функцию разбора' + suffix);
+    err.emptyFunctionCall = true;
+    throw err;
   }
   const parsed = typeof fc.arguments === 'string' ? JSON.parse(fc.arguments) : fc.arguments;
   if (parsed.isAuctionSheet === false) {
@@ -297,6 +306,20 @@ async function callGigaChatVision(accessToken, fileId) {
   delete parsed.isAuctionSheet;
   parsed.source = 'ai';
   return enforceRussianFields(sanityCheckParsed(parsed));
+}
+
+// GigaChat иногда (судя по всему, эпизодически/на конкретном запросе) не
+// вызывает функцию вообще — похоже на разовый сбой формата ответа, а не на
+// системную проблему с фото, т.к. тот же файл при повторном запросе обычно
+// разбирается нормально. Поэтому один автоматический повтор перед тем, как
+// сдаться и показать ошибку — дешёвая и оправданная подстраховка.
+async function callGigaChatVision(accessToken, fileId) {
+  try {
+    return await callGigaChatVisionOnce(accessToken, fileId);
+  } catch (e) {
+    if (!e.emptyFunctionCall) throw e;
+    return await callGigaChatVisionOnce(accessToken, fileId);
+  }
 }
 
 async function callGigaChat(accessToken, text) {
