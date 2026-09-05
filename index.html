@@ -198,7 +198,7 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .kp-logo{ height:64px; display:block; }
 .kp-header-div{ width:2px; align-self:stretch; background:rgba(255,255,255,.3); }
 .kp-h-title{ color:#fff; font-size:35px; font-weight:800; }
-.kp-h-route{ color:#fff; font-size:22px; font-weight:700; white-space:nowrap; }
+.kp-h-route{ color:#fff; font-size:27px; font-weight:700; white-space:nowrap; }
 .kp-stats{ display:flex; gap:16px; padding:28px 48px 0; }
 .kp-stat{ flex:1; background:#fff; border-radius:14px; padding:20px 22px; text-align:center; }
 .kp-stat-l{ color:#8a93a6; font-size:15px; font-weight:700; letter-spacing:.03em; }
@@ -1347,9 +1347,9 @@ function buildKpHtml(route, f, r){
         <div class="kp-header-left">
           <img class="kp-logo" src="${LOGO_DATA_URI}" alt="">
           <div class="kp-header-div"></div>
-          <div class="kp-h-title">Расчёт</div>
+          <div class="kp-h-title">Расчёт авто под заказ</div>
         </div>
-        <div class="kp-h-route">${shareRouteLabel} ${ROUTE_FLAG[route]||''} (${dateStr})</div>
+        <div class="kp-h-route">${shareRouteLabel} ${ROUTE_FLAG[route]||''}</div>
       </div>
       <div class="kp-stats">
         <div class="kp-stat"><div class="kp-stat-l">ДАТА РАСЧЁТА</div><div class="kp-stat-v">${dateStr}</div></div>
