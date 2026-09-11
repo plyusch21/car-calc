@@ -1569,17 +1569,35 @@ async function shareResult(route, f, r, kpFilePromise, channel){
   const canFull = !!(file && navigator.canShare && navigator.canShare(fullData));
   const shareData = canFull ? fullData : {text, title};
 
-  // Раньше при неудаче с фото человек просто видел, что отправился только
-  // текст, без всякого объяснения — ровно так выглядела жалоба "на Android
-  // уходит только текст, без картинки вообще". Сама причина (не удалось
-  // отрисовать картинку — file===null, или устройство не даёт делиться
-  // файлом и текстом вместе — canFull===false) остаётся вне нашего
-  // контроля, но теперь хотя бы видно, что именно произошло.
-  if(!file){ toast('Не удалось подготовить фото КП — отправляю только текст', 2500); }
-  else if(!canFull){ toast('Это устройство не поддерживает отправку фото вместе с текстом — отправляю только текст', 2500); }
+  if(navigator.share){
+    // Раньше при неудаче с фото человек просто видел, что отправился
+    // только текст, без всякого объяснения. Причина (не удалось
+    // отрисовать картинку — file===null, или устройство не даёт делиться
+    // файлом и текстом вместе — canFull===false) остаётся вне нашего
+    // контроля, но теперь хотя бы видно, что именно произошло.
+    if(!file){ toast('Не удалось подготовить фото КП — отправляю только текст', 2500); }
+    else if(!canFull){ toast('Это устройство не поддерживает отправку фото вместе с текстом — отправляю только текст', 2500); }
+    navigator.share(shareData).catch(()=>{});
+    return;
+  }
 
-  if(navigator.share){ navigator.share(shareData).catch(()=>{}); return; }
-  navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена'+(shareData.files?' (фото не прикреплено)':'')));
+  // На части Android-сборок (например, Honor/Magic OS — сообщил владелец)
+  // Web Share API в WebView Telegram нет вообще: window.navigator.share
+  // не существует как функция. Раньше здесь просто копировался текст, а
+  // фото было категорически некуда деть — то самое "уходит только текст".
+  // Раз поделиться в один тап тут нечем, скачиваем картинку файлом, чтобы
+  // было что прикрепить вручную в мессенджере рядом со скопированным текстом.
+  navigator.clipboard && navigator.clipboard.writeText(text).catch(()=>{});
+  if(file){
+    const dlUrl = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = dlUrl; a.download = 'baikal-auto-kp.png';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(dlUrl), 30000);
+    toast('Текст скопирован, фото сохранено в загрузки — прикрепите оба вручную', 3500);
+  } else {
+    toast('Скопировано в буфер обмена (фото подготовить не удалось)', 2500);
+  }
 }
 
 // Поля описания самого авто, которые переносятся при "Другое направление" —
