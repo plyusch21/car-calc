@@ -3,12 +3,14 @@
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "diag.html", "use": "@vercel/static" },
+    { "src": "share.html", "use": "@vercel/static" },
     { "src": "api/rates.js", "use": "@vercel/node" },
     { "src": "api/customs.js", "use": "@vercel/node" },
     { "src": "api/auth.js", "use": "@vercel/node" },
     { "src": "api/admin.js", "use": "@vercel/node" },
     { "src": "api/state.js", "use": "@vercel/node" },
-    { "src": "api/parse-listing.js", "use": "@vercel/node" }
+    { "src": "api/parse-listing.js", "use": "@vercel/node" },
+    { "src": "api/share-relay.js", "use": "@vercel/node" }
   ],
   "routes": [
     { "src": "/api/rates", "dest": "/api/rates.js" },
@@ -17,7 +19,9 @@
     { "src": "/api/admin", "dest": "/api/admin.js" },
     { "src": "/api/state", "dest": "/api/state.js" },
     { "src": "/api/parse-listing", "dest": "/api/parse-listing.js" },
+    { "src": "/api/share-relay", "dest": "/api/share-relay.js" },
     { "src": "/diag", "dest": "/diag.html" },
+    { "src": "/share", "dest": "/share.html" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }

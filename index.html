@@ -1434,7 +1434,7 @@ function buildKpHtml(route, f, r){
 // html2canvas рисует только то, что реально в DOM — оффскрин-контейнер
 // (не display:none, у него нет layout) с фиксированной шириной, чтобы
 // картинка не зависела от размера экрана телефона.
-async function renderKpImageBlob(route, f, r){
+async function renderKpImageBlob(route, f, r, maxScale){
   const holder = document.createElement('div');
   holder.style.cssText = 'position:fixed; left:-99999px; top:0; width:1080px; z-index:-1;';
   holder.innerHTML = buildKpHtml(route, f, r);
@@ -1451,9 +1451,11 @@ async function renderKpImageBlob(route, f, r){
     // предел — рендер тихо проваливался, картинка не прикреплялась вовсе
     // (это и стояло за тем, что "фото не отправляется"). Теперь scale
     // подбирается под фактический размер карточки, чтобы гарантированно
-    // остаться в безопасных пределах на любом устройстве.
+    // остаться в безопасных пределах на любом устройстве. maxScale — для
+    // пути через api/share-relay.js (см. shareResult), там картинка едёт
+    // через KV с ограничением по размеру, высокое разрешение там не нужно.
     const MAX_SIDE = 4096, MAX_AREA = 16777216;
-    let scale = Math.min(6, MAX_SIDE/w, MAX_SIDE/h, Math.sqrt(MAX_AREA/(w*h)));
+    let scale = Math.min(maxScale||6, MAX_SIDE/w, MAX_SIDE/h, Math.sqrt(MAX_AREA/(w*h)));
     scale = Math.max(scale, 1);
     const canvas = await html2canvas(card, { scale, backgroundColor:'#f7f9fc', letterRendering:true });
     return await new Promise(res=> canvas.toBlob(res, 'image/png'));
@@ -1582,19 +1584,62 @@ async function shareResult(route, f, r, kpFilePromise, channel){
   }
 
   // На части Android-сборок (например, Honor/Magic OS — сообщил владелец)
-  // Web Share API в WebView Telegram нет вообще: window.navigator.share
-  // не существует как функция. Раньше здесь просто копировался текст, а
-  // фото было категорически некуда деть — то самое "уходит только текст".
-  // Раз поделиться в один тап тут нечем, скачиваем картинку файлом, чтобы
-  // было что прикрепить вручную в мессенджере рядом со скопированным текстом.
+  // Web Share API в WebView Telegram нет вообще: navigator.share не
+  // существует как функция. Проверка владельца через отдельную страницу
+  // /diag (вне Telegram) показала, что на том же телефоне в обычном Chrome
+  // всё это работает штатно — то есть дело не в устройстве, а именно в
+  // WebView, которым Telegram на Android открывает Mini Apps. Зато
+  // Telegram.WebApp.openLink() открывает не эту песочницу, а настоящий
+  // внешний браузер ("Mini App will not be closed" — сам Mini App не
+  // закрывается). Проблема лишь в том, что blob/файл в памяти нельзя
+  // передать в другой процесс — поэтому картинку кладём на 10 минут во
+  // временное хранилище на сервере (api/share-relay.js), открываем во
+  // внешнем браузере страницу share.html с её id, а там уже по своему,
+  // отдельному нажатию (Web Share API требует именно свежего жеста в ТОЙ
+  // странице) вызывается navigator.share — и там, как показала проверка,
+  // всё работает.
   navigator.clipboard && navigator.clipboard.writeText(text).catch(()=>{});
+  const tg = window.Telegram && window.Telegram.WebApp;
+  let relayOk = false;
+  if(file && tg && tg.openLink){
+    try{
+      const relayBlob = await renderKpImageBlob(route, f, r, 2);
+      if(relayBlob){
+        const dataUrl = await new Promise((res, rej)=>{
+          const rd = new FileReader();
+          rd.onload = ()=> res(rd.result);
+          rd.onerror = rej;
+          rd.readAsDataURL(relayBlob);
+        });
+        const putRes = await fetch('/api/share-relay', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'put', imageDataUrl:dataUrl, text, title }) });
+        const putData = await putRes.json();
+        if(putData.id){
+          tg.openLink(location.origin + '/share?id=' + putData.id);
+          toast('Текст скопирован. Во внешнем браузере нажмите «Поделиться»', 3500);
+          relayOk = true;
+        }
+      }
+    }catch(e){ /* не получилось — используем запасной путь ниже */ }
+  }
+  if(relayOk) return;
+
+  // Запасной путь, если внешний браузер открыть не вышло (не в Telegram,
+  // нет openLink, сбой сети и т.п.): долгое нажатие на изображение —
+  // фундаментальная, не зависящая от Web Share API возможность самого
+  // Android/Chrome, работает даже там, где не хватает JS-API.
   if(file){
-    const dlUrl = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = dlUrl; a.download = 'baikal-auto-kp.png';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=> URL.revokeObjectURL(dlUrl), 30000);
-    toast('Текст скопирован, фото сохранено в загрузки — прикрепите оба вручную', 3500);
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      openSheet(`
+        <h3>Фото готово</h3>
+        <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;">Текст уже скопирован в буфер обмена. Зажмите фото пальцем и выберите «Поделиться» или «Сохранить изображение» — так оно уйдёт в мессенджер как обычное фото.</p>
+        <img src="${reader.result}" style="width:100%;border-radius:12px;display:block;">
+        <button class="btn secondary" id="closeShareImgSheet" style="margin-top:14px;">Готово</button>
+      `);
+      document.getElementById('closeShareImgSheet').onclick = closeSheet;
+    };
+    reader.readAsDataURL(file);
+    toast('Текст скопирован — фото ниже, зажмите его пальцем', 2500);
   } else {
     toast('Скопировано в буфер обмена (фото подготовить не удалось)', 2500);
   }

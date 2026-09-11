@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Отправить расчёт</title>
+<style>
+  body{ background:#0b0f14; color:#e7ecf3; font-family:-apple-system,Inter,sans-serif; padding:18px; font-size:14px; line-height:1.5; }
+  h1{ font-size:18px; margin:0 0 6px; }
+  p.sub{ color:#8a93a6; margin:0 0 18px; }
+  button{ display:block; width:100%; background:#255aa1; color:#fff; border:none; border-radius:10px; padding:15px; font-size:15px; font-weight:600; margin-bottom:10px; }
+  button:disabled{ opacity:.5; }
+  button:active{ opacity:.8; }
+  img{ width:100%; border-radius:12px; display:block; margin-bottom:16px; }
+  #status{ color:#8a93a6; font-size:13px; margin-top:10px; white-space:pre-wrap; }
+  .bad{ color:#ff6b6b; }
+</style>
+</head>
+<body>
+<h1>Отправить расчёт</h1>
+<p class="sub" id="sub">Готовим фото…</p>
+<div id="content"></div>
+<div id="status"></div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const id = params.get('id');
+const sub = document.getElementById('sub');
+const content = document.getElementById('content');
+const statusEl = document.getElementById('status');
+
+function fail(msg){
+  sub.textContent = 'Не получилось';
+  statusEl.textContent = msg;
+  statusEl.className = 'bad';
+}
+
+async function dataUrlToFile(dataUrl, name){
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], name, { type: blob.type || 'image/png' });
+}
+
+(async function(){
+  if(!id){ fail('Не хватает данных — откройте эту страницу заново из приложения.'); return; }
+  let payload;
+  try{
+    const res = await fetch('/api/share-relay', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'get', id }) });
+    payload = await res.json();
+  }catch(e){
+    fail('Не удалось загрузить: ' + e.message);
+    return;
+  }
+  if(payload.error){ fail(payload.error); return; }
+
+  sub.textContent = 'Нажмите «Поделиться» — откроется системное окно выбора мессенджера.';
+  const img = document.createElement('img');
+  img.src = payload.imageDataUrl;
+  content.appendChild(img);
+
+  const btn = document.createElement('button');
+  btn.textContent = 'Поделиться';
+  content.appendChild(btn);
+
+  btn.onclick = async ()=>{
+    btn.disabled = true;
+    try{
+      const file = await dataUrlToFile(payload.imageDataUrl, 'baikal-auto-kp.png');
+      const data = { files:[file], text: payload.text, title: payload.title || 'Расчёт стоимости авто' };
+      if(navigator.share && (!navigator.canShare || navigator.canShare(data))){
+        await navigator.share(data);
+        statusEl.textContent = '';
+      } else if(navigator.share){
+        await navigator.share({ text: payload.text, title: data.title });
+        statusEl.textContent = 'Этот браузер не делится фото вместе с текстом — отправлен только текст.';
+      } else {
+        fail('В этом браузере тоже нет системного «Поделиться». Зажмите фото выше и выберите «Поделиться» или «Сохранить изображение» вручную.');
+      }
+    }catch(e){
+      if(e.name !== 'AbortError'){ statusEl.textContent = 'Ошибка: ' + e.message; statusEl.className='bad'; }
+    }
+    btn.disabled = false;
+  };
+})();
+</script>
+</body>
+</html>
