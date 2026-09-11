@@ -1544,27 +1544,39 @@ async function shareResult(route, f, r, kpFilePromise, channel){
   // одном "Поделиться" — это задокументированное ограничение самого
   // WhatsApp (та же проблема известна react-native-share, Flutter
   // share_plus и другим): он либо забирает текст без фото, либо фото без
-  // текста, и на "Отправить" внутри WhatsApp всё обрывается — то самое,
-  // что и происходило. Чинить нечем, кроме как не отправлять фото+текст
-  // вместе для WhatsApp: шлём одно фото, текст просто копируем в буфer —
-  // его останется вставить в WhatsApp как подпись перед отправкой.
-  if(channel==='whatsapp'){
+  // текста, и на "Отправить" внутри WhatsApp всё обрывается. Это именно
+  // ограничение iOS-варианта WhatsApp — на Android та же комбинация
+  // файл+текст прекрасно уходит (там WhatsApp работает как Telegram/MAX
+  // ниже), поэтому спецветка только для iOS, определяем платформу через
+  // Telegram.WebApp.platform (это сам Telegram сообщает нам, на чём открыт
+  // Mini App — надёжнее, чем гадать по user agent).
+  const platform = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.platform) || '';
+  if(channel==='whatsapp' && platform==='ios'){
     // Никакого текста в самом share() — даже "title" WhatsApp подставляет
     // в поле сообщения как обычный текст, а он вместе с файлом это как раз
     // и есть та самая комбинация "файл+текст", которую WhatsApp не берёт.
     // Поэтому здесь совсем без полей текста/заголовка — просто файл.
     if(navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
     if(file && navigator.share){ navigator.share({files:[file]}).catch(()=>{}); }
-    else if(navigator.share){ navigator.share({text}).catch(()=>{}); }
+    else if(navigator.share){ if(!file) toast('Не удалось подготовить фото КП — текст скопирован в буфер', 2500); navigator.share({text}).catch(()=>{}); }
     return;
   }
 
   const fullData = file ? {files:[file], text, title} : {text, title};
   // canShare проверяем на ПОЛНЫЙ набор данных (файл+текст вместе), а не
-  // только на файл отдельно — для Telegram/MAX это работает, в отличие
-  // от WhatsApp (см. ветку выше).
+  // только на файл отдельно — этот путь теперь общий для Telegram, MAX и
+  // WhatsApp на Android/десктопе (см. ветку iOS-WhatsApp выше).
   const canFull = !!(file && navigator.canShare && navigator.canShare(fullData));
   const shareData = canFull ? fullData : {text, title};
+
+  // Раньше при неудаче с фото человек просто видел, что отправился только
+  // текст, без всякого объяснения — ровно так выглядела жалоба "на Android
+  // уходит только текст, без картинки вообще". Сама причина (не удалось
+  // отрисовать картинку — file===null, или устройство не даёт делиться
+  // файлом и текстом вместе — canFull===false) остаётся вне нашего
+  // контроля, но теперь хотя бы видно, что именно произошло.
+  if(!file){ toast('Не удалось подготовить фото КП — отправляю только текст', 2500); }
+  else if(!canFull){ toast('Это устройство не поддерживает отправку фото вместе с текстом — отправляю только текст', 2500); }
 
   if(navigator.share){ navigator.share(shareData).catch(()=>{}); return; }
   navigator.clipboard && navigator.clipboard.writeText(text).then(()=> toast('Скопировано в буфер обмена'+(shareData.files?' (фото не прикреплено)':'')));
