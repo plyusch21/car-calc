@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Диагностика шеринга</title>
+<style>
+  body{ background:#0b0f14; color:#e7ecf3; font-family:-apple-system,Inter,sans-serif; padding:18px; font-size:14px; line-height:1.5; }
+  h1{ font-size:18px; margin:0 0 4px; }
+  p.sub{ color:#8a93a6; margin:0 0 20px; }
+  button{ display:block; width:100%; background:#255aa1; color:#fff; border:none; border-radius:10px; padding:14px; font-size:14.5px; font-weight:600; margin-bottom:10px; }
+  button:active{ opacity:.8; }
+  #log{ background:#141a22; border:1px solid #2a3442; border-radius:10px; padding:12px; white-space:pre-wrap; word-break:break-all; font-family:monospace; font-size:12.5px; margin-top:16px; min-height:80px; }
+  .ok{ color:#5fd67a; }
+  .bad{ color:#ff6b6b; }
+</style>
+</head>
+<body>
+<h1>Диагностика: Поделиться / Скачать</h1>
+<p class="sub">Отдельная страница без входа через Telegram — просто проверяет, что умеет этот браузер/WebView.</p>
+
+<button id="btnInfo">1. Что вообще доступно</button>
+<button id="btnShareText">2. Поделиться — только текст</button>
+<button id="btnSharePhoto">3. Поделиться — фото + текст</button>
+<button id="btnDownload">4. Скачать файл</button>
+
+<div id="log">Нажимайте кнопки по порядку и присылайте, что здесь появится.</div>
+
+<script>
+const log = document.getElementById('log');
+function write(line, cls){
+  const d = document.createElement('div');
+  if(cls) d.className = cls;
+  d.textContent = line;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+function clear(){ log.innerHTML=''; }
+
+function makeTestFile(){
+  const c = document.createElement('canvas');
+  c.width = 300; c.height = 150;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#255aa1'; ctx.fillRect(0,0,300,150);
+  ctx.fillStyle = '#fff'; ctx.font = '20px sans-serif';
+  ctx.fillText('Тестовое фото', 30, 80);
+  return new Promise(res=> c.toBlob(b=> res(new File([b], 'test.png', {type:'image/png'})), 'image/png'));
+}
+
+document.getElementById('btnInfo').onclick = ()=>{
+  clear();
+  write('User agent: ' + navigator.userAgent);
+  write('navigator.share: ' + (typeof navigator.share), typeof navigator.share==='function'?'ok':'bad');
+  write('navigator.canShare: ' + (typeof navigator.canShare), typeof navigator.canShare==='function'?'ok':'bad');
+  write('navigator.clipboard: ' + (typeof (navigator.clipboard && navigator.clipboard.writeText)), (navigator.clipboard && navigator.clipboard.writeText)?'ok':'bad');
+  write('isSecureContext: ' + window.isSecureContext);
+  write('В Telegram WebView: ' + !!(window.Telegram && window.Telegram.WebApp));
+  if(window.Telegram && window.Telegram.WebApp){
+    write('Telegram platform: ' + window.Telegram.WebApp.platform);
+    write('Telegram version: ' + window.Telegram.WebApp.version);
+  }
+};
+
+document.getElementById('btnShareText').onclick = async ()=>{
+  clear();
+  write('Вызываю navigator.share({text, title})...');
+  try{
+    if(!navigator.share){ write('navigator.share отсутствует — окно "Поделиться" вызвать нечем', 'bad'); return; }
+    await navigator.share({ text:'Тестовый текст из диагностики', title:'Тест' });
+    write('Готово: share() выполнился без ошибки (либо реально отправлено, либо пользователь закрыл окно)', 'ok');
+  }catch(e){
+    write('Ошибка: ' + e.name + ' — ' + e.message, 'bad');
+  }
+};
+
+document.getElementById('btnSharePhoto').onclick = async ()=>{
+  clear();
+  write('Готовлю тестовое фото...');
+  const file = await makeTestFile();
+  write('Фото готово, размер ' + file.size + ' байт');
+  const data = { files:[file], text:'Тестовый текст с фото', title:'Тест' };
+  const canShareFn = typeof navigator.canShare === 'function';
+  write('canShare есть: ' + canShareFn);
+  if(canShareFn){
+    const can = navigator.canShare(data);
+    write('canShare({files,text}) вернул: ' + can, can?'ok':'bad');
+  }
+  if(!navigator.share){ write('navigator.share отсутствует — окно "Поделиться" вызвать нечем', 'bad'); return; }
+  write('Вызываю navigator.share({files, text})...');
+  try{
+    await navigator.share(data);
+    write('Готово: share() выполнился без ошибки', 'ok');
+  }catch(e){
+    write('Ошибка: ' + e.name + ' — ' + e.message, 'bad');
+  }
+};
+
+document.getElementById('btnDownload').onclick = async ()=>{
+  clear();
+  write('Готовлю тестовое фото...');
+  const file = await makeTestFile();
+  try{
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'diag-test.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    write('Клик по скачиванию выполнен без ошибки — проверьте папку "Загрузки" на файл diag-test.png', 'ok');
+    setTimeout(()=> URL.revokeObjectURL(url), 10000);
+  }catch(e){
+    write('Ошибка: ' + e.name + ' — ' + e.message, 'bad');
+  }
+};
+</script>
+</body>
+</html>
