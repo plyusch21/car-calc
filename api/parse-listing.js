@@ -715,6 +715,44 @@ async function heuristicParseWithTranslation(text) {
   return out;
 }
 
+// Диагностика (страница /diag, флаг debugFreeform) — НЕ используется
+// приложением. Та же модель и то же фото, но без схемы и без единого слова
+// про "не уверен — оставь пустым": просто "прочитай, что видишь". Нужно,
+// чтобы отличить два случая, которые в обычном ответе выглядят одинаково
+// (поля нет): модель не смогла прочитать мелкий текст — или прочитала, но
+// промолчала из-за того, как мы её просим. Ответ — свободный текст, как есть.
+const FREEFORM_PROMPT = `Перед тобой фотография японского аукционного листа (オークションシート).
+
+Прочитай вслух всё, что на ней написано, и перескажи по-русски: марку и модель, все поля с их значениями, оценки, комментарии инспектора, пометки на схеме кузова — всё, что различаешь.
+
+Если какая-то часть изображения слишком мелкая или размытая, чтобы её прочитать, так и напиши: что именно не разбирается. Это важнее, чем полнота: мне нужно понять, что на этом фото вообще читаемо.`;
+
+async function callGeminiFreeform(base64Data, mimeType) {
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY не настроен на сервере');
+  const reqBody = JSON.stringify({
+    contents: [{ parts: [
+      { text: FREEFORM_PROMPT },
+      { inlineData: { mimeType: mimeType || 'image/jpeg', data: base64Data } }
+    ] }],
+    generationConfig: { temperature: 0.1 }
+  });
+  const res = await fetch(GEMINI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+    body: reqBody,
+    signal: AbortSignal.timeout(25000)
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error('Gemini http ' + res.status + (errText ? ': ' + errText.slice(0, 300) : ''));
+  }
+  const json = await res.json();
+  const cand = json.candidates && json.candidates[0];
+  const text = cand && cand.content && cand.content.parts && cand.content.parts[0] && cand.content.parts[0].text;
+  if (!text) throw new Error('Gemini вернул пустой ответ' + (cand && cand.finishReason ? ' (finishReason: ' + cand.finishReason + ')' : ''));
+  return text;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
@@ -734,6 +772,18 @@ module.exports = async (req, res) => {
   // текстом), так что дальше GigaChat в этой ветке резерва нет вообще —
   // как и раньше.
   const image = (body.image || '').toString();
+
+  // Диагностический режим со страницы /diag — приложение его не вызывает.
+  if (image && body.debugFreeform) {
+    try {
+      const raw = await callGeminiFreeform(image, (body.mimeType || '').toString());
+      res.status(200).send(JSON.stringify({ raw }));
+    } catch (e) {
+      res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+    }
+    return;
+  }
+
   if (image) {
     const mimeType = (body.mimeType || '').toString();
     let geminiError = null;
