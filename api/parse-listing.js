@@ -1,24 +1,43 @@
 /**
  * /api/parse-listing — извлекает поля "Доп. данные по авто" (и марку/модель)
- * из произвольного текста объявления (RU/EN/CN/JP) через GigaChat API (Сбер).
+ * из текста объявления (RU/EN/CN/JP) или фото японского аукционного листа.
  *
- * История выбора провайдера: перепробовали Gemini (у Google весь Gemini
- * API/AI Studio официально недоступен из России — не вопрос VPN, блок на
- * уровне региона аккаунта), Groq/Grok(xAI) и OpenRouter — с мая 2026
- * OpenRouter тоже режет запросы с российских IP и не принимает оплату из РФ,
- * та же судьба, скорее всего, и у Groq. DeepSeek доступен и недорог, но не
- * бесплатен бессрочно (грант на 30 дней). GigaChat — единственный вариант,
- * который реально доступен из России без VPN и имеет настоящий бесплатный
- * лимит (1 000 000 токенов, продлевается раз в 12 месяцев) — этого с
- * огромным запасом хватает на разбор объявлений.
+ * Провайдер (с сентября 2026): **Gemini — основной**, GigaChat — атоматический
+ * резерв на любую ошибку Gemini (сеть, лимит, невалидный ответ и т.п.), и то
+ * же самое ещё раз наоборот только для текстового пути — если и GigaChat
+ * недоступен, добавляется regex-резерв heuristicParse() (см. ниже). Для фото
+ * резерва без ИИ нет (heuristicParse умеет только текст) — там цепочка
+ * Gemini → GigaChat, и на этом всё.
  *
- * TLS: как и vtb.ru (см. getCny() в api/rates.js), api.giga.chat и
- * ngw.devices.sberbank.ru используют сертификат российского корневого УЦ
+ * Ключ — GEMINI_API_KEY (Vercel env var, бесплатный уровень), модель —
+ * GEMINI_MODEL (по умолчанию 'gemini-3.8-flash'). У бесплатного уровня
+ * жёсткий лимит запросов в минуту — на HTTP 429 (RESOURCE_EXHAUSTED) делаем
+ * ровно одну повторную попытку с паузой (см. GEMINI_429_RETRY_DELAY_MS), а не
+ * долбим повторами — не наша ошибка и не то, что чинится частыми ретраями.
+ *
+ * Формат запроса Gemini проверен по актуальной (на 2026-09) документации
+ * https://ai.google.dev/gemini-api/docs/generate-content/structured-output —
+ * это НЕ тот responseMimeType/responseSchema, что мог быть в более старых
+ * примерах: сейчас схема передаётся вложенно, в
+ * generationConfig.responseFormat.text.{mimeType,schema}. Ключ — в заголовке
+ * x-goog-api-key, а не в query-параметре.
+ *
+ * История выбора GigaChat как резерва (актуальна и сейчас, раньше он был
+ * основным): у Google весь Gemini API/AI Studio какое-то время был официально
+ * недоступен из России (блок на уровне региона аккаунта, не VPN) — по всей
+ * видимости, это ограничение с тех пор снято или обходится иначе, раз
+ * владелец получил рабочий GEMINI_API_KEY. Groq/Grok(xAI) и OpenRouter —
+ * похожая история блокировок с мая 2026. DeepSeek доступен, но не бесплатен
+ * бессрочно. GigaChat — российский провайдер с честным бесплатным лимитом
+ * (1 000 000 токенов/12 мес.), поэтому его держим как резерв, а не выкидываем.
+ *
+ * TLS для GigaChat: как и vtb.ru (см. getCny() в api/rates.js), api.giga.chat
+ * и ngw.devices.sberbank.ru используют сертификат российского корневого УЦ
  * "Минцифры", которого нет в стандартном доверенном списке — поэтому здесь
  * тот же приём: Node-модуль https с явным добавлением RUSSIAN_TRUSTED_ROOT_CA
  * к доверенным анкорам (не вместо них, и не rejectUnauthorized:false).
  *
- * Авторизация — двухшаговая (типично для экосистемы Сбера):
+ * Авторизация GigaChat — двухшаговая (типично для экосистемы Сбера):
  *   1. POST ngw.devices.sberbank.ru:9443/api/v2/oauth с Authorization: Basic
  *      <GIGACHAT_AUTH_KEY> (ключ авторизации из личного кабинета
  *      developers.sber.ru) → access_token (живёт 30 минут).
@@ -28,10 +47,12 @@
  * объявления по клику), а serverless-инстансы всё равно недолговечны —
  * проще и надёжнее каждый раз получать свежий токен, чем городить кеш.
  *
- * Извлечение полей — через "function calling" (а не response_format с
- * json_schema): именно function calling явно заявлен в документации
+ * Извлечение полей у GigaChat — через "function calling" (а не response_format
+ * с json_schema): именно function calling явно заявлен в документации
  * GigaChat как поддерживаемая OpenAI-совместимая фича, тогда как строгий
- * json_schema-режим для их API не подтверждён.
+ * json_schema-режим для их API не подтверждён. У Gemini наоборот — там как
+ * раз structured output (responseFormat) официально задокументирован и
+ * используется напрямую, без function calling.
  *
  * Input (POST JSON body): { text: string }
  * Output: {
@@ -61,6 +82,15 @@
 const https = require('https');
 const tls = require('tls');
 const crypto = require('crypto');
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Vercel env var — never hardcode this here
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent';
+// Одна повторная попытка на 429 (бесплатный уровень, жёсткий лимит req/min),
+// с паузой — так и рекомендует сама документация Gemini ("wait and retry
+// after a short period"), а не частые повторы подряд.
+const GEMINI_429_RETRY_DELAY_MS = 3000;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const GIGACHAT_AUTH_KEY = process.env.GIGACHAT_AUTH_KEY; // Vercel env var — см. Settings → Environment Variables, never hardcode this here
 // Базовая GigaChat-2 на плотном японском тексте (без пробелов между
@@ -257,6 +287,98 @@ const VISION_PROMPT = `Ты помощник по разбору японски�
 Язык результата — как и для текстовых объявлений: model и carTrim ВСЕГДА на английском (переведи/транслитерируй), condition и notes ВСЕГДА на русском (переведи с японского). Не выдумывай значения, которых не видно на листе. Поле notes — только для того, чему нет отдельного поля в схеме, не дублируй в нём то, что уже попало в carTrim/mileage/prodYear/prodMonth/drivetrain/transmission/volumeCm3/power/condition.
 
 Финальное и самое важное правило: описания полей функции (то, что написано в скобках вроде "например ...") — это ПОДСКАЗКИ ДЛЯ ТЕБЯ, а не примеры значений для вставки. Заполняй поле только тем, что реально видно на листе. Если чего-то не видно — оставь поле пустым/null. Никогда не копируй формулировки из описаний полей (например "без дтп, требует ремонта" из описания condition) как будто это факт про конкретный автомобиль.`;
+
+// ---------------------------------------------------------------------
+// Gemini — основной провайдер (и для текста объявления, и для фото
+// аукционного листа). Один и тот же helper для обоих: разница только в
+// contents (текст промпта, для фото — ещё и inlineData с картинкой) и в
+// схеме (FUNCTION_SCHEMA vs VISION_FUNCTION_SCHEMA, у обеих уже готовый
+// JSON Schema в .parameters — Gemini понимает его напрямую, без изменений).
+// ---------------------------------------------------------------------
+async function callGeminiOnce(contents, schema) {
+  const reqBody = JSON.stringify({
+    contents: [{ parts: contents }],
+    generationConfig: {
+      responseFormat: { text: { mimeType: 'application/json', schema } },
+      temperature: 0.1
+    }
+  });
+  const res = await fetch(GEMINI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+    body: reqBody,
+    signal: AbortSignal.timeout(25000)
+  });
+  return res;
+}
+
+// Общая обвязка: одна повторная попытка на 429 с паузой, разбор ответа,
+// разбор JSON. Отдельно от бизнес-логики (какие поля дальше делать с
+// результатом) — та у текста и у фото своя, см. callGeminiText/Vision ниже.
+async function callGeminiRaw(contents, schema) {
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY не настроен на сервере');
+  let res = await callGeminiOnce(contents, schema);
+  if (res.status === 429) {
+    await sleep(GEMINI_429_RETRY_DELAY_MS);
+    res = await callGeminiOnce(contents, schema);
+  }
+  if (res.status === 429) {
+    throw new Error('Gemini временно ограничил число запросов (лимит бесплатного уровня) — попробуйте чуть позже');
+  }
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error('Gemini http ' + res.status + (errText ? ': ' + errText.slice(0, 300) : ''));
+  }
+  const json = await res.json();
+  if (json.promptFeedback && json.promptFeedback.blockReason) {
+    throw new Error('Gemini заблокировал запрос (' + json.promptFeedback.blockReason + ')');
+  }
+  const cand = json.candidates && json.candidates[0];
+  const text = cand && cand.content && cand.content.parts && cand.content.parts[0] && cand.content.parts[0].text;
+  if (!text) {
+    throw new Error('Gemini вернул пустой ответ' + (cand && cand.finishReason ? ' (finishReason: ' + cand.finishReason + ')' : ''));
+  }
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error('Gemini вернул невалидный JSON');
+  }
+}
+
+async function callGeminiText(text) {
+  const parsed = await callGeminiRaw(
+    [{ text: PROMPT.replace('{{TEXT}}', () => text.slice(0, 8000)) }],
+    FUNCTION_SCHEMA.parameters
+  );
+  parsed.source = 'ai';
+  // Та же принудительная арифметика даты по японской эре, что и у GigaChat
+  // (см. callGigaChat) — это надёжнее, чем полагаться на модель, независимо
+  // от того, какой ИИ отвечал.
+  const era = parseEraDate(text);
+  if (era) { parsed.prodYear = era.year; parsed.prodMonth = era.month; }
+  return enforceRussianFields(sanityCheckParsed(parsed, text));
+}
+
+async function callGeminiVision(base64Data, mimeType) {
+  const parsed = await callGeminiRaw(
+    [
+      { text: VISION_PROMPT },
+      { inlineData: { mimeType: mimeType || 'image/jpeg', data: base64Data } }
+    ],
+    VISION_FUNCTION_SCHEMA.parameters
+  );
+  if (parsed.isAuctionSheet === false) {
+    // Не техническая ошибка, а осмысленный ответ модели ("это не аукционный
+    // лист") — помечаем отдельно, чтобы вызывающий код не считал это сбоем
+    // и не пытался ещё раз через GigaChat на том же фото без смысла.
+    const err = new Error('На фото не удалось распознать японский аукционный лист — проверьте фото (чёткость, освещение) и попробуйте снова');
+    err.notAuctionSheet = true;
+    throw err;
+  }
+  delete parsed.isAuctionSheet;
+  parsed.source = 'ai';
+  return enforceRussianFields(sanityCheckParsed(parsed));
+}
 
 async function uploadFile(accessToken, base64Data, mimeType) {
   const buf = Buffer.from(base64Data, 'base64');
@@ -569,23 +691,40 @@ module.exports = async (req, res) => {
     try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }
   }
 
-  // Фото аукционного листа (пока только маршрут "Япония" на клиенте) — своя
-  // ветка: картинку не разобрать регуляркой-резервом (heuristicParse работает
-  // только с текстом), поэтому здесь при сбое GigaChat просто честная ошибка,
-  // без попытки подстраховки.
+  // Фото аукционного листа (пока только маршрут "Япония" на клиенте).
+  // Gemini — основной путь, GigaChat — резерв на любой ТЕХНИЧЕСКИЙ сбой.
+  // Картинку не разобрать регуляркой (heuristicParse работает только с
+  // текстом), так что дальше GigaChat в этой ветке резерва нет вообще —
+  // как и раньше.
   const image = (body.image || '').toString();
   if (image) {
+    const mimeType = (body.mimeType || '').toString();
+    let geminiError = null;
+    try {
+      const parsed = await callGeminiVision(image, mimeType);
+      res.status(200).send(JSON.stringify(parsed));
+      return;
+    } catch (e) {
+      // "Не аукционный лист" — это ответ, а не сбой: не имеет смысла
+      // перепроверять то же фото через другой ИИ, отдаём как есть.
+      if (e.notAuctionSheet) {
+        res.status(200).send(JSON.stringify({ error: e.message }));
+        return;
+      }
+      geminiError = e.message || String(e);
+    }
+
     if (!GIGACHAT_AUTH_KEY) {
-      res.status(200).send(JSON.stringify({ error: 'GIGACHAT_AUTH_KEY не настроен на сервере' }));
+      res.status(200).send(JSON.stringify({ error: 'Gemini недоступен (' + geminiError + '), GIGACHAT_AUTH_KEY не настроен на сервере' }));
       return;
     }
     try {
       const token = await getAccessToken();
-      const fileId = await uploadFile(token, image, (body.mimeType || '').toString());
+      const fileId = await uploadFile(token, image, mimeType);
       const parsed = await callGigaChatVision(token, fileId);
       res.status(200).send(JSON.stringify(parsed));
     } catch (e) {
-      res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+      res.status(200).send(JSON.stringify({ error: 'Gemini недоступен (' + geminiError + '), GigaChat тоже не справился: ' + (e.message || String(e)) }));
     }
     return;
   }
@@ -595,11 +734,20 @@ module.exports = async (req, res) => {
     res.status(200).send(JSON.stringify({ error: 'пустой текст объявления' }));
     return;
   }
-  // GigaChat — основной путь; при любом сбое (нет ключа, не удалось получить
-  // токен, лимит, сеть, странный ответ) — резерв без ИИ, а не жёсткая ошибка.
-  // См. заголовок файла: резерв заведомо менее полный, но лучше частичный
-  // разбор, чем ничего.
-  let aiError = null;
+  // Gemini — основной путь; при любом сбое — GigaChat; при сбое и того, и
+  // другого — резерв без ИИ (heuristicParse). Каждый следующий уровень
+  // заведомо менее полный, чем предыдущий, но лучше частичный разбор, чем
+  // ничего — см. заголовок файла.
+  let geminiError = null;
+  try {
+    const parsed = await callGeminiText(text);
+    res.status(200).send(JSON.stringify(parsed));
+    return;
+  } catch (e) {
+    geminiError = e.message || String(e);
+  }
+
+  let gigaError = null;
   try {
     if (!GIGACHAT_AUTH_KEY) throw new Error('GIGACHAT_AUTH_KEY не настроен на сервере');
     const token = await getAccessToken();
@@ -607,14 +755,15 @@ module.exports = async (req, res) => {
     res.status(200).send(JSON.stringify(parsed));
     return;
   } catch (e) {
-    aiError = e.message || String(e);
+    gigaError = e.message || String(e);
   }
 
+  const aiError = 'Gemini: ' + geminiError + '; GigaChat: ' + gigaError;
   try {
     const fallback = await heuristicParseWithTranslation(text);
     fallback.aiError = aiError;
     res.status(200).send(JSON.stringify(fallback));
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: 'GigaChat недоступен (' + aiError + '), резервный разбор тоже не удался: ' + (e.message || String(e)) }));
+    res.status(200).send(JSON.stringify({ error: 'ИИ недоступны (' + aiError + '), резервный разбор тоже не удался: ' + (e.message || String(e)) }));
   }
 };
