@@ -322,39 +322,26 @@ const GEMINI_VISION_PROMPT = `Ты читаешь японский аукцио�
 // схеме (FUNCTION_SCHEMA vs VISION_FUNCTION_SCHEMA, у обеих уже готовый
 // JSON Schema в .parameters — Gemini понимает его напрямую, без изменений).
 // ---------------------------------------------------------------------
-async function callGeminiOnce(contents, schema) {
-  const reqBody = JSON.stringify({
-    contents: [{ parts: contents }],
-    generationConfig: {
-      // Живой запрос к API вернул 400 на mimeType:'application/json' — судя
-      // по тексту ошибки ("Invalid value ... TextResponseFormat.MimeType"),
-      // здесь ожидается имя enum-константы, а не MIME-строка.
-      responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema } },
-      temperature: 0.1
-    }
-  });
-  const res = await fetch(GEMINI_URL, {
+// Одна повторная попытка с паузой на 429 (лимит запросов) ИЛИ 503 (временная
+// перегрузка модели на стороне Google — сам Gemini в таких ответах пишет
+// "usually temporary, please try again later", то же "не долби, подожди и
+// повтори", что и для 429). Возвращает текст ответа модели. Общий для всех
+// вызовов Gemini — и для разбора по схеме, и для диагностического чтения
+// вслух: повтор нужен обоим одинаково.
+async function geminiGenerate(body) {
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY не настроен на сервере');
+  const reqBody = JSON.stringify(body);
+  const post = () => fetch(GEMINI_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
     body: reqBody,
     signal: AbortSignal.timeout(25000)
   });
-  return res;
-}
 
-// Общая обвязка: одна повторная попытка с паузой на 429 (лимит запросов)
-// ИЛИ 503 (временная перегрузка модели на стороне Google — сам Gemini в
-// таких ответах пишет "usually temporary, please try again later", то же
-// "не долби, подожди и повтори", что и для 429), разбор ответа, разбор
-// JSON. Отдельно от бизнес-логики (какие поля дальше делать с результатом)
-// — та у текста и у фото своя, см. callGeminiText/Vision ниже.
-async function callGeminiRaw(contents, schema) {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY не настроен на сервере');
-  const isTransient = (status) => status === 429 || status === 503;
-  let res = await callGeminiOnce(contents, schema);
-  if (isTransient(res.status)) {
+  let res = await post();
+  if (res.status === 429 || res.status === 503) {
     await sleep(GEMINI_429_RETRY_DELAY_MS);
-    res = await callGeminiOnce(contents, schema);
+    res = await post();
   }
   if (res.status === 429) {
     throw new Error('Gemini временно ограничил число запросов (лимит бесплатного уровня) — попробуйте чуть позже');
@@ -375,6 +362,20 @@ async function callGeminiRaw(contents, schema) {
   if (!text) {
     throw new Error('Gemini вернул пустой ответ' + (cand && cand.finishReason ? ' (finishReason: ' + cand.finishReason + ')' : ''));
   }
+  return text;
+}
+
+async function callGeminiRaw(contents, schema) {
+  const text = await geminiGenerate({
+    contents: [{ parts: contents }],
+    generationConfig: {
+      // Живой запрос к API вернул 400 на mimeType:'application/json' — судя
+      // по тексту ошибки ("Invalid value ... TextResponseFormat.MimeType"),
+      // здесь ожидается имя enum-константы, а не MIME-строка.
+      responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema } },
+      temperature: 0.1
+    }
+  });
   try {
     return JSON.parse(text);
   } catch (e) {
@@ -728,29 +729,13 @@ const FREEFORM_PROMPT = `Перед тобой фотография японск
 Если какая-то часть изображения слишком мелкая или размытая, чтобы её прочитать, так и напиши: что именно не разбирается. Это важнее, чем полнота: мне нужно понять, что на этом фото вообще читаемо.`;
 
 async function callGeminiFreeform(base64Data, mimeType) {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY не настроен на сервере');
-  const reqBody = JSON.stringify({
+  return geminiGenerate({
     contents: [{ parts: [
       { text: FREEFORM_PROMPT },
       { inlineData: { mimeType: mimeType || 'image/jpeg', data: base64Data } }
     ] }],
     generationConfig: { temperature: 0.1 }
   });
-  const res = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-    body: reqBody,
-    signal: AbortSignal.timeout(25000)
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error('Gemini http ' + res.status + (errText ? ': ' + errText.slice(0, 300) : ''));
-  }
-  const json = await res.json();
-  const cand = json.candidates && json.candidates[0];
-  const text = cand && cand.content && cand.content.parts && cand.content.parts[0] && cand.content.parts[0].text;
-  if (!text) throw new Error('Gemini вернул пустой ответ' + (cand && cand.finishReason ? ' (finishReason: ' + cand.finishReason + ')' : ''));
-  return text;
 }
 
 module.exports = async (req, res) => {
