@@ -24,6 +24,11 @@
 <button id="btnSharePhoto">3. Поделиться — фото + текст</button>
 <button id="btnDownload">4. Скачать файл</button>
 
+<h1 style="margin-top:26px;">Диагностика: аукционный лист</h1>
+<p class="sub">Показывает сырой ответ модели целиком — до того, как приложение что-либо отфильтрует.</p>
+<input type="file" accept="image/*" id="sheetFile" style="width:100%;margin-bottom:10px;">
+<button id="btnSheet">5. Распознать аукционный лист</button>
+
 <div id="log">Нажимайте кнопки по порядку и присылайте, что здесь появится.</div>
 
 <script>
@@ -111,6 +116,101 @@ document.getElementById('btnDownload').onclick = async ()=>{
   }catch(e){
     write('Ошибка: ' + e.name + ' — ' + e.message, 'bad');
   }
+};
+
+// --- Аукционный лист: сырой ответ модели + что из него принял бы калькулятор ---
+// Те же наборы допустимых значений, что и в index.html (runListingParse):
+// значение не из списка приложение молча отбрасывает — здесь это видно явно.
+const ALLOWED = {
+  drivetrain: ['front', 'rear', 'full'],
+  transmission: ['auto', 'robot', 'variator', 'reductor', 'manual'],
+  engineType: ['ben', 'dis', 'electric'],
+  powerUnit: ['ls', 'kvt']
+};
+const FIELD_MAP = ['model','carTrim','mileage','prodMonth','prodYear','drivetrain','transmission',
+  'engineType','volumeCm3','power','powerUnit','condition','notes'];
+
+function resizeToBase64(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=> reject(new Error('не удалось прочитать файл'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=> reject(new Error('не удалось декодировать изображение'));
+      img.onload = ()=>{
+        const MAX_BASE64 = 2.5 * 1024 * 1024;
+        const attempts = [{dim:maxDim, q:quality}, {dim:1400, q:0.75}, {dim:1100, q:0.6}, {dim:900, q:0.5}];
+        let out = null, used = null;
+        for(const a of attempts){
+          let w = img.width, h = img.height;
+          if(w > a.dim || h > a.dim){
+            const s = a.dim / Math.max(w, h);
+            w = Math.round(w*s); h = Math.round(h*s);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          out = canvas.toDataURL('image/jpeg', a.q).split(',')[1];
+          used = {w, h, q:a.q};
+          if(out.length <= MAX_BASE64) break;
+        }
+        if(!out || out.length > MAX_BASE64){ reject(new Error('фото слишком большое даже после сжатия')); return; }
+        resolve({ base64: out, used, original: {w: img.width, h: img.height} });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('btnSheet').onclick = async ()=>{
+  clear();
+  const f = document.getElementById('sheetFile').files[0];
+  if(!f){ write('Сначала выберите файл с аукционным листом', 'bad'); return; }
+  write('Файл: ' + f.name + ', ' + Math.round(f.size/1024) + ' КБ');
+  let prepared;
+  try{
+    prepared = await resizeToBase64(f, 1800, 0.85);
+  }catch(e){ write('Ошибка подготовки фото: ' + e.message, 'bad'); return; }
+  write('Отправляю: ' + prepared.original.w + '×' + prepared.original.h + ' → ' +
+        prepared.used.w + '×' + prepared.used.h + ' (качество ' + prepared.used.q + '), ' +
+        Math.round(prepared.base64.length/1024) + ' КБ base64');
+  write('Жду ответ модели, это может занять до минуты...');
+
+  const started = Date.now();
+  let data;
+  try{
+    const res = await fetch('/api/parse-listing', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ image: prepared.base64, mimeType: 'image/jpeg' })
+    });
+    data = await res.json();
+  }catch(e){ write('Сеть/сервер: ' + e.message, 'bad'); return; }
+
+  write('Ответ за ' + Math.round((Date.now()-started)/1000) + ' сек');
+  if(data.error){ write('Ошибка от сервера: ' + data.error, 'bad'); return; }
+
+  write('');
+  write('=== СЫРОЙ ОТВЕТ МОДЕЛИ ===');
+  write(JSON.stringify(data, null, 2));
+
+  write('');
+  write('=== ЧТО ИЗ ЭТОГО ПОПАЛО БЫ В КАЛЬКУЛЯТОР ===');
+  let ok = 0, dropped = 0, missing = 0;
+  FIELD_MAP.forEach(k=>{
+    const v = data[k];
+    if(v===null || v===undefined || v===''){ write(k + ': — модель не вернула', 'bad'); missing++; return; }
+    if(ALLOWED[k] && ALLOWED[k].indexOf(v) === -1){
+      write(k + ': "' + v + '" — ОТБРОШЕНО, ожидалось одно из: ' + ALLOWED[k].join('/'), 'bad');
+      dropped++;
+      return;
+    }
+    write(k + ': ' + v, 'ok');
+    ok++;
+  });
+  write('');
+  write('Принято: ' + ok + ' · отброшено из-за формата: ' + dropped + ' · не вернула модель: ' + missing);
 };
 </script>
 </body>
