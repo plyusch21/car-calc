@@ -299,7 +299,10 @@ async function callGeminiOnce(contents, schema) {
   const reqBody = JSON.stringify({
     contents: [{ parts: contents }],
     generationConfig: {
-      responseFormat: { text: { mimeType: 'application/json', schema } },
+      // Живой запрос к API вернул 400 на mimeType:'application/json' — судя
+      // по тексту ошибки ("Invalid value ... TextResponseFormat.MimeType"),
+      // здесь ожидается имя enum-константы, а не MIME-строка.
+      responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema } },
       temperature: 0.1
     }
   });
