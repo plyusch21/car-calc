@@ -640,19 +640,43 @@ async function enforceRussianFields(parsed) {
 // заведомо абсурдное значение в расчёте.
 function sanityCheckParsed(parsed, text) {
   if (text && (parsed.mileage == null || parsed.mileage === '')) {
-    const mileageRaw = firstMatch(text, [
-      /(?:пробег|mileage|里程|走行距離|走行)[^\d]{0,10}(\d[\d,.\s]{2,})/i,
-      /(\d[\d,.\s]{2,})\s*(?:км|km|公里)/i
-    ]);
-    if (mileageRaw) {
-      const n = parseFloat(mileageRaw.replace(/[,\s]/g, ''));
-      if (!isNaN(n) && n > 0) parsed.mileage = Math.round(n);
-    }
+    const n = extractMileageKm(text);
+    if (n != null) parsed.mileage = n;
   }
   if (parsed.volumeCm3 != null && (parsed.volumeCm3 < 200 || parsed.volumeCm3 > 9000)) {
     parsed.volumeCm3 = null;
   }
+  // Та же защита для пробега, откуда бы он ни пришёл — от модели или от
+  // регулярки. Живой пример из резервного разбора: "Subaru Forester 2020,
+  // 61000 km" превращалось в 202 061 000 км, потому что старый шаблон
+  // разрешал внутри числа любые пробелы и запятые и склеивал год с пробегом.
+  if (parsed.mileage != null && parsed.mileage !== '' && Number(parsed.mileage) > 2000000) {
+    parsed.mileage = null;
+  }
   return parsed;
+}
+
+// Разделителем тысяч считаем пробел/запятую/точку только МЕЖДУ группами по
+// три цифры ("17,297", "39 346"); группа обязательна (+, а не *), иначе
+// "120000" разберётся как "120" — на этом я и споткнулся при первой правке.
+const MILEAGE_NUM = '\\d{1,3}(?:[ ,.\\u00a0\\u2009]\\d{3})+|\\d+';
+const MILEAGE_LABEL_RE = new RegExp('(?:\u043f\u0440\u043e\u0431\u0435\u0433|mileage|\u91cc\u7a0b|\u8d70\u884c\u8ddd\u96e2|\u8d70\u884c)[^\\d]{0,10}(' + MILEAGE_NUM + ')', 'i');
+const MILEAGE_UNIT_RE = new RegExp('(' + MILEAGE_NUM + ')\\s*(?:\u043a\u043c|km|\u516c\u91cc)', 'i');
+// Японский формат "4.5万km" = 4.5 x 10 000 = 45 000 км. Проверяется первым:
+// иначе шаблоны выше выхватят из него "4" и молча отдадут 4 км.
+const MILEAGE_MAN_RE = /(\d+(?:[.,]\d+)?)\s*\u4e07\s*(?:km|\u30ad\u30ed)?/i;
+
+function saneMileage(n) {
+  if (isNaN(n) || n <= 0 || n > 2000000) return null;
+  return Math.round(n);
+}
+
+function extractMileageKm(text) {
+  const man = text.match(MILEAGE_MAN_RE);
+  if (man) return saneMileage(parseFloat(man[1].replace(',', '.')) * 10000);
+  const m = text.match(MILEAGE_LABEL_RE) || text.match(MILEAGE_UNIT_RE);
+  if (m) return saneMileage(parseFloat(m[1].replace(/[ ,.\u00a0\u2009]/g, '')));
+  return null;
 }
 
 function firstMatch(text, patterns) {
@@ -688,15 +712,11 @@ function heuristicParse(text) {
     power: null, powerUnit: null, condition: null, notes: null, source: 'heuristic'
   };
 
-  const mileageRaw = firstMatch(text, [
-    /(?:пробег|mileage|里程|走行距離|走行)[^\d]{0,10}(\d[\d,.\s]{2,})/i,
-    /(\d[\d,.\s]{2,})\s*(?:км|km|公里)/i
-  ]);
-  if (mileageRaw) {
-    let n = parseFloat(mileageRaw.replace(/[,\s]/g, ''));
-    if (/mile|миль/i.test(text) && !/км|km|公里/i.test(text)) n *= 1.60934;
-    if (!isNaN(n) && n > 0) out.mileage = Math.round(n);
+  let mileageKm = extractMileageKm(text);
+  if (mileageKm != null && /mile|миль/i.test(text) && !/км|km|公里/i.test(text)) {
+    mileageKm = Math.round(mileageKm * 1.60934);
   }
+  if (mileageKm != null) out.mileage = mileageKm;
 
   // Японские эры (令和/平成/昭和 или латиницей R/H/S) идут раньше обычного
   // регулярного года — на японских листах/объявлениях года почти всегда в
