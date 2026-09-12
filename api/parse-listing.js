@@ -315,18 +315,25 @@ async function callGeminiOnce(contents, schema) {
   return res;
 }
 
-// Общая обвязка: одна повторная попытка на 429 с паузой, разбор ответа,
-// разбор JSON. Отдельно от бизнес-логики (какие поля дальше делать с
-// результатом) — та у текста и у фото своя, см. callGeminiText/Vision ниже.
+// Общая обвязка: одна повторная попытка с паузой на 429 (лимит запросов)
+// ИЛИ 503 (временная перегрузка модели на стороне Google — сам Gemini в
+// таких ответах пишет "usually temporary, please try again later", то же
+// "не долби, подожди и повтори", что и для 429), разбор ответа, разбор
+// JSON. Отдельно от бизнес-логики (какие поля дальше делать с результатом)
+// — та у текста и у фото своя, см. callGeminiText/Vision ниже.
 async function callGeminiRaw(contents, schema) {
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY не настроен на сервере');
+  const isTransient = (status) => status === 429 || status === 503;
   let res = await callGeminiOnce(contents, schema);
-  if (res.status === 429) {
+  if (isTransient(res.status)) {
     await sleep(GEMINI_429_RETRY_DELAY_MS);
     res = await callGeminiOnce(contents, schema);
   }
   if (res.status === 429) {
     throw new Error('Gemini временно ограничил число запросов (лимит бесплатного уровня) — попробуйте чуть позже');
+  }
+  if (res.status === 503) {
+    throw new Error('Gemini временно перегружен (высокий спрос на модель) — попробуйте чуть позже');
   }
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
