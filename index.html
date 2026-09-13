@@ -949,6 +949,7 @@ function renderCalc(c){
   const isElectric = engineMeta.dtype === 'electric';
 
   c.innerHTML = `
+    <button class="btn secondary" id="toDealsBtn" style="margin-bottom:12px;">Учёт сделок →</button>
     <div class="card">
       <h2>Автозаполнение</h2>
       <div class="toggle-row field">
@@ -1121,6 +1122,10 @@ function renderCalc(c){
   const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; renderCalc(c); };
   const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
+  // Учёт сделок — отдельная страница (index.html и так большой). Открываем
+  // обычной навигацией в том же окне Telegram: это тот же мини-апп и тот же
+  // initData, поэтому гейт там срабатывает так же, как здесь.
+  const toDeals = document.getElementById('toDealsBtn'); if(toDeals) toDeals.onclick = ()=>{ location.href = '/deals'; };
   const listingParserT = document.getElementById('listingParserToggle'); if(listingParserT) listingParserT.onclick = ()=>{ f.showListingParser=!f.showListingParser; renderCalc(c); };
   const listingTa = document.getElementById('f_listingText'); if(listingTa) listingTa.oninput = ()=> f.listingText = listingTa.value;
   const parseBtn = document.getElementById('parseListingBtn');

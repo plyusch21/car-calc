@@ -4,6 +4,7 @@
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "diag.html", "use": "@vercel/static" },
     { "src": "share.html", "use": "@vercel/static" },
+    { "src": "deals.html", "use": "@vercel/static" },
     { "src": "api/rates.js", "use": "@vercel/node" },
     { "src": "api/customs.js", "use": "@vercel/node" },
     { "src": "api/auth.js", "use": "@vercel/node" },
@@ -24,6 +25,7 @@
     { "src": "/api/deals", "dest": "/api/deals.js" },
     { "src": "/diag", "dest": "/diag.html" },
     { "src": "/share", "dest": "/share.html" },
+    { "src": "/deals", "dest": "/deals.html" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }

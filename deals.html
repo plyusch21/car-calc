@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Сделки · Baikal Auto</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Оформление намеренно повторяет калькулятор — это один продукт, человек
+   переходит сюда с главного экрана и не должен чувствовать смену приложения.
+   Переменные и базовые классы скопированы из index.html: страницы
+   самостоятельные, сборщика в проекте нет и заводить его ради этого не стоит. */
+:root{
+  --bg:#080d12; --panel:#0f1720; --panel-2:#141f2a; --border:#213040;
+  --text:#e6edf1; --muted:#75919e; --accent:#2f7dd1; --accent-soft:#2f7dd122;
+  --teal:#37b07c; --teal-soft:#37b07c22; --danger:#d1573f; --danger-soft:#d1573f22;
+  --warn:#d9b25f; --warn-soft:#d9b25f22; --radius:14px;
+  --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tg-top-pad: 0px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased; }
+.app{ max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(24px + var(--safe-bottom)); }
+.mono{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
+.topbar{ padding:calc(14px + var(--safe-top) + var(--tg-top-pad)) 16px 10px; position:sticky; top:0; z-index:20; background:linear-gradient(180deg, var(--bg) 72%, transparent); }
+.topbar h1{ font-family:'Fraunces',serif; font-weight:600; font-size:21px; margin:0 0 2px; }
+.topbar .sub{color:var(--muted); font-size:12.5px;}
+.content{ padding:0 16px 20px; flex:1; }
+
+.tabs{ display:flex; gap:6px; padding:6px 0 14px; overflow-x:auto; scrollbar-width:none; }
+.tab{ background:var(--panel); border:1px solid var(--border); color:var(--muted); border-radius:99px; padding:8px 14px; font-size:13px; white-space:nowrap; cursor:pointer; font-family:inherit; }
+.tab.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--text); }
+
+.card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:12px; }
+.card h2{ font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 12px; font-weight:600; }
+
+.btn{ width:100%; background:var(--accent); color:#fff; border:none; border-radius:11px; padding:13px; font-size:14.5px; font-weight:600; cursor:pointer; font-family:inherit; }
+.btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
+.btn.small{ padding:9px; font-size:12.5px; }
+.btn.danger{ background:var(--danger); }
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+
+.field{margin-bottom:12px;}
+.field label{ display:block; font-size:12.5px; color:var(--muted); margin-bottom:5px; }
+input[type=text], input[type=tel], select, textarea{
+  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+  border-radius:9px; padding:10px 11px; font-size:14.5px; font-family:inherit; outline:none;
+}
+textarea{resize:vertical; min-height:64px;}
+input:focus, select:focus, textarea:focus{border-color:var(--accent);}
+
+.dealrow{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 13px; margin-bottom:10px; cursor:pointer; }
+.dealrow .top{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.dealrow .num{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--accent); }
+.dealrow .idle{ font-size:11.5px; color:var(--muted); white-space:nowrap; }
+.dealrow .idle.warn{ color:var(--warn); }
+.dealrow .idle.bad{ color:var(--danger); }
+.dealrow .name{ font-weight:600; font-size:14.5px; margin-top:4px; }
+.dealrow .car{ color:var(--muted); font-size:12.5px; margin-top:2px; }
+.dealrow .foot{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px; }
+.chip{ display:inline-block; font-size:11.5px; padding:3px 9px; border-radius:99px; background:var(--panel-2); border:1px solid var(--border); color:var(--muted); }
+.chip.stage{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
+.chip.problem{ background:var(--danger-soft); border-color:var(--danger); color:var(--danger); }
+.chip.arch{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
+
+.stage{ display:flex; align-items:flex-start; gap:10px; padding:11px 0; border-bottom:1px solid var(--border); }
+.stage:last-child{border-bottom:none;}
+.stage .mark{ flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:1px solid var(--border); background:var(--panel-2); color:var(--muted); font-size:13px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.stage .mark.done{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
+.stage .mark.skip{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
+.stage .body{flex:1; min-width:0;}
+.stage .lbl{ font-size:14px; font-weight:500; }
+.stage .meta{ font-size:11.5px; color:var(--muted); margin-top:2px; }
+.stage .note{ font-size:12.5px; color:var(--muted); margin-top:4px; white-space:pre-wrap; }
+
+.kv{ display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
+.kv:last-child{border-bottom:none;}
+.kv .k{ color:var(--muted); flex:0 0 auto; }
+.kv .v{ text-align:right; word-break:break-word; }
+
+.logitem{ font-size:12.5px; padding:7px 0; border-bottom:1px solid var(--border); }
+.logitem:last-child{border-bottom:none;}
+.logitem .who{ color:var(--muted); }
+
+.emptystate{ text-align:center; color:var(--muted); font-size:13px; padding:40px 20px; line-height:1.6; }
+.emptystate .big{ font-family:'Fraunces',serif; font-size:16px; color:var(--text); margin-bottom:6px; }
+.notice{ background:var(--danger-soft); border:1px solid var(--danger); color:var(--danger); border-radius:9px; padding:10px 12px; font-size:12.5px; margin-bottom:12px; line-height:1.45; }
+.notice.warn{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
+
+.sheet-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; justify-content:center; z-index:50; }
+.sheet-overlay.open{display:flex;}
+.sheet{ background:var(--bg); width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border); padding:14px 16px calc(24px + var(--safe-bottom)); }
+.sheet h3{ font-family:'Fraunces',serif; font-weight:600; font-size:17px; margin:6px 0 12px; }
+.toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 16px; border-radius:9px; font-size:13px; z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; max-width:88%; text-align:center; }
+.toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1 id="title">Сделки</h1>
+    <div class="sub" id="subtitle">Загрузка…</div>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+<div class="sheet-overlay" id="sheetOverlay"><div class="sheet" id="sheetBody"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   1. Этапы — перечень живёт здесь, в коде, и только здесь.
+   Тип сделки выбирается при создании и дальше не меняется, поэтому и
+   шаблон этапов у сделки один на всю её жизнь. В самой записи сделки
+   лежат ТОЛЬКО отметки (состояние/дата/заметка), без названий и порядка —
+   иначе перечень расползётся по сотне записей в базе и его нельзя будет
+   поправить. В синхронизируемые настройки он не попадает вовсе.
+===================================================================== */
+const STAGE_TEMPLATES = {
+  import: [
+    {key:'pick',     label:'Подбор'},
+    {key:'contract', label:'Договор'},
+    {key:'prepay',   label:'Предоплата'},
+    {key:'booking',  label:'Бронь'},
+    {key:'invoice',  label:'Оплата инвойса'},
+    {key:'export',   label:'Экспорт'},
+    {key:'customs',  label:'Таможня'},
+    {key:'lab',      label:'Лаборатория'},
+    {key:'yard',     label:'Наша стоянка'},
+    {key:'settle',   label:'Расчёт'},
+    {key:'shipping', label:'Отправка', optional:true},
+    {key:'issued',   label:'Выдан авто', final:true}
+  ],
+  paperwork: [
+    {key:'docs',     label:'Документы получены'},
+    {key:'customs',  label:'Таможня'},
+    {key:'lab',      label:'Лаборатория'},
+    {key:'yard',     label:'Наша стоянка'},
+    {key:'settle',   label:'Расчёт'},
+    {key:'shipping', label:'Отправка', optional:true},
+    {key:'issued',   label:'Выдан авто', final:true}
+  ]
+};
+const DEAL_TYPE_LABELS = { import:'Импорт', paperwork:'Оформление' };
+const ROUTE_LABELS = { japan:'Япония', korea:'Корея', china:'Китай', eaeu:'ЕАЭС' };
+const ROUTE_FLAGS = { japan:'🇯🇵', korea:'🇰🇷', china:'🇨🇳', eaeu:'🌐' };
+const PARTY_KIND_LABELS = { person:'Частное лицо', dealer:'Дилер' };
+const LEVEL_LABELS = { none:'Нет доступа', own:'Только свои сделки', read_all:'Видит все, правит свои', full:'Полный' };
+
+function stagesOf(type){ return STAGE_TEMPLATES[type] || STAGE_TEMPLATES.import; }
+
+/* Статус сделки нигде не хранится и руками не ставится — он всегда
+   вычисляется как последний пройденный этап. Так статус не может разойтись
+   с отметками: единственный источник правды — сами отметки. */
+function currentStage(deal){
+  const list = stagesOf(deal.type);
+  let last = null;
+  list.forEach(st=>{ if(deal.stages && deal.stages[st.key] && deal.stages[st.key].state === 'done') last = st; });
+  return last;
+}
+function isArchived(deal){
+  const fin = stagesOf(deal.type).find(s=>s.final);
+  return !!(fin && deal.stages && deal.stages[fin.key] && deal.stages[fin.key].state === 'done');
+}
+/* "Движение" — это отметка этапа. Заметку поправили — сделка не сдвинулась,
+   поэтому счётчик простоя считаем по последней отметке, а до первой — от
+   даты создания. */
+function lastMovementAt(deal){
+  let t = deal.createdAt || 0;
+  Object.keys(deal.stages || {}).forEach(k=>{
+    const at = deal.stages[k] && deal.stages[k].at;
+    if(at && at > t) t = at;
+  });
+  return t;
+}
+function idleDays(ts){
+  if(!ts) return 0;
+  return Math.floor((Date.now() - ts) / 86400000);
+}
+
+/* =====================================================================
+   2. Утилиты и состояние
+===================================================================== */
+const state = { view:'list', tab:'all', archive:false, deals:[], parties:[], users:[], me:null, deal:null, log:[], canWrite:false, party:null };
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('ru-RU') : '—';
+const fmtDateTime = ts => ts ? new Date(ts).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+function toast(msg, ms){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), ms||2200); }
+function openSheet(html){ document.getElementById('sheetBody').innerHTML = html; document.getElementById('sheetOverlay').classList.add('open'); }
+function closeSheet(){ document.getElementById('sheetOverlay').classList.remove('open'); }
+document.getElementById('sheetOverlay').onclick = (e)=>{ if(e.target.id==='sheetOverlay') closeSheet(); };
+
+function initData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
+
+async function api(action, payload){
+  const res = await fetch('/api/deals', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(Object.assign({ initData: initData(), action }, payload || {}))
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  return data;
+}
+
+function pluralDays(n){
+  const a = Math.abs(n) % 100, b = n % 10;
+  if(a > 10 && a < 20) return n + ' дней';
+  if(b === 1) return n + ' день';
+  if(b >= 2 && b <= 4) return n + ' дня';
+  return n + ' дней';
+}
+
+/* =====================================================================
+   3. Экран списка
+===================================================================== */
+function renderList(){
+  const c = document.getElementById('content');
+  document.getElementById('title').textContent = state.archive ? 'Архив сделок' : 'Сделки';
+
+  const rows = state.deals
+    .filter(d => !!d.archived === !!state.archive)
+    .filter(d => {
+      if(state.archive) return true;
+      if(state.tab === 'dealers') return d.partyKind === 'dealer';
+      if(state.tab === 'paperwork') return d.type === 'paperwork';
+      return true;
+    })
+    // По умолчанию сверху те, где движения не было дольше всего — это и есть
+    // рабочий смысл экрана: чем дольше тишина, тем выше в списке.
+    .sort((a,b)=> (a.stageAt||a.createdAt||0) - (b.stageAt||b.createdAt||0));
+
+  document.getElementById('subtitle').textContent =
+    rows.length ? (state.archive ? rows.length + ' завершённых' : 'В работе: ' + rows.length) : 'Пока пусто';
+
+  const tabs = state.archive ? '' : `
+    <div class="tabs">
+      <button class="tab ${state.tab==='all'?'active':''}" data-t="all">Все</button>
+      <button class="tab ${state.tab==='dealers'?'active':''}" data-t="dealers">Дилеры</button>
+      <button class="tab ${state.tab==='paperwork'?'active':''}" data-t="paperwork">Оформление</button>
+    </div>`;
+
+  const list = rows.length ? rows.map(d=>{
+    const days = idleDays(d.stageAt || d.createdAt);
+    const cls = days >= 14 ? 'bad' : (days >= 7 ? 'warn' : '');
+    const stage = d.stageKey ? (stagesOf(d.type).find(s=>s.key===d.stageKey) || {}).label : null;
+    return `<div class="dealrow" data-id="${esc(d.id)}">
+      <div class="top">
+        <span class="num">${esc(d.num)}</span>
+        <span class="idle ${cls}">${d.archived ? 'завершена' : 'без движения ' + pluralDays(days)}</span>
+      </div>
+      <div class="name">${esc(d.partyName || 'без контрагента')}</div>
+      <div class="car">${esc(d.car || 'машина не указана')}${d.route ? ' · ' + (ROUTE_FLAGS[d.route]||'') + ' ' + (ROUTE_LABELS[d.route]||'') : ''}</div>
+      <div class="foot">
+        <span>
+          <span class="chip ${stage?'stage':''}">${esc(stage || 'этапов нет')}</span>
+          ${d.problem ? '<span class="chip problem">проблема</span>' : ''}
+          ${d.type==='paperwork' ? '<span class="chip">оформление</span>' : ''}
+        </span>
+        <span class="chip">${esc(d.responsibleName || 'без ответственного')}</span>
+      </div>
+    </div>`;
+  }).join('') : `<div class="emptystate"><div class="big">${state.archive?'Архив пуст':'Сделок пока нет'}</div>${state.archive?'Сюда попадают сделки после отметки «Выдан авто».':'Создайте первую — кнопка ниже.'}</div>`;
+
+  c.innerHTML = tabs + list +
+    (state.archive
+      ? `<button class="btn secondary" id="backToWork">← К сделкам в работе</button>`
+      : `<button class="btn" id="newDeal">+ Новая сделка</button>
+         <div class="row2" style="margin-top:10px;">
+           <button class="btn secondary small" id="toParties">Контрагенты</button>
+           <button class="btn secondary small" id="toArchive">Архив</button>
+         </div>`);
+
+  c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=>{ state.tab = b.dataset.t; renderList(); });
+  c.querySelectorAll('.dealrow').forEach(el=> el.onclick = ()=> openDeal(el.dataset.id));
+  const nd = document.getElementById('newDeal'); if(nd) nd.onclick = openNewDealSheet;
+  const ta = document.getElementById('toArchive'); if(ta) ta.onclick = ()=>{ state.archive = true; renderList(); };
+  const tp = document.getElementById('toParties'); if(tp) tp.onclick = renderParties;
+  const bw = document.getElementById('backToWork'); if(bw) bw.onclick = ()=>{ state.archive = false; renderList(); };
+}
+
+/* =====================================================================
+   4. Создание сделки: контрагент ищется по телефону
+===================================================================== */
+function openNewDealSheet(){
+  openSheet(`
+    <h3>Новая сделка</h3>
+    <div class="field">
+      <label>Тип сделки — потом не изменить</label>
+      <select id="ndType">
+        <option value="import">Импорт (полный цикл)</option>
+        <option value="paperwork">Оформление (авто уже в пути/прибыло)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Телефон контрагента</label>
+      <input type="tel" id="ndPhone" placeholder="+7 999 123-45-67" inputmode="tel">
+    </div>
+    <button class="btn" id="ndNext">Дальше</button>
+    <button class="btn secondary" id="ndCancel" style="margin-top:8px;">Отмена</button>
+  `);
+  document.getElementById('ndCancel').onclick = closeSheet;
+  document.getElementById('ndNext').onclick = async ()=>{
+    const type = document.getElementById('ndType').value;
+    const phone = document.getElementById('ndPhone').value.trim();
+    if(!phone){ toast('Укажите телефон — по нему ищем контрагента'); return; }
+    let found = null;
+    try{ found = (await api('findPartyByPhone', {phone})).party; }
+    catch(e){ toast('Не удалось найти: ' + e.message); return; }
+    if(found) askSamePerson(found, type, phone);
+    else openPartySheet({ phone, kind:'person' }, (party)=> createDeal(type, party));
+  };
+}
+
+/* Телефон совпал. Полное совпадение подставляем молча только если и имя
+   то же; если имя другое — решает человек, потому что один номер вполне
+   может быть и у нового клиента (перешёл номер, семья, перепродажа). */
+function askSamePerson(found, type, phone){
+  openSheet(`
+    <h3>Такой телефон уже есть</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 14px;">
+      ${esc(phone)} — записан как <b>${esc(found.name)}</b> (${esc(PARTY_KIND_LABELS[found.kind]||found.kind)}${found.city?', '+esc(found.city):''}).
+      Это тот же человек или новый контрагент с тем же номером?
+    </p>
+    <button class="btn" id="sameYes">Тот же — создать сделку для него</button>
+    <button class="btn secondary" id="sameNo" style="margin-top:8px;">Новый контрагент</button>
+    <button class="btn secondary" id="sameCancel" style="margin-top:8px;">Отмена</button>
+  `);
+  document.getElementById('sameCancel').onclick = closeSheet;
+  document.getElementById('sameYes').onclick = ()=> createDeal(type, found);
+  document.getElementById('sameNo').onclick = ()=> openPartySheet({ phone:'', kind:'person' }, (party)=> createDeal(type, party));
+}
+
+function openPartySheet(initial, onSaved){
+  const p = initial || {};
+  const dealers = state.parties.filter(x=>x.kind==='dealer');
+  openSheet(`
+    <h3>${p.id ? 'Контрагент' : 'Новый контрагент'}</h3>
+    <div class="field">
+      <label>Тип</label>
+      <select id="pKind">
+        <option value="person" ${p.kind!=='dealer'?'selected':''}>Частное лицо</option>
+        <option value="dealer" ${p.kind==='dealer'?'selected':''}>Дилер</option>
+      </select>
+    </div>
+    <div class="field"><label>Имя</label><input type="text" id="pName" value="${esc(p.name||'')}"></div>
+    <div class="field"><label>Телефон</label><input type="tel" id="pPhone" value="${esc(p.phone||'')}" inputmode="tel"></div>
+    <div class="row2">
+      <div class="field"><label>Канал связи</label>
+        <select id="pChannel">
+          ${['','Telegram','WhatsApp','MAX','Звонок','Email'].map(x=>`<option value="${esc(x)}" ${p.channel===x?'selected':''}>${esc(x||'не указан')}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Город</label><input type="text" id="pCity" value="${esc(p.city||'')}"></div>
+    </div>
+    <div class="field" id="pDealerWrap" style="${p.kind==='dealer'?'display:none;':''}">
+      <label>Привёл дилер</label>
+      <select id="pDealer">
+        <option value="">— нет —</option>
+        ${dealers.map(d=>`<option value="${esc(d.id)}" ${p.dealerId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field" id="pTermsWrap" style="${p.kind==='dealer'?'':'display:none;'}">
+      <label>Условия работы</label><textarea id="pTerms">${esc(p.terms||'')}</textarea>
+    </div>
+    <div class="field"><label>Заметки</label><textarea id="pNotes">${esc(p.notes||'')}</textarea></div>
+    <button class="btn" id="pSave">Сохранить</button>
+    <button class="btn secondary" id="pCancel" style="margin-top:8px;">Отмена</button>
+  `);
+  const kindSel = document.getElementById('pKind');
+  kindSel.onchange = ()=>{
+    const isDealer = kindSel.value === 'dealer';
+    document.getElementById('pTermsWrap').style.display = isDealer ? '' : 'none';
+    document.getElementById('pDealerWrap').style.display = isDealer ? 'none' : '';
+  };
+  document.getElementById('pCancel').onclick = closeSheet;
+  document.getElementById('pSave').onclick = async ()=>{
+    const party = {
+      id: p.id || '',
+      kind: kindSel.value,
+      name: document.getElementById('pName').value.trim(),
+      phone: document.getElementById('pPhone').value.trim(),
+      channel: document.getElementById('pChannel').value,
+      city: document.getElementById('pCity').value.trim(),
+      terms: document.getElementById('pTerms').value.trim(),
+      dealerId: document.getElementById('pDealer').value,
+      notes: document.getElementById('pNotes').value.trim()
+    };
+    if(!party.name){ toast('Без имени контрагента не сохранить'); return; }
+    try{
+      const saved = (await api('saveParty', {party})).party;
+      await reloadIndexes();
+      closeSheet();
+      if(onSaved) onSaved(saved);
+      else toast('Контрагент сохранён');
+    }catch(e){ toast('Не сохранилось: ' + e.message); }
+  };
+}
+
+async function createDeal(type, party){
+  try{
+    const deal = {
+      type,
+      partyId: party.id, partyName: party.name, partyKind: party.kind,
+      stages: {}, stageKey:'', stageAt:0, archived:false
+    };
+    const saved = (await api('saveDeal', {deal})).deal;
+    await reloadIndexes();
+    closeSheet();
+    openDeal(saved.id);
+    toast('Сделка ' + saved.num + ' создана');
+  }catch(e){ toast('Не создалось: ' + e.message); }
+}
+
+/* =====================================================================
+   5. Карточка сделки
+===================================================================== */
+async function openDeal(id){
+  try{
+    const data = await api('getDeal', {id});
+    state.deal = data.deal; state.log = data.log || []; state.canWrite = !!data.canWrite;
+    state.view = 'deal';
+    renderDeal();
+  }catch(e){ toast(e.message); }
+}
+
+function renderDeal(){
+  const d = state.deal;
+  const c = document.getElementById('content');
+  document.getElementById('title').textContent = d.num;
+  const stage = currentStage(d);
+  document.getElementById('subtitle').textContent =
+    (stage ? stage.label : 'этапов ещё нет') + ' · ' + (DEAL_TYPE_LABELS[d.type] || d.type);
+
+  const party = state.parties.find(p=>p.id===d.partyId);
+  const endBuyer = state.parties.find(p=>p.id===d.endBuyerId);
+
+  const stagesHtml = stagesOf(d.type).map(st=>{
+    const mark = (d.stages && d.stages[st.key]) || {};
+    const cls = mark.state === 'done' ? 'done' : (mark.state === 'skip' ? 'skip' : '');
+    const glyph = mark.state === 'done' ? '✓' : (mark.state === 'skip' ? '—' : '');
+    return `<div class="stage">
+      <div class="mark ${cls}" data-stage="${esc(st.key)}">${glyph}</div>
+      <div class="body">
+        <div class="lbl">${esc(st.label)}${st.optional?' <span class="chip">необязательный</span>':''}</div>
+        <div class="meta">${mark.state==='done' ? 'пройден ' + fmtDate(mark.at) : (mark.state==='skip' ? 'не требуется' : 'не пройден')}</div>
+        ${mark.note ? `<div class="note">${esc(mark.note)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  c.innerHTML = `
+    <button class="btn secondary small" id="dBack" style="margin-bottom:12px;">← К списку</button>
+    ${d.problem && d.problem.on ? `<div class="notice">Проблема: ${esc(d.problem.reason || 'без описания')}</div>` : ''}
+    ${d.archived ? `<div class="notice warn">Сделка завершена и находится в архиве.</div>` : ''}
+
+    <div class="card">
+      <h2>Сделка</h2>
+      <div class="kv"><span class="k">Контрагент</span><span class="v">${party ? `<a href="#" id="toParty" style="color:var(--accent);text-decoration:none;">${esc(d.partyName)}</a>` : esc(d.partyName||'—')}</span></div>
+      ${d.endBuyerName ? `<div class="kv"><span class="k">Конечный покупатель</span><span class="v">${esc(d.endBuyerName)}</span></div>` : ''}
+      <div class="kv"><span class="k">Тип</span><span class="v">${esc(DEAL_TYPE_LABELS[d.type]||d.type)}</span></div>
+      <div class="kv"><span class="k">Маршрут</span><span class="v">${d.route ? (ROUTE_FLAGS[d.route]||'') + ' ' + esc(ROUTE_LABELS[d.route]||d.route) : '—'}</span></div>
+      <div class="kv"><span class="k">Что ищем</span><span class="v">${esc(d.car||'—')}${d.year?' · '+esc(d.year):''}</span></div>
+      <div class="kv"><span class="k">Бюджет</span><span class="v">${esc(d.budget||'—')}</span></div>
+      <div class="kv"><span class="k">Город доставки</span><span class="v">${esc(d.deliveryCity||'—')}</span></div>
+      <div class="kv"><span class="k">Ответственный</span><span class="v">${esc((d.responsible&&d.responsible.name)||'не назначен')}</span></div>
+      <div class="kv"><span class="k">Создана</span><span class="v">${fmtDate(d.createdAt)}</span></div>
+      ${d.wishes ? `<div class="kv"><span class="k">Пожелания</span><span class="v">${esc(d.wishes)}</span></div>` : ''}
+      ${d.notes ? `<div class="kv"><span class="k">Заметки</span><span class="v">${esc(d.notes)}</span></div>` : ''}
+      ${state.canWrite ? `<button class="btn secondary small" id="dEdit" style="margin-top:12px;">Редактировать</button>` : ''}
+    </div>
+
+    <div class="card">
+      <h2>Этапы</h2>
+      ${stagesHtml}
+      ${state.canWrite ? `<div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Нажмите на кружок, чтобы отметить этап.</div>` : ''}
+    </div>
+
+    ${state.canWrite ? `<div class="card">
+      <h2>Отметки</h2>
+      <button class="btn secondary small" id="dProblem">${d.problem && d.problem.on ? 'Снять отметку проблемы' : 'Отметить проблему / паузу'}</button>
+    </div>` : ''}
+
+    <div class="card">
+      <h2>История изменений</h2>
+      ${state.log.length ? state.log.slice().reverse().map(l=>`
+        <div class="logitem"><div>${esc(l.text)}</div><div class="who">${esc(l.name)} · ${fmtDateTime(l.at)}</div></div>
+      `).join('') : '<div style="font-size:12.5px;color:var(--muted);">Пока пусто.</div>'}
+    </div>
+  `;
+
+  document.getElementById('dBack').onclick = ()=>{ state.view='list'; renderList(); };
+  const tp = document.getElementById('toParty');
+  if(tp) tp.onclick = (e)=>{ e.preventDefault(); openParty(d.partyId); };
+  const ed = document.getElementById('dEdit'); if(ed) ed.onclick = openDealEditSheet;
+  const pb = document.getElementById('dProblem'); if(pb) pb.onclick = openProblemSheet;
+  if(state.canWrite){
+    c.querySelectorAll('.mark').forEach(el=> el.onclick = ()=> openStageSheet(el.dataset.stage));
+  }
+}
+
+/* Отметка этапа. У необязательного этапа («отправка») три состояния —
+   не пройден / пройден / не требуется; у остальных два. */
+function openStageSheet(key){
+  const d = state.deal;
+  const st = stagesOf(d.type).find(s=>s.key===key);
+  const mark = (d.stages && d.stages[key]) || {};
+  openSheet(`
+    <h3>${esc(st.label)}</h3>
+    <div class="field">
+      <label>Состояние</label>
+      <select id="stState">
+        <option value="" ${!mark.state?'selected':''}>Не пройден</option>
+        <option value="done" ${mark.state==='done'?'selected':''}>Пройден</option>
+        ${st.optional?`<option value="skip" ${mark.state==='skip'?'selected':''}>Не требуется</option>`:''}
+      </select>
+    </div>
+    <div class="field"><label>Дата</label><input type="text" id="stDate" value="${mark.at?new Date(mark.at).toISOString().slice(0,10):new Date().toISOString().slice(0,10)}" placeholder="ГГГГ-ММ-ДД"></div>
+    <div class="field"><label>Заметка</label><textarea id="stNote">${esc(mark.note||'')}</textarea></div>
+    ${st.final?`<div class="notice warn">Отметка «${esc(st.label)}» переводит сделку в архив.</div>`:''}
+    <button class="btn" id="stSave">Сохранить</button>
+    <button class="btn secondary" id="stCancel" style="margin-top:8px;">Отмена</button>
+  `);
+  document.getElementById('stCancel').onclick = closeSheet;
+  document.getElementById('stSave').onclick = async ()=>{
+    const val = document.getElementById('stState').value;
+    const dateStr = document.getElementById('stDate').value.trim();
+    const note = document.getElementById('stNote').value.trim();
+    const stages = Object.assign({}, d.stages || {});
+    if(!val){ delete stages[key]; }
+    else {
+      const at = dateStr ? new Date(dateStr + 'T12:00:00').getTime() : Date.now();
+      stages[key] = { state: val, at: isNaN(at) ? Date.now() : at, note, label: st.label };
+    }
+    await saveDeal(Object.assign({}, d, { stages }));
+  };
+}
+
+function openProblemSheet(){
+  const d = state.deal;
+  const on = !!(d.problem && d.problem.on);
+  if(on){ saveDeal(Object.assign({}, d, { problem:{on:false, reason:''} })); return; }
+  openSheet(`
+    <h3>Проблема или пауза</h3>
+    <div class="field"><label>Причина</label><textarea id="prReason" placeholder="Например: ждём документы от продавца"></textarea></div>
+    <button class="btn danger" id="prSave">Отметить</button>
+    <button class="btn secondary" id="prCancel" style="margin-top:8px;">Отмена</button>
+  `);
+  document.getElementById('prCancel').onclick = closeSheet;
+  document.getElementById('prSave').onclick = ()=>{
+    const reason = document.getElementById('prReason').value.trim();
+    saveDeal(Object.assign({}, state.deal, { problem:{on:true, reason} }));
+  };
+}
+
+function openDealEditSheet(){
+  const d = state.deal;
+  const canAssign = state.me && (state.me.isOwner || state.me.level === 'full');
+  const persons = state.parties.filter(p=>p.kind==='person');
+  openSheet(`
+    <h3>Сделка ${esc(d.num)}</h3>
+    <div class="field"><label>Маршрут</label>
+      <select id="eRoute">
+        <option value="">— не выбран —</option>
+        ${Object.keys(ROUTE_LABELS).map(r=>`<option value="${r}" ${d.route===r?'selected':''}>${ROUTE_FLAGS[r]} ${ROUTE_LABELS[r]}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Что ищем — модель</label><input type="text" id="eCar" value="${esc(d.car||'')}"></div>
+    <div class="row2">
+      <div class="field"><label>Год</label><input type="text" id="eYear" value="${esc(d.year||'')}"></div>
+      <div class="field"><label>Бюджет</label><input type="text" id="eBudget" value="${esc(d.budget||'')}"></div>
+    </div>
+    <div class="field"><label>Пожелания</label><textarea id="eWishes">${esc(d.wishes||'')}</textarea></div>
+    <div class="field"><label>Город доставки</label><input type="text" id="eCity" value="${esc(d.deliveryCity||'')}"></div>
+    <div class="field"><label>Конечный покупатель (если отличается)</label>
+      <select id="eEndBuyer">
+        <option value="">— тот же контрагент —</option>
+        ${persons.map(p=>`<option value="${esc(p.id)}" ${d.endBuyerId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
+      </select>
+    </div>
+    ${canAssign ? `<div class="field"><label>Ответственный</label>
+      <select id="eResp">
+        <option value="">— не назначен —</option>
+        ${state.users.map(u=>`<option value="${esc(u.id)}" ${(d.responsible&&d.responsible.uid)===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}
+        <option value="__manual__">Вписать имя вручную…</option>
+      </select>
+      <input type="text" id="eRespName" placeholder="Имя ответственного" style="margin-top:8px;display:none;">
+    </div>` : ''}
+    <div class="field"><label>Заметки</label><textarea id="eNotes">${esc(d.notes||'')}</textarea></div>
+    <button class="btn" id="eSave">Сохранить</button>
+    <button class="btn secondary" id="eCancel" style="margin-top:8px;">Отмена</button>
+  `);
+  const respSel = document.getElementById('eResp');
+  if(respSel){
+    const manual = document.getElementById('eRespName');
+    // Ответственного можно вписать и текстом — для тех, кто в приложении не
+    // работает. Такая сделка не попадёт ни в чей фильтр «только свои»:
+    // привязать её не к кому, и это честнее, чем приписать кому-то чужое.
+    respSel.onchange = ()=>{ manual.style.display = respSel.value === '__manual__' ? '' : 'none'; };
+  }
+  document.getElementById('eCancel').onclick = closeSheet;
+  document.getElementById('eSave').onclick = ()=>{
+    const patch = {
+      route: document.getElementById('eRoute').value,
+      car: document.getElementById('eCar').value.trim(),
+      year: document.getElementById('eYear').value.trim(),
+      budget: document.getElementById('eBudget').value.trim(),
+      wishes: document.getElementById('eWishes').value.trim(),
+      deliveryCity: document.getElementById('eCity').value.trim(),
+      notes: document.getElementById('eNotes').value.trim()
+    };
+    const eb = document.getElementById('eEndBuyer').value;
+    patch.endBuyerId = eb;
+    patch.endBuyerName = eb ? ((state.parties.find(p=>p.id===eb)||{}).name || '') : '';
+    if(respSel){
+      if(respSel.value === '__manual__'){
+        patch.responsible = { uid:'', name: document.getElementById('eRespName').value.trim() };
+      } else if(respSel.value){
+        const u = state.users.find(x=>x.id===respSel.value);
+        patch.responsible = { uid: respSel.value, name: u ? u.name : '' };
+      } else {
+        patch.responsible = { uid:'', name:'' };
+      }
+    }
+    saveDeal(Object.assign({}, state.deal, patch));
+  };
+}
+
+/* Сохранение всегда идёт через одну дверь: здесь же считаем производные
+   поля для списка (текущий этап, дата движения, архив) — сервер их не
+   вычисляет, потому что перечня этапов не знает. */
+async function saveDeal(next){
+  try{
+    const stage = currentStage(next);
+    next.stageKey = stage ? stage.key : '';
+    next.stageAt = lastMovementAt(next);
+    next.archived = isArchived(next);
+    const data = await api('saveDeal', {deal: next});
+    state.deal = data.deal; state.log = data.log || [];
+    await reloadIndexes();
+    closeSheet();
+    renderDeal();
+    toast('Сохранено');
+  }catch(e){ toast('Не сохранилось: ' + e.message); }
+}
+
+/* =====================================================================
+   6. Контрагенты
+===================================================================== */
+function renderParties(){
+  state.view = 'parties';
+  const c = document.getElementById('content');
+  document.getElementById('title').textContent = 'Контрагенты';
+  document.getElementById('subtitle').textContent = state.parties.length + ' записей';
+  const dealers = state.parties.filter(p=>p.kind==='dealer');
+  const persons = state.parties.filter(p=>p.kind!=='dealer');
+  const row = p => `<div class="dealrow" data-pid="${esc(p.id)}">
+      <div class="name">${esc(p.name)}</div>
+      <div class="car">${esc(p.phone||'без телефона')}${p.city?' · '+esc(p.city):''}</div>
+    </div>`;
+  c.innerHTML = `
+    <button class="btn secondary small" id="pBack" style="margin-bottom:12px;">← К сделкам</button>
+    ${dealers.length?`<div class="card"><h2>Дилеры</h2>${dealers.map(row).join('')}</div>`:''}
+    ${persons.length?`<div class="card"><h2>Частные лица</h2>${persons.map(row).join('')}</div>`:''}
+    ${state.parties.length?'':'<div class="emptystate"><div class="big">Пока никого</div>Контрагенты появляются при создании сделок.</div>'}
+    <button class="btn" id="pNew">+ Новый контрагент</button>
+  `;
+  document.getElementById('pBack').onclick = ()=>{ state.view='list'; renderList(); };
+  document.getElementById('pNew').onclick = ()=> openPartySheet({kind:'person'}, ()=> renderParties());
+  c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
+}
+
+async function openParty(id){
+  if(!id) return;
+  try{
+    const data = await api('getParty', {id});
+    state.party = data.party;
+    state.view = 'party';
+    const p = data.party;
+    const c = document.getElementById('content');
+    document.getElementById('title').textContent = p.name;
+    document.getElementById('subtitle').textContent = PARTY_KIND_LABELS[p.kind] || p.kind;
+    const dealer = p.dealerId ? state.parties.find(x=>x.id===p.dealerId) : null;
+    c.innerHTML = `
+      <button class="btn secondary small" id="prBack" style="margin-bottom:12px;">← Назад</button>
+      <div class="card">
+        <h2>Контрагент</h2>
+        <div class="kv"><span class="k">Тип</span><span class="v">${esc(PARTY_KIND_LABELS[p.kind]||p.kind)}</span></div>
+        <div class="kv"><span class="k">Телефон</span><span class="v">${esc(p.phone||'—')}</span></div>
+        <div class="kv"><span class="k">Канал связи</span><span class="v">${esc(p.channel||'—')}</span></div>
+        <div class="kv"><span class="k">Город</span><span class="v">${esc(p.city||'—')}</span></div>
+        ${dealer?`<div class="kv"><span class="k">Привёл дилер</span><span class="v">${esc(dealer.name)}</span></div>`:''}
+        ${p.terms?`<div class="kv"><span class="k">Условия работы</span><span class="v">${esc(p.terms)}</span></div>`:''}
+        ${p.notes?`<div class="kv"><span class="k">Заметки</span><span class="v">${esc(p.notes)}</span></div>`:''}
+        <button class="btn secondary small" id="prEdit" style="margin-top:12px;">Редактировать</button>
+      </div>
+      <div class="card">
+        <h2>Сделки (${data.deals.length})</h2>
+        ${data.deals.length ? data.deals.map(d=>`
+          <div class="dealrow" data-id="${esc(d.id)}">
+            <div class="top"><span class="num">${esc(d.num)}</span><span class="idle">${d.archived?'завершена':''}</span></div>
+            <div class="car">${esc(d.car||'машина не указана')}</div>
+          </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Сделок пока нет.</div>'}
+      </div>
+      ${p.kind==='dealer' ? `<div class="card">
+        <h2>Привёл клиентов (${data.linked.length})</h2>
+        ${data.linked.length ? data.linked.map(x=>`<div class="dealrow" data-pid="${esc(x.id)}"><div class="name">${esc(x.name)}</div><div class="car">${esc(x.phone||'')}</div></div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Пока никого.</div>'}
+      </div>` : ''}
+    `;
+    document.getElementById('prBack').onclick = ()=> renderParties();
+    document.getElementById('prEdit').onclick = ()=> openPartySheet(p, ()=> openParty(p.id));
+    c.querySelectorAll('[data-id]').forEach(el=> el.onclick = ()=> openDeal(el.dataset.id));
+    c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
+  }catch(e){ toast(e.message); }
+}
+
+/* =====================================================================
+   7. Загрузка и гейт
+===================================================================== */
+async function reloadIndexes(){
+  const data = await api('bootstrap');
+  state.deals = data.deals || [];
+  state.parties = data.parties || [];
+  state.users = data.users || [];
+  state.me = data.me;
+}
+
+function gate(html){
+  document.getElementById('subtitle').textContent = '';
+  document.getElementById('content').innerHTML = html;
+}
+
+async function boot(){
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if(!tg || !tg.initData){
+    gate(`<div class="emptystate"><div class="big">Откройте через Telegram</div>Раздел работает только внутри Telegram — откройте бота и запустите мини-приложение.</div>`);
+    return;
+  }
+  try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#080d12'); tg.setBackgroundColor && tg.setBackgroundColor('#080d12'); }catch(e){}
+  try{
+    const inset = (tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || (tg.safeAreaInset && tg.safeAreaInset.top) || 0;
+    document.documentElement.style.setProperty('--tg-top-pad', Math.max(inset, 44) + 'px');
+  }catch(e){ document.documentElement.style.setProperty('--tg-top-pad', '44px'); }
+
+  try{
+    await reloadIndexes();
+  }catch(e){
+    gate(`<div class="emptystate"><div class="big">Нет доступа</div>${esc(e.message)}<br><button class="btn secondary" id="retry" style="margin-top:16px;">Повторить</button></div>`);
+    const r = document.getElementById('retry'); if(r) r.onclick = ()=> location.reload();
+    return;
+  }
+  renderList();
+}
+
+boot();
+</script>
+</body>
+</html>
