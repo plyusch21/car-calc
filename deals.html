@@ -23,7 +23,7 @@
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased; }
-.app{ max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(24px + var(--safe-bottom)); }
+.app{ max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(64px + var(--safe-bottom)); }
 .mono{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
 .topbar{ padding:calc(14px + var(--safe-top) + var(--tg-top-pad)) 16px 10px; position:sticky; top:0; z-index:20; background:linear-gradient(180deg, var(--bg) 72%, transparent); }
 .topbar h1{ font-family:'Fraunces',serif; font-weight:600; font-size:21px; margin:0 0 2px; }
@@ -94,8 +94,16 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .sheet-overlay.open{display:flex;}
 .sheet{ background:var(--bg); width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border); padding:14px 16px calc(24px + var(--safe-bottom)); }
 .sheet h3{ font-family:'Fraunces',serif; font-weight:600; font-size:17px; margin:6px 0 12px; }
-.toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 16px; border-radius:9px; font-size:13px; z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; max-width:88%; text-align:center; }
+.toast{ position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 16px; border-radius:9px; font-size:13px; z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; max-width:88%; text-align:center; }
 .toast.show{opacity:1;}
+
+/* Нижнее меню — один в один как в калькуляторе: человек переходит между
+   страницами и не должен замечать, что это разные документы. */
+.bottomnav{ position:fixed; bottom:0; left:0; right:0; z-index:30; background:rgba(8,13,18,0.92); backdrop-filter:blur(10px); border-top:1px solid var(--border); padding-bottom:var(--safe-bottom); }
+.bottomnav .inner{ max-width:480px; margin:0 auto; display:flex; }
+.navbtn{ flex:1; background:none; border:none; color:var(--muted); padding:11px 4px 9px; font-size:10.5px; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; font-family:'Inter',sans-serif; }
+.navbtn.active{color:var(--accent);}
+.navicon{width:20px; height:20px; display:block;}
 </style>
 </head>
 <body>
@@ -105,6 +113,26 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
     <div class="sub" id="subtitle">Загрузка…</div>
   </div>
   <div class="content" id="content"></div>
+</div>
+<div class="bottomnav" id="bottomnav">
+  <div class="inner">
+    <button class="navbtn active">
+      <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
+      Сделки
+    </button>
+    <button class="navbtn" data-go="/">
+      <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="13" x2="10" y2="13"/><line x1="13" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="10" y2="17"/><line x1="13" y1="17" x2="16" y2="17"/></svg>
+      Расчёт
+    </button>
+    <button class="navbtn" data-go="/#history">
+      <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></svg>
+      История
+    </button>
+    <button class="navbtn" data-go="/#settings">
+      <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15 1.65 1.65 0 0 0 3 14H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.33.6.55.85"/></svg>
+      Настройки
+    </button>
+  </div>
 </div>
 <div class="sheet-overlay" id="sheetOverlay"><div class="sheet" id="sheetBody"></div></div>
 <div class="toast" id="toast"></div>
@@ -726,6 +754,12 @@ async function reloadIndexes(){
   state.me = data.me;
 }
 
+document.querySelectorAll('.navbtn[data-go]').forEach(b=>{
+  b.onclick = ()=>{ location.href = b.dataset.go; };
+});
+
+// Меню на экранах отказа НЕ прячем: без него человек, которому раздел не
+// открыт, оказался бы заперт на этой странице без пути назад в калькулятор.
 function gate(html){
   document.getElementById('subtitle').textContent = '';
   document.getElementById('content').innerHTML = html;

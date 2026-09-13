@@ -250,6 +250,10 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
 <div class="bottomnav">
   <div class="inner">
+    <button class="navbtn" data-page="/deals">
+      <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
+      Сделки
+    </button>
     <button class="navbtn active" data-view="calc">
       <svg class="navicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="13" x2="10" y2="13"/><line x1="13" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="10" y2="17"/><line x1="13" y1="17" x2="16" y2="17"/></svg>
       Расчёт
@@ -949,7 +953,6 @@ function renderCalc(c){
   const isElectric = engineMeta.dtype === 'electric';
 
   c.innerHTML = `
-    <button class="btn secondary" id="toDealsBtn" style="margin-bottom:12px;">Учёт сделок →</button>
     <div class="card">
       <h2>Автозаполнение</h2>
       <div class="toggle-row field">
@@ -1122,10 +1125,6 @@ function renderCalc(c){
   const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; renderCalc(c); };
   const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
-  // Учёт сделок — отдельная страница (index.html и так большой). Открываем
-  // обычной навигацией в том же окне Telegram: это тот же мини-апп и тот же
-  // initData, поэтому гейт там срабатывает так же, как здесь.
-  const toDeals = document.getElementById('toDealsBtn'); if(toDeals) toDeals.onclick = ()=>{ location.href = '/deals'; };
   const listingParserT = document.getElementById('listingParserToggle'); if(listingParserT) listingParserT.onclick = ()=>{ f.showListingParser=!f.showListingParser; renderCalc(c); };
   const listingTa = document.getElementById('f_listingText'); if(listingTa) listingTa.oninput = ()=> f.listingText = listingTa.value;
   const parseBtn = document.getElementById('parseListingBtn');
@@ -2009,6 +2008,10 @@ function openRateEditor(id){
 --------------------------------------------------------------------- */
 document.querySelectorAll('.navbtn').forEach(btn=>{
   btn.onclick = ()=>{
+    // Учёт сделок — отдельная страница, а не вкладка: index.html и так
+    // большой. Уходим обычной навигацией в том же окне Telegram — это тот
+    // же мини-апп и тот же initData, поэтому гейт там срабатывает так же.
+    if(btn.dataset.page){ location.href = btn.dataset.page; return; }
     document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
     state.view = btn.dataset.view;
     if(state.view==='settings') state.settingsSection = null;
@@ -2093,6 +2096,21 @@ async function bootGate(){
 
   document.getElementById('routeTabs').style.display = '';
   const bn2 = document.querySelector('.bottomnav'); if(bn2) bn2.style.display = '';
+
+  // Вкладку «Сделки» показываем только тем, кому раздел открыт (сам доступ
+  // всё равно проверяет сервер — здесь только про внешний вид меню).
+  const dealsBtn = document.querySelector('.navbtn[data-page="/deals"]');
+  if(dealsBtn && authRes.dealsLevel === 'none') dealsBtn.style.display = 'none';
+
+  // Возврат со страницы сделок: /#history открывает сразу нужную вкладку,
+  // а не главный экран, иначе кнопки «История»/«Настройки» там вели бы
+  // человека не туда, куда он нажал.
+  const hashView = (location.hash || '').replace('#', '');
+  if(hashView === 'history' || hashView === 'settings' || hashView === 'calc'){
+    state.view = hashView;
+    document.querySelectorAll('.navbtn').forEach(b=> b.classList.toggle('active', b.dataset.view === hashView));
+  }
+
   startApp();
 }
 

@@ -4,7 +4,7 @@
  * index.html). See api/_lib/access.js for the access model.
  */
 
-const { authenticate } = require('./_lib/access');
+const { authenticate, dealsLevelOf } = require('./_lib/access');
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -27,7 +27,11 @@ module.exports = async (req, res) => {
     res.status(200).send(JSON.stringify({
       status: result.record.status, // 'approved' | 'pending' | 'revoked'
       isOwner: !!result.record.isOwner,
-      name: result.record.name
+      name: result.record.name,
+      // Чтобы калькулятор не показывал вкладку «Сделки» тому, кому раздел
+      // не открыт. Сам доступ всё равно проверяется на сервере в /api/deals —
+      // это только про то, что показывать в меню.
+      dealsLevel: dealsLevelOf(result.record)
     }));
   } catch (e) {
     res.status(200).send(JSON.stringify({ status: 'error', error: e.message || String(e) }));
