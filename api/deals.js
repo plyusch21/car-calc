@@ -147,8 +147,8 @@ function describeChanges(before, after) {
   const pAfter = !!(after.problem && after.problem.on);
   if (pBefore !== pAfter) out.push(pAfter ? 'отметил проблему: ' + str((after.problem || {}).reason, 120) : 'снял отметку проблемы');
 
-  const cBefore = (before.calcIds || []).length;
-  const cAfter = (after.calcIds || []).length;
+  const cBefore = (before.calcs || []).length;
+  const cAfter = (after.calcs || []).length;
   if (cAfter > cBefore) out.push('привязал расчёт');
   if (cAfter < cBefore) out.push('отвязал расчёт');
 
@@ -268,7 +268,17 @@ module.exports = async (req, res) => {
         deliveryCity: str(incoming.deliveryCity, 120),
         notes: str(incoming.notes, 4000),
         stages: (incoming.stages && typeof incoming.stages === 'object') ? incoming.stages : (before ? before.stages : {}),
-        calcIds: Array.isArray(incoming.calcIds) ? incoming.calcIds.slice(0, 50).map(x => str(x, 40)) : (before ? before.calcIds : []),
+        // Снимок расчёта, а не только его id: история калькулятора общая и
+        // ограничена по длине — старые записи из неё выпадают, и одна голая
+        // ссылка со временем указывала бы в пустоту. Id храним тоже, чтобы
+        // при случае найти живой расчёт в истории.
+        calcs: Array.isArray(incoming.calcs) ? incoming.calcs.slice(0, 50).map(x => ({
+          id: str(x && x.id, 40),
+          model: str(x && x.model, 200),
+          route: str(x && x.route, 20),
+          total: Number(x && x.total) || 0,
+          at: Number(x && x.at) || 0
+        })) : (before ? (before.calcs || []) : []),
         problem: {
           on: !!(incoming.problem && incoming.problem.on),
           reason: str((incoming.problem || {}).reason, 500)

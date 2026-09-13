@@ -1895,6 +1895,12 @@ async function adminAction(action, targetId){
   const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action, targetId})});
   return res.json();
 }
+const DEALS_LEVEL_LABELS = {
+  none: 'Нет доступа',
+  own: 'Только свои сделки',
+  read_all: 'Видит все, правит свои',
+  full: 'Полный'
+};
 function renderAdminUsersList(users){
   if(!users.length) return `<div style="font-size:12px;color:var(--muted);">Пока никто не заходил.</div>`;
   return users.map(u=>{
@@ -1905,9 +1911,21 @@ function renderAdminUsersList(users){
     const btn = u.isOwner ? '' : (u.status==='approved'
       ? `<button class="btn secondary small" data-revoke="${u.id}">Закрыть</button>`
       : `<button class="btn small" data-approve="${u.id}">Разрешить</button>`);
-    return `<div class="histcard" style="cursor:default;">
-      <div class="l"><div class="m">${label}${uname}</div><div class="d" style="color:${statusColor};">${statusText}</div></div>
-      <div class="r">${btn}</div>
+    // Уровень доступа к учёту сделок — отдельно от доступа к самому
+    // приложению: человек может считать машины, но не видеть сделок.
+    const levels = u.isOwner || u.status!=='approved' ? '' : `
+      <div class="field" style="margin:8px 0 0;">
+        <label>Учёт сделок</label>
+        <select class="deals-level" data-uid="${u.id}">
+          ${Object.keys(DEALS_LEVEL_LABELS).map(k=>`<option value="${k}" ${u.dealsLevel===k?'selected':''}>${DEALS_LEVEL_LABELS[k]}</option>`).join('')}
+        </select>
+      </div>`;
+    return `<div class="histcard" style="cursor:default;display:block;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <div class="l"><div class="m">${label}${uname}</div><div class="d" style="color:${statusColor};">${statusText}</div></div>
+        <div class="r">${btn}</div>
+      </div>
+      ${levels}
     </div>`;
   }).join('');
 }
@@ -1920,6 +1938,14 @@ async function loadAdminCard(){
     cardEl.innerHTML = `<h2>Доступ к приложению</h2>` + renderAdminUsersList(users||[]);
     cardEl.querySelectorAll('[data-approve]').forEach(b=> b.onclick = async ()=>{ b.disabled=true; await adminAction('approve', b.dataset.approve); toast('Доступ открыт'); loadAdminCard(); });
     cardEl.querySelectorAll('[data-revoke]').forEach(b=> b.onclick = async ()=>{ b.disabled=true; await adminAction('revoke', b.dataset.revoke); toast('Доступ закрыт'); loadAdminCard(); });
+    cardEl.querySelectorAll('.deals-level').forEach(sel=> sel.onchange = async ()=>{
+      sel.disabled = true;
+      const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({initData:getInitData(), action:'setDealsLevel', targetId:sel.dataset.uid, level:sel.value})});
+      const data = await res.json();
+      sel.disabled = false;
+      toast(data.error ? ('Не вышло: '+data.error) : 'Уровень доступа сохранён');
+    });
   }catch(e){
     cardEl.innerHTML = `<h2>Доступ к приложению</h2><div class="notice warn">Не удалось загрузить: ${e.message}</div>`;
   }

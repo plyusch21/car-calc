@@ -214,6 +214,7 @@ function idleDays(ts){
 const state = { view:'list', tab:'all', archive:false, deals:[], parties:[], users:[], me:null, deal:null, log:[], canWrite:false, party:null };
 const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('ru-RU') : '—';
+const fmtMoney = n => (Math.round(Number(n)||0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 const fmtDateTime = ts => ts ? new Date(ts).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
 function toast(msg, ms){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), ms||2200); }
 function openSheet(html){ document.getElementById('sheetBody').innerHTML = html; document.getElementById('sheetOverlay').classList.add('open'); }
@@ -298,7 +299,8 @@ function renderList(){
          <div class="row2" style="margin-top:10px;">
            <button class="btn secondary small" id="toParties">Контрагенты</button>
            <button class="btn secondary small" id="toArchive">Архив</button>
-         </div>`);
+         </div>
+         ${state.me && state.me.level === 'full' ? `<button class="btn secondary small" id="doExport" style="margin-top:10px;">Выгрузить сделки и контрагентов</button>` : ''}`);
 
   c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=>{ state.tab = b.dataset.t; renderList(); });
   c.querySelectorAll('.dealrow').forEach(el=> el.onclick = ()=> openDeal(el.dataset.id));
@@ -306,6 +308,7 @@ function renderList(){
   const ta = document.getElementById('toArchive'); if(ta) ta.onclick = ()=>{ state.archive = true; renderList(); };
   const tp = document.getElementById('toParties'); if(tp) tp.onclick = renderParties;
   const bw = document.getElementById('backToWork'); if(bw) bw.onclick = ()=>{ state.archive = false; renderList(); };
+  const ex = document.getElementById('doExport'); if(ex) ex.onclick = runExport;
 }
 
 /* =====================================================================
@@ -505,6 +508,16 @@ function renderDeal(){
       ${state.canWrite ? `<div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Нажмите на кружок, чтобы отметить этап.</div>` : ''}
     </div>
 
+    <div class="card">
+      <h2>Расчёты</h2>
+      ${(d.calcs||[]).length ? (d.calcs||[]).map((x,i)=>`
+        <div class="kv">
+          <span class="k">${esc(x.model||'без названия')}${x.route?' · '+(ROUTE_FLAGS[x.route]||''):''}<br><span style="font-size:11.5px;">${fmtDate(x.at)}</span></span>
+          <span class="v">${fmtMoney(x.total)} ₽${state.canWrite?` <button class="btn secondary small" data-unlink="${i}" style="width:auto;padding:4px 9px;margin-left:6px;">убрать</button>`:''}</span>
+        </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Расчёты не привязаны.</div>'}
+      ${state.canWrite ? `<button class="btn secondary small" id="dLinkCalc" style="margin-top:12px;">Привязать расчёт из истории</button>` : ''}
+    </div>
+
     ${state.canWrite ? `<div class="card">
       <h2>Отметки</h2>
       <button class="btn secondary small" id="dProblem">${d.problem && d.problem.on ? 'Снять отметку проблемы' : 'Отметить проблему / паузу'}</button>
@@ -523,6 +536,12 @@ function renderDeal(){
   if(tp) tp.onclick = (e)=>{ e.preventDefault(); openParty(d.partyId); };
   const ed = document.getElementById('dEdit'); if(ed) ed.onclick = openDealEditSheet;
   const pb = document.getElementById('dProblem'); if(pb) pb.onclick = openProblemSheet;
+  const lc = document.getElementById('dLinkCalc'); if(lc) lc.onclick = openCalcPicker;
+  c.querySelectorAll('[data-unlink]').forEach(b=> b.onclick = ()=>{
+    const calcs = (state.deal.calcs||[]).slice();
+    calcs.splice(Number(b.dataset.unlink), 1);
+    saveDeal(Object.assign({}, state.deal, { calcs }));
+  });
   if(state.canWrite){
     c.querySelectorAll('.mark').forEach(el=> el.onclick = ()=> openStageSheet(el.dataset.stage));
   }
@@ -673,6 +692,52 @@ async function saveDeal(next){
   }catch(e){ toast('Не сохранилось: ' + e.message); }
 }
 
+/* История расчётов лежит там же, где её ведёт калькулятор (/api/state),
+   отдельного хранилища для неё здесь не заводим — это один и тот же список,
+   просто читаем его при первой надобности и держим в памяти страницы. */
+async function loadCalcHistory(){
+  if(state.calcHistory) return state.calcHistory;
+  const res = await fetch('/api/state', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ initData: initData(), action:'get' })
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  state.calcHistory = Array.isArray(data.history) ? data.history : [];
+  return state.calcHistory;
+}
+
+async function openCalcPicker(){
+  let history;
+  try{ history = await loadCalcHistory(); }
+  catch(e){ toast('Не удалось загрузить историю: ' + e.message); return; }
+  if(!history.length){ toast('В истории калькулятора пока пусто'); return; }
+
+  const linked = (state.deal.calcs || []).map(c=>c.id);
+  openSheet(`
+    <h3>Привязать расчёт</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Из истории калькулятора. Сохраняем снимок расчёта — он останется в сделке, даже когда запись выпадет из истории.</p>
+    ${history.slice(0, 60).map(h=>`
+      <div class="dealrow" data-calc="${esc(h.id)}" style="${linked.indexOf(String(h.id))>=0?'opacity:.45;':''}">
+        <div class="top"><span class="num">${esc(ROUTE_LABELS[h.route]||h.route||'')}</span><span class="idle">${fmtDate(new Date(h.date).getTime())}</span></div>
+        <div class="name">${esc(h.model||'без названия')}</div>
+        <div class="car">${fmtMoney(h.total)} ₽${linked.indexOf(String(h.id))>=0?' · уже привязан':''}</div>
+      </div>`).join('')}
+    <button class="btn secondary" id="calcCancel">Отмена</button>
+  `);
+  document.getElementById('calcCancel').onclick = closeSheet;
+  document.querySelectorAll('[data-calc]').forEach(el=> el.onclick = ()=>{
+    const h = history.find(x=>String(x.id) === el.dataset.calc);
+    if(!h) return;
+    if(linked.indexOf(String(h.id)) >= 0){ toast('Этот расчёт уже привязан'); return; }
+    const calcs = (state.deal.calcs || []).concat([{
+      id: String(h.id), model: h.model || '', route: h.route || '',
+      total: Number(h.total) || 0, at: new Date(h.date).getTime() || Date.now()
+    }]);
+    saveDeal(Object.assign({}, state.deal, { calcs }));
+  });
+}
+
 /* =====================================================================
    6. Контрагенты
 ===================================================================== */
@@ -744,7 +809,96 @@ async function openParty(id){
 }
 
 /* =====================================================================
-   7. Загрузка и гейт
+   7. Выгрузка
+   JSON — полный слепок (всё, включая этапы и лог), CSV — то же плоской
+   таблицей для Excel и будущей 1С. Отдать файл в Telegram сложнее, чем
+   кажется: в его WebView на Android нет ни Web Share API, ни рабочего
+   скачивания (это выяснилось на живом устройстве владельца), поэтому
+   пробуем по очереди все три способа и в крайнем случае показываем текст.
+===================================================================== */
+function csvCell(v){
+  const s = String(v == null ? '' : v).replace(/"/g, '""');
+  return '"' + s + '"';
+}
+function dealsCsv(deals){
+  const head = ['Номер','Тип','Маршрут','Контрагент','Конечный покупатель','Ответственный','Машина','Год','Бюджет','Город доставки','Текущий этап','Дата этапа','Дней без движения','Проблема','Причина','Архив','Создана','Заметки'];
+  const rows = deals.map(d=>{
+    const stage = currentStage(d);
+    const moved = lastMovementAt(d);
+    return [
+      d.num, DEAL_TYPE_LABELS[d.type]||d.type, ROUTE_LABELS[d.route]||d.route||'',
+      d.partyName||'', d.endBuyerName||'', (d.responsible&&d.responsible.name)||'',
+      d.car||'', d.year||'', d.budget||'', d.deliveryCity||'',
+      stage?stage.label:'', fmtDate(moved), idleDays(moved),
+      (d.problem&&d.problem.on)?'да':'', (d.problem&&d.problem.reason)||'',
+      d.archived?'да':'', fmtDate(d.createdAt), d.notes||''
+    ].map(csvCell).join(';');
+  });
+  // BOM — иначе Excel открывает кириллицу кракозябрами.
+  return '﻿' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
+}
+function partiesCsv(parties){
+  const head = ['Имя','Тип','Телефон','Канал связи','Город','Привёл дилер','Условия работы','Заметки'];
+  const byId = {};
+  parties.forEach(p=>{ byId[p.id] = p.name; });
+  const rows = parties.map(p=>[
+    p.name||'', PARTY_KIND_LABELS[p.kind]||p.kind, p.phone||'', p.channel||'', p.city||'',
+    p.dealerId ? (byId[p.dealerId]||'') : '', p.terms||'', p.notes||''
+  ].map(csvCell).join(';'));
+  return '﻿' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
+}
+
+async function runExport(){
+  let data;
+  try{ data = await api('export'); }
+  catch(e){ toast('Не удалось выгрузить: ' + e.message); return; }
+
+  const stamp = new Date().toISOString().slice(0,10);
+  const files = [
+    new File([JSON.stringify(data, null, 2)], 'deals-' + stamp + '.json', {type:'application/json'}),
+    new File([dealsCsv(data.deals)], 'deals-' + stamp + '.csv', {type:'text/csv'}),
+    new File([partiesCsv(data.parties)], 'parties-' + stamp + '.csv', {type:'text/csv'})
+  ];
+
+  if(navigator.share && navigator.canShare && navigator.canShare({files})){
+    try{ await navigator.share({files, title:'Выгрузка сделок'}); return; }
+    catch(e){ if(e.name === 'AbortError') return; }
+  }
+
+  let downloaded = 0;
+  files.forEach(f=>{
+    try{
+      const url = URL.createObjectURL(f);
+      const a = document.createElement('a');
+      a.href = url; a.download = f.name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=> URL.revokeObjectURL(url), 20000);
+      downloaded++;
+    }catch(e){ /* ниже покажем текстом */ }
+  });
+  if(downloaded === files.length){
+    toast('Выгружено ' + downloaded + ' файла — проверьте «Загрузки»', 3500);
+    return;
+  }
+
+  // Ни поделиться, ни скачать не вышло — показываем JSON, чтобы можно было
+  // хотя бы скопировать вручную и не остаться ни с чем.
+  openSheet(`
+    <h3>Выгрузка</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Этот браузер не дал ни поделиться файлом, ни скачать его. Скопируйте данные отсюда.</p>
+    <textarea readonly style="height:300px;font-family:'IBM Plex Mono',monospace;font-size:11px;">${esc(JSON.stringify(data))}</textarea>
+    <button class="btn" id="exCopy" style="margin-top:10px;">Скопировать</button>
+    <button class="btn secondary" id="exClose" style="margin-top:8px;">Закрыть</button>
+  `);
+  document.getElementById('exClose').onclick = closeSheet;
+  document.getElementById('exCopy').onclick = ()=>{
+    navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(data))
+      .then(()=> toast('Скопировано')).catch(()=> toast('Не удалось скопировать'));
+  };
+}
+
+/* =====================================================================
+   8. Загрузка и гейт
 ===================================================================== */
 async function reloadIndexes(){
   const data = await api('bootstrap');
