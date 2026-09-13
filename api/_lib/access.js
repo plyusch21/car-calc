@@ -48,4 +48,24 @@ async function authenticate(initData) {
   return { ok: true, uid, user, record };
 }
 
-module.exports = { authenticate };
+/**
+ * Уровень доступа к разделу учёта сделок (/api/deals, deals.html):
+ *   none      — раздела не видит вовсе
+ *   own       — видит и правит только сделки, где он ответственный
+ *   read_all  — видит все, правит только свои
+ *   full      — всё, включая назначение ответственных и выгрузку
+ *
+ * Поля dealsLevel нет у тех, кто был одобрен до появления раздела —
+ * по решению владельца они получают полный доступ, а сузить его можно
+ * вручную в настройках. Отдельная миграция записей для этого не нужна:
+ * значение вычисляется здесь при каждом чтении.
+ */
+function dealsLevelOf(record) {
+  if (!record || record.status !== 'approved') return 'none';
+  if (record.isOwner) return 'full';
+  const lvl = record.dealsLevel;
+  if (lvl === 'none' || lvl === 'own' || lvl === 'read_all' || lvl === 'full') return lvl;
+  return 'full';
+}
+
+module.exports = { authenticate, dealsLevelOf };

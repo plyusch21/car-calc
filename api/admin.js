@@ -6,7 +6,7 @@
  */
 
 const { kv } = require('./_lib/kv');
-const { authenticate } = require('./_lib/access');
+const { authenticate, dealsLevelOf } = require('./_lib/access');
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -31,7 +31,10 @@ module.exports = async (req, res) => {
       const allRaw = await kv('HGETALL', 'access'); // [field, value, field, value, ...] | null
       const users = [];
       for (let i = 0; i < (allRaw || []).length; i += 2) {
-        users.push({ id: allRaw[i], ...JSON.parse(allRaw[i + 1]) });
+        const record = JSON.parse(allRaw[i + 1]);
+        // dealsLevel считаем, а не берём из записи: у одобренных до появления
+        // раздела поля нет вовсе (см. dealsLevelOf).
+        users.push({ id: allRaw[i], ...record, dealsLevel: dealsLevelOf(record) });
       }
       users.sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0));
       res.status(200).send(JSON.stringify({ users }));
@@ -47,6 +50,25 @@ module.exports = async (req, res) => {
       if (record.isOwner) { res.status(200).send(JSON.stringify({ error: 'нельзя менять доступ владельца' })); return; }
       record.status = action === 'approve' ? 'approved' : 'revoked';
       if (action === 'approve') record.approvedAt = Date.now();
+      await kv('HSET', 'access', targetId, JSON.stringify(record));
+      res.status(200).send(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Уровень доступа к разделу учёта сделок. Владелец всегда полный —
+    // менять его нельзя, иначе можно случайно запереть самого себя.
+    if (action === 'setDealsLevel') {
+      const targetId = String(body.targetId || '');
+      const levelRaw = String(body.level || '');
+      if (['none', 'own', 'read_all', 'full'].indexOf(levelRaw) === -1) {
+        res.status(200).send(JSON.stringify({ error: 'неизвестный уровень доступа' }));
+        return;
+      }
+      const raw = await kv('HGET', 'access', targetId);
+      if (!raw) { res.status(200).send(JSON.stringify({ error: 'пользователь не найден' })); return; }
+      const record = JSON.parse(raw);
+      if (record.isOwner) { res.status(200).send(JSON.stringify({ error: 'у владельца всегда полный доступ' })); return; }
+      record.dealsLevel = levelRaw;
       await kv('HSET', 'access', targetId, JSON.stringify(record));
       res.status(200).send(JSON.stringify({ ok: true }));
       return;
