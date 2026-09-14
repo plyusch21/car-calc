@@ -932,8 +932,15 @@ async function parseEncarListing(url) {
   }
 
   // Структурные поля всегда важнее того, что мог придумать ИИ по короткой
-  // пометке продавца (напр. если он там же по ошибке "увидел" марку/год).
-  const merged = Object.assign({}, aiExtra, structured);
+  // пометке продавца (напр. если он там же по ошибке "увидел" марку/год) —
+  // но только когда структурное поле реально заполнено: mapEncarFields()
+  // всегда возвращает все ключи, включая null у condition/notes (их там
+  // просто неоткуда взять), а обычный Object.assign бы этим null-ом затёр
+  // как раз то немногое, что удалось вытащить у ИИ по пометке продавца.
+  const merged = Object.assign({}, aiExtra);
+  for (const k of Object.keys(structured)) {
+    if (structured[k] !== null && structured[k] !== undefined) merged[k] = structured[k];
+  }
   if (base.vin) merged.notes = merged.notes ? (merged.notes + '; VIN: ' + base.vin) : ('VIN: ' + base.vin);
   merged.source = 'ai';
   return merged;
