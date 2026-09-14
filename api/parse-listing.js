@@ -948,11 +948,13 @@ async function fetchEncarAccidentRecord(base) {
       },
       signal: AbortSignal.timeout(15000)
     });
-    if (!r.ok) return null;
+    if (!r.ok) { fetchEncarAccidentRecord._lastDebug = 'http ' + r.status; return null; }
     const data = await r.json();
-    if (!data || data.openData === false) return null;
+    if (!data || data.openData === false) { fetchEncarAccidentRecord._lastDebug = 'openData false or empty: ' + JSON.stringify(data).slice(0, 200); return null; }
+    fetchEncarAccidentRecord._lastDebug = 'ok';
     return data;
   } catch (e) {
+    fetchEncarAccidentRecord._lastDebug = 'threw: ' + (e && e.message || String(e));
     return null;
   }
 }
@@ -1033,6 +1035,7 @@ async function parseEncarListing(url) {
   // без аварий, так что condition в этом случае вообще не трогается.
   const accidentSummary = summarizeEncarAccidents(accidentRecord);
   if (accidentSummary) merged.condition = merged.condition ? (merged.condition + '; ' + accidentSummary) : accidentSummary;
+  merged._accidentDebug = fetchEncarAccidentRecord._lastDebug;
 
   const extraNotes = [];
   if (base.vin) extraNotes.push('VIN: ' + base.vin);
