@@ -144,6 +144,92 @@ silently fail the whole render on real phones with long receipts).
 "—" when empty since it's a fixed table layout, not freely-omittable lines
 like the text version.
 
+## Deal tracking (`deals.html` + `api/deals.js`)
+
+A second Mini App page (not a tab in `index.html` — that file is already
+large) for tracking in-progress car deals: counterparties, deals, stage
+checklists, a change log, and an export. Entry point is the bottom nav
+(leftmost item, "Сделки") in both `index.html` and `deals.html` — plain
+navigation to `/deals`, same Mini App window, same `initData`, so the
+Telegram gate behaves identically to the calculator. Unlike `diag.html`/
+`share.html`, this page is gated — it's real business data, not a
+diagnostic tool.
+
+### Storage: one KV key per record, not a shared blob
+
+Several people use this at once. `state:config`/`state:history` (the
+calculator's sync) can get away with one blob per user because it's
+single-player; deals can't — two people editing different deals at the same
+time would have the second save silently erase the first's. So every deal
+and every counterparty (`party`) is its own KV key (`deal:<id>`,
+`party:<id>`), with light HASH indexes (`deals:idx`, `parties:idx`) backing
+the list screens so they don't fetch every full record. Per-deal change log
+is a LIST (`RPUSH`), which is naturally append-safe under concurrent writes
+the way a read-modify-write on a blob wouldn't be. See the doc comment at
+the top of `api/deals.js` for the full key schema before changing it.
+
+### Stage templates live in client code only
+
+`STAGE_TEMPLATES` in `deals.html` — two fixed lists (`import`, `paperwork`),
+picked once at deal creation and never changed after. The server
+(`api/deals.js`) deliberately has no idea what the stages are; a deal record
+only stores marks (`{state, at, note}` keyed by stage key) plus three
+derived fields the client computes and sends along purely for the list
+screen (`stageKey`, `stageAt`, `archived`). This is the same pattern as the
+`DEFAULT_CONFIG` whitelist rule above, for the same reason: if the template
+lived in synced/stored data, it would either fork per-record or need a
+migration every time a stage is renamed. **If you touch the stage list,
+only edit `STAGE_TEMPLATES` in `deals.html`.**
+
+Deal status is never stored or set by hand — `currentStage()` derives it as
+the last stage marked `done`, so it can't drift from the marks themselves.
+The optional `shipping` stage has a third state (`skip`, "не требуется")
+that deliberately doesn't count toward status. Marking the template's
+`final` stage (`issued`, "выдан авто") archives the deal automatically.
+
+### Access is a second axis, independent of app access
+
+`dealsLevelOf(record)` in `api/_lib/access.js` computes `none` / `own` /
+`read_all` / `full` from the same `access` HASH record used for app
+approval — there's no separate migration for users approved before this
+section existed; missing the field just means `full` (the owner's call when
+this shipped), narrowable per-user in Settings → Доступ к приложению. Owner
+is hardcoded `full` and can't be changed. Enforcement (`canRead`/
+`canWrite` in `api/deals.js`) is server-side per deal, not just hidden in
+the UI — "own" means you're the deal's assigned `responsible.uid` or its
+creator. `responsible` can also be a free-text name with no `uid` (the
+owner explicitly wanted this, for people who aren't app users); such a deal
+belongs to nobody's "own" filter, which is correct, not a bug.
+
+### Linking a person under a dealer
+
+A `person`-kind party can carry `dealerId` (the dealer that brought them —
+this is the spec's "конечный покупатель"). The only entry point is the
+dealer's own party card ("+ Новый конечный покупатель от этого дилера"),
+which opens the party sheet pre-filled with `kind:'person', dealerId`; the
+generic "+ Новый контрагент" flow also allows picking a dealer manually.
+Don't confuse this with a deal's own `endBuyerId` field, which says who the
+car is actually for on one specific deal when it isn't the deal's primary
+`partyId` — different concept, same underlying party record.
+
+### Linked calculations are snapshots, not live references
+
+A deal's `calcs[]` array copies `{id, model, route, total, at}` out of the
+calculator's shared history at link time, read via `/api/state` from
+`deals.html`. That history is shared across the whole app and capped in
+length, so a bare id would eventually point at nothing once the entry ages
+out — the snapshot is what actually renders in the deal card.
+
+### Export
+
+Owner/`full`-level only. Three files in one shot: full JSON, plus deals and
+parties as CSV (BOM-prefixed for Excel, quotes/semicolons/newlines in
+fields properly escaped) — see `dealsCsv`/`partiesCsv` in `deals.html`.
+Delivery tries `navigator.share` with files, then `<a download>`, then
+falls back to a copyable JSON textarea — same three-tier fallback as the
+sharing code below, for the same reason (Telegram's Android WebView has
+neither share nor download working).
+
 ## Standing conventions (from the owner, apply without re-asking)
 
 - Respond to the owner in Russian in normal conversation.

@@ -799,10 +799,16 @@ async function openParty(id){
       ${p.kind==='dealer' ? `<div class="card">
         <h2>Привёл клиентов (${data.linked.length})</h2>
         ${data.linked.length ? data.linked.map(x=>`<div class="dealrow" data-pid="${esc(x.id)}"><div class="name">${esc(x.name)}</div><div class="car">${esc(x.phone||'')}</div></div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Пока никого.</div>'}
+        <button class="btn secondary small" id="prAddLinked" style="margin-top:10px;">+ Новый конечный покупатель от этого дилера</button>
       </div>` : ''}
     `;
     document.getElementById('prBack').onclick = ()=> renderParties();
     document.getElementById('prEdit').onclick = ()=> openPartySheet(p, ()=> openParty(p.id));
+    // Прямой путь с карточки дилера: тип и dealerId уже заполнены, остаётся
+    // только имя/телефон. Раньше этого пути не было вовсе — заводили через
+    // общий «Контрагенты», вручную выбирая дилера из списка.
+    const addLinked = document.getElementById('prAddLinked');
+    if(addLinked) addLinked.onclick = ()=> openPartySheet({ kind:'person', dealerId:p.id }, ()=> openParty(p.id));
     c.querySelectorAll('[data-id]').forEach(el=> el.onclick = ()=> openDeal(el.dataset.id));
     c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
   }catch(e){ toast(e.message); }
