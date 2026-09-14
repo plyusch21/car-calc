@@ -54,7 +54,10 @@
  * раз structured output (responseFormat) официально задокументирован и
  * используется напрямую, без function calling.
  *
- * Input (POST JSON body): { text: string }
+ * Input (POST JSON body): { text: string } — если text целиком является
+ * ссылкой на encar.com (корейский маршрут), вместо обычного ИИ-разбора
+ * используется отдельный путь: структурные поля достаются напрямую со
+ * страницы объявления (SSR-данные), без ИИ — см. секцию Encar ниже.
  * Output: {
  *   model, carTrim,             // ВСЕГДА на английском (см. PROMPT)
  *   mileage, prodMonth, prodYear,
@@ -62,6 +65,7 @@
  *   transmission: 'auto'|'robot'|'variator'|'reductor'|'manual'|null,
  *   engineType: 'ben'|'dis'|'electric'|null,
  *   volumeCm3, power, powerUnit: 'ls'|'kvt'|null,
+ *   carPrice,                   // только для ссылок Encar (см. ниже)
  *   condition, notes,           // ВСЕГДА на русском (см. PROMPT)
  *   source: 'ai'|'heuristic'
  * } — любое поле null/отсутствует, если в тексте не нашлось. Клиент сам
@@ -785,6 +789,180 @@ async function heuristicParseWithTranslation(text) {
   return out;
 }
 
+// ---------------------------------------------------------------------
+// Encar (encar.com, маршрут "Корея"): вместо текста объявления пользователь
+// может вставить ссылку на объявление — страница отдаётся сервером уже
+// готовой HTML-версткой (SSR), с данными авто внутри инлайнового скрипта
+// `__PRELOADED_STATE__ = {...}` — поэтому не нужен headless-браузер, хватает
+// обычного fetch(). Большинство полей (марка/модель на английском, год,
+// пробег, объём, топливо, цена) достаём из этого JSON детерминированно, без
+// ИИ — они там уже структурированы и надёжнее, чем угадывание по тексту.
+// ИИ (тот же текстовый конвейер, что и для обычных объявлений) используется
+// только для короткой Корейской пометки продавца (advertisement.oneLineText),
+// если она вообще есть — на перевод "состояния"/"примечаний". Остальные блоки
+// с текстом (explain/sellingpoint/optionStandard/accident) в сыром SSR-ответе
+// пустые (подгружаются на клиенте отдельным запросом после рендера) — их
+// не пытаемся достать, честно ограничиваемся тем, что реально приходит.
+function isEncarUrl(str) {
+  try {
+    const u = new URL(str);
+    return /(^|\.)encar\.com$/i.test(u.hostname);
+  } catch (e) {
+    return false;
+  }
+}
+
+function extractEncarCarId(str) {
+  return firstMatch(str, [/[?&]carid=(\d+)/i, /\/detail\/(\d+)/i]);
+}
+
+async function fetchEncarHtml(carId) {
+  const url = 'https://fem.encar.com/cars/detail/' + carId + '?carid=' + carId;
+  const r = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+      'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
+    },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!r.ok) throw new Error('сайт ответил http ' + r.status);
+  return r.text();
+}
+
+// Простой обход символ-за-символом со счётчиком глубины скобок, учитывающий
+// строки (чтобы "}" внутри текстовых полей JSON не сбивал подсчёт) — надёжнее
+// невадного regex вроде /\{.*\};/, который либо не захватывает вложенность,
+// либо (жадный вариант) залезает далеко за пределы объекта.
+function extractBalancedJson(text, startIdx) {
+  let depth = 0, inStr = false, esc = false;
+  for (let i = startIdx; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+    } else {
+      if (c === '"') inStr = true;
+      else if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth === 0) return text.slice(startIdx, i + 1); }
+    }
+  }
+  return null;
+}
+
+function extractEncarBase(html) {
+  // Без "window." — на странице именно голое присвоение внутри <script>.
+  const marker = '__PRELOADED_STATE__ = {';
+  const idx = html.indexOf(marker);
+  if (idx === -1) throw new Error('не нашли данные объявления на странице (возможно, сайт изменил формат)');
+  const jsonText = extractBalancedJson(html, idx + marker.length - 1);
+  if (!jsonText) throw new Error('не удалось разобрать данные объявления на странице');
+  let data;
+  try { data = JSON.parse(jsonText); } catch (e) { throw new Error('данные объявления на странице повреждены'); }
+  const base = data && data.cars && data.cars.base;
+  if (!base || !base.category) throw new Error('объявление не найдено (снято с продажи или неверная ссылка)');
+  return base;
+}
+
+// Только 오토(автомат)/수동(механика) — это всё, что реально приходит в
+// spec.transmissionName у Encar; более тонкой раскладки (робот/вариатор) в
+// этом поле нет, поэтому не гадаем и оставляем остальное пустым.
+function mapEncarTransmission(name) {
+  if (!name) return null;
+  if (/오토/.test(name)) return 'auto';
+  if (/수동/.test(name)) return 'manual';
+  return null;
+}
+
+// gradeName/gradeEnglishName у полноприводных версий почти всегда содержат
+// один из этих маркеров в названии комплектации (AWD/4WD/Quattro/4Matic и
+// т.п.) — этого достаточно для уверенного "full". Передний/задний привод
+// такой явной меткой в названии обычно не обозначается, поэтому для них
+// не угадываем и оставляем пустым (как и в heuristicParse для остальных
+// маршрутов).
+function mapEncarDrivetrain(base) {
+  const text = [
+    base.category && base.category.gradeName,
+    base.category && base.category.gradeEnglishName
+  ].filter(Boolean).join(' ');
+  if (/4wd|awd|quattro|4matic|4motion|xdrive/i.test(text)) return 'full';
+  return null;
+}
+
+const ENCAR_FUEL_MAP = { '가솔린': 'ben', '디젤': 'dis', '전기': 'electric' };
+// LPG/하이브리드(гибрид) и т.п. намеренно не маппим: engineType в схеме
+// допускает только ben/dis/electric, а угадывать здесь недопустимо (см.
+// правило PROMPT про engineType выше) — оставляем пустым.
+
+function mapEncarFields(base) {
+  const cat = base.category || {};
+  const spec = base.spec || {};
+  const ad = base.advertisement || {};
+
+  const out = {
+    model: null, carTrim: null, mileage: null, prodMonth: null, prodYear: null,
+    drivetrain: null, transmission: null, engineType: null, volumeCm3: null,
+    power: null, powerUnit: null, carPrice: null, condition: null, notes: null
+  };
+
+  const brand = cat.manufacturerEnglishName;
+  const modelName = cat.modelGroupEnglishName || cat.modelEnglishName;
+  if (brand && modelName) out.model = (brand + ' ' + modelName).trim();
+  else if (brand) out.model = brand;
+  if (cat.gradeEnglishName) out.carTrim = cat.gradeEnglishName;
+
+  if (typeof cat.yearMonth === 'string' && cat.yearMonth.length >= 6) {
+    const year = parseInt(cat.yearMonth.slice(0, 4), 10);
+    const month = parseInt(cat.yearMonth.slice(4, 6), 10);
+    if (!isNaN(year)) out.prodYear = year;
+    if (month >= 1 && month <= 12) out.prodMonth = month;
+  }
+
+  if (typeof spec.mileage === 'number') out.mileage = spec.mileage;
+  if (typeof spec.displacement === 'number') out.volumeCm3 = spec.displacement;
+  out.engineType = ENCAR_FUEL_MAP[spec.fuelName] || null;
+  out.transmission = mapEncarTransmission(spec.transmissionName);
+  out.drivetrain = mapEncarDrivetrain(base);
+
+  // advertisement.price — в единицах 만원 (10 000 вон), не в самих вонах.
+  if (typeof ad.price === 'number' && ad.price > 0) out.carPrice = Math.round(ad.price * 10000);
+
+  return sanityCheckParsed(out);
+}
+
+async function parseEncarListing(url) {
+  const carId = extractEncarCarId(url);
+  if (!carId) throw new Error('не нашли номер объявления в ссылке');
+  const html = await fetchEncarHtml(carId);
+  const base = extractEncarBase(html);
+  const structured = mapEncarFields(base);
+
+  // Единственный свободный текст, который реально приходит в сыром SSR-ответе
+  // (см. комментарий у секции выше) — короткая пометка продавца. Если её нет,
+  // ИИ вообще не вызываем — структурных полей и так достаточно.
+  const freeText = ((base.advertisement && base.advertisement.oneLineText) || '').toString().trim();
+  let aiExtra = {};
+  if (freeText) {
+    try {
+      aiExtra = await callGeminiText(freeText);
+    } catch (e) {
+      if (GIGACHAT_AUTH_KEY) {
+        try {
+          const token = await getAccessToken();
+          aiExtra = await callGigaChat(token, freeText);
+        } catch (e2) { /* без перевода пометки — не критично, структурные поля важнее */ }
+      }
+    }
+  }
+
+  // Структурные поля всегда важнее того, что мог придумать ИИ по короткой
+  // пометке продавца (напр. если он там же по ошибке "увидел" марку/год).
+  const merged = Object.assign({}, aiExtra, structured);
+  if (base.vin) merged.notes = merged.notes ? (merged.notes + '; VIN: ' + base.vin) : ('VIN: ' + base.vin);
+  merged.source = 'ai';
+  return merged;
+}
+
 // Диагностика (страница /diag, флаг debugFreeform) — приложение её не
 // вызывает. Показывает результат ПЕРВОГО шага обычного разбора фото, без
 // второго: именно этот тест и показал, что модель читает лист прекрасно, а
@@ -868,6 +1046,20 @@ module.exports = async (req, res) => {
     res.status(200).send(JSON.stringify({ error: 'пустой текст объявления' }));
     return;
   }
+
+  // Ссылка на Encar (маршрут "Корея") — тот же ввод, что и для обычного
+  // текста объявления, просто вместо текста вставлена ссылка целиком.
+  // См. секцию Encar выше.
+  if (isEncarUrl(text)) {
+    try {
+      const parsed = await parseEncarListing(text);
+      res.status(200).send(JSON.stringify(parsed));
+    } catch (e) {
+      res.status(200).send(JSON.stringify({ error: 'Encar: ' + (e.message || String(e)) }));
+    }
+    return;
+  }
+
   // Gemini — основной путь; при любом сбое — GigaChat; при сбое и того, и
   // другого — резерв без ИИ (heuristicParse). Каждый следующий уровень
   // заведомо менее полный, чем предыдущий, но лучше частичный разбор, чем

@@ -919,7 +919,7 @@ async function runListingParse(payload, f){
     // "пусто" — это "всё ещё значение по умолчанию", а не truthy-проверка.
     const FIELD_DEFAULTS = { engineType:'ben', powerUnit:'ls' };
     const FIELD_MAP = ['model','carTrim','mileage','prodMonth','prodYear','drivetrain','transmission',
-      'engineType','volumeCm3','power','powerUnit','condition','notes'];
+      'engineType','volumeCm3','power','powerUnit','carPrice','condition','notes'];
     let filled = 0;
     FIELD_MAP.forEach(k=>{
       const v = data[k];
@@ -930,7 +930,7 @@ async function runListingParse(payload, f){
       if(k==='transmission' && !TRANSMISSION_LABELS[v]) return;
       if(k==='engineType' && !ENGINE_TYPES[v]) return;
       if(k==='powerUnit' && v!=='ls' && v!=='kvt') return;
-      f[k] = (k==='mileage' || k==='volumeCm3' || k==='power') ? String(Math.round(num(v))) : String(v);
+      f[k] = (k==='mileage' || k==='volumeCm3' || k==='power' || k==='carPrice') ? String(Math.round(num(v))) : String(v);
       filled++;
     });
     if(filled>0) f.showCarDetails = true;
@@ -956,14 +956,17 @@ function renderCalc(c){
     <div class="card">
       <h2>Автозаполнение</h2>
       <div class="toggle-row field">
-        <div style="font-size:12.5px;">${route==='japan' ? 'Автозаполнение по объявлению' : 'Автозаполнение по тексту объявления'}</div>
+        <div style="font-size:12.5px;">${route==='japan' ? 'Автозаполнение по объявлению' : route==='korea' ? 'Автозаполнение по тексту или ссылке Encar' : 'Автозаполнение по тексту объявления'}</div>
         <div class="switch ${f.showListingParser?'on':''}" id="listingParserToggle"><div class="knob"></div></div>
       </div>
       ${f.showListingParser ? `
       <div class="smartfill">
-        <textarea id="f_listingText" rows="1" style="text-align:center;" placeholder="Введите данные (RU/EN/CN/JP)">${escapeHtml(f.listingText)}</textarea>
+        <textarea id="f_listingText" rows="1" style="text-align:center;" placeholder="${route==='korea' ? 'Текст объявления или ссылка на encar.com' : 'Введите данные (RU/EN/CN/JP)'}">${escapeHtml(f.listingText)}</textarea>
         <button class="btn secondary" id="parseListingBtn" type="button">Распознать текст</button>
         <div id="parseListingStatus" class="smartfill-status"></div>
+        ${route==='korea' ? `
+        <div class="smartfill-hint">Можно вставить ссылку на объявление encar.com — поля (марка, год, пробег, объём, цена и т.д.) заполнятся автоматически.</div>
+        ` : ''}
         ${route==='japan' ? `
         <div class="smartfill-divider"><span>или фото аукционного листа</span></div>
         <div class="row2">
