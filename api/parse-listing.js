@@ -845,16 +845,30 @@ function extractEncarCarId(str) {
   return firstMatch(str, [/[?&]carid=(\d+)/i, /\/detail\/(\d+)/i]);
 }
 
+// Живой тест показал: запросы к api.encar.com с Vercel иногда рвутся на
+// сетевом уровне (не HTTP-статус — сам fetch() бросает исключение), а не
+// системно блокируются — тот же запрос почти всегда проходит со второй
+// попытки. Похоже на throttling на стороне Encar для нетипичного источника
+// трафика, а не на постоянный запрет (последовательные успешные запросы это
+// подтверждают). Поэтому одна короткая повторная попытка — тот же принцип,
+// что и retry на 429/503 у Gemini выше, — а не бесконечные повторы.
+async function fetchEncarUrl(url) {
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    'Accept': 'application/json',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
+  };
+  try {
+    return await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+  } catch (e) {
+    await sleep(1000);
+    return fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+  }
+}
+
 async function fetchEncarBase(carId) {
   const url = 'https://api.encar.com/v1/readside/vehicle/' + carId;
-  const r = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-      'Accept': 'application/json',
-      'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
-    },
-    signal: AbortSignal.timeout(15000)
-  });
+  const r = await fetchEncarUrl(url);
   if (r.status === 404) throw new Error('объявление не найдено (снято с продажи или неверная ссылка)');
   if (!r.ok) throw new Error('сайт ответил http ' + r.status);
   let base;
@@ -941,20 +955,12 @@ async function fetchEncarAccidentRecord(base) {
   if (!vehicleId || !vehicleNo) return null;
   const url = 'https://api.encar.com/v1/readside/record/vehicle/' + vehicleId + '/open?vehicleNo=' + encodeURIComponent(vehicleNo);
   try {
-    const r = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-        'Accept': 'application/json'
-      },
-      signal: AbortSignal.timeout(15000)
-    });
-    if (!r.ok) { fetchEncarAccidentRecord._lastDebug = 'http ' + r.status; return null; }
+    const r = await fetchEncarUrl(url);
+    if (!r.ok) return null;
     const data = await r.json();
-    if (!data || data.openData === false) { fetchEncarAccidentRecord._lastDebug = 'openData false or empty: ' + JSON.stringify(data).slice(0, 200); return null; }
-    fetchEncarAccidentRecord._lastDebug = 'ok';
+    if (!data || data.openData === false) return null;
     return data;
   } catch (e) {
-    fetchEncarAccidentRecord._lastDebug = 'threw: ' + (e && e.message || String(e));
     return null;
   }
 }
@@ -1035,7 +1041,6 @@ async function parseEncarListing(url) {
   // без аварий, так что condition в этом случае вообще не трогается.
   const accidentSummary = summarizeEncarAccidents(accidentRecord);
   if (accidentSummary) merged.condition = merged.condition ? (merged.condition + '; ' + accidentSummary) : accidentSummary;
-  merged._accidentDebug = fetchEncarAccidentRecord._lastDebug;
 
   const extraNotes = [];
   if (base.vin) extraNotes.push('VIN: ' + base.vin);
