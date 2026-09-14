@@ -858,12 +858,21 @@ async function fetchEncarUrl(url) {
     'Accept': 'application/json',
     'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
   };
-  try {
-    return await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
-  } catch (e) {
-    await sleep(1000);
-    return fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+  // Живой тест под нагрузкой (много запросов подряд при отладке) показал,
+  // что один повтор через секунду не всегда достаточен — сбои иногда идут
+  // сериями. Два повтора с растущей паузой, тем же принципом, что и retry
+  // на 429/503 у Gemini — не бесконечно, но с явным запасом сверх одной
+  // короткой попытки.
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await sleep(1000 * (attempt + 1));
+    }
   }
+  throw lastErr;
 }
 
 async function fetchEncarBase(carId) {
