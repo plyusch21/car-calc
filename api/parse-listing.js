@@ -804,12 +804,19 @@ async function heuristicParseWithTranslation(text) {
 // Большинство полей (марка/модель на английском, год, пробег, объём,
 // топливо, цена) достаём из этого JSON детерминированно, без ИИ — они там
 // уже структурированы и надёжнее, чем угадывание по тексту. ИИ (тот же
-// текстовый конвейер, что и для обычных объявлений) используется только
-// для короткой корейской пометки продавца (advertisement.oneLineText),
-// если она вообще есть — на перевод "состояния"/"примечаний". Остальные
-// текстовые блоки (описание, опции, ДТП) у Encar отдаются отдельными
-// эндпоинтами, которых мы не разбирали — честно ограничиваемся тем, что
-// реально приходит с этого одного запроса.
+// текстовый конвейер, что и для обычных объявлений) используется на две
+// вещи из того же ответа: короткую пометку продавца (advertisement.
+// oneLineText) и полное текстовое описание (contents.text) — переводит их
+// в "состояние"/"примечания", если они вообще есть. Официальный отчёт о
+// страховых случаях/ДТП (тот самый, что на самой странице Encar открывается
+// по кнопке "사고이력") — за авторизацией на стороне Encar
+// (/v2/verification/.../report-analysis/insurance-history требует
+// Bearer-токен из личного кабинета, подтверждено разбором JS-бандла
+// страницы) — без входа в аккаунт Encar не достать, это не наше
+// техническое ограничение, а платный/закрытый API. Что доступно без
+// авторизации и реально структурировано — флаги залога/ареста
+// (condition.seizing.seizingCount/pledgeCount) — показываем в notes, но
+// только когда счётчик больше нуля (см. parseEncarListing).
 function isEncarUrl(str) {
   try {
     const u = new URL(str);
@@ -913,10 +920,21 @@ async function parseEncarListing(url) {
   const base = await fetchEncarBase(carId);
   const structured = mapEncarFields(base);
 
-  // Единственный свободный текст, который реально приходит в этом ответе
-  // (см. комментарий у секции выше) — короткая пометка продавца. Если её нет,
-  // ИИ вообще не вызываем — структурных полей и так достаточно.
-  const freeText = ((base.advertisement && base.advertisement.oneLineText) || '').toString().trim();
+  // Официальный отчёт о страховых случаях/ДТП (тот, что показывается на
+  // самом Encar по кнопке "사고이력") — за авторизацией на стороне Encar
+  // (эндпоинт /v2/verification/.../report-analysis/insurance-history
+  // требует Bearer-токен из личного кабинета) — без входа в аккаунт Encar
+  // достать его нельзя, это не техническое ограничение нашего кода, а
+  // платный/закрытый API. Поэтому по ДТП и страховым случаям используем то,
+  // что реально доступно без авторизации: свободный текст, который иногда
+  // пишет сам продавец (короткая пометка + полное описание объявления —
+  // оба поля из того же запроса, что и структурные данные), плюс флаги
+  // залога/ареста (condition.seizing) — это уже настоящие структурные
+  // данные, без угадывания. Если продавец ничего не написал и залога/ареста
+  // нет — ничего лишнего не подставляем, как и просил владелец.
+  const oneLine = ((base.advertisement && base.advertisement.oneLineText) || '').toString().trim();
+  const longText = ((base.contents && base.contents.text) || '').toString().trim();
+  const freeText = [oneLine, longText].filter(Boolean).join('\n\n');
   let aiExtra = {};
   if (freeText) {
     try {
@@ -941,7 +959,19 @@ async function parseEncarListing(url) {
   for (const k of Object.keys(structured)) {
     if (structured[k] !== null && structured[k] !== undefined) merged[k] = structured[k];
   }
-  if (base.vin) merged.notes = merged.notes ? (merged.notes + '; VIN: ' + base.vin) : ('VIN: ' + base.vin);
+  const extraNotes = [];
+  if (base.vin) extraNotes.push('VIN: ' + base.vin);
+  // seizing/pledge — залог/арест: реальные структурные данные (не текст на
+  // угадывание), показываем только если счётчик действительно больше нуля —
+  // это как раз тот случай "если этого нет — ничего не указывать".
+  const seizing = base.condition && base.condition.seizing;
+  if (seizing && (seizing.seizingCount > 0 || seizing.pledgeCount > 0)) {
+    const parts = [];
+    if (seizing.seizingCount > 0) parts.push('арест: ' + seizing.seizingCount);
+    if (seizing.pledgeCount > 0) parts.push('залог: ' + seizing.pledgeCount);
+    extraNotes.push('⚠ По данным Encar — ' + parts.join(', '));
+  }
+  if (extraNotes.length) merged.notes = merged.notes ? (merged.notes + '; ' + extraNotes.join('; ')) : extraNotes.join('; ');
   merged.source = 'ai';
   return merged;
 }
