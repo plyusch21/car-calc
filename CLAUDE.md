@@ -31,11 +31,25 @@ top to bottom.
   URLs/notes per currency) and a pinned Russian root CA for sources that need it.
 - `api/customs.js` — customs duty/util-fee calc via TKS.RU official API
   (primary) with alta.ru fallback, rate-limited to 1 req/sec via Redis.
-- `api/parse-listing.js` — "smart autofill": GigaChat (Sber) integration that
-  extracts structured car data from pasted listing text or a Japanese
-  auction-sheet photo. GigaChat was chosen because most Western AI APIs
-  (Gemini, Anthropic, OpenAI-adjacent) are geo-blocked for Russia — see
-  git history if this ever needs revisiting.
+- `api/parse-listing.js` — "smart autofill": extracts structured car data from
+  pasted listing text or a Japanese auction-sheet photo. **Gemini is the
+  primary provider** (since Sept 2026 — earlier it was geo-blocked from
+  Russia, GigaChat was primary then; that's since become usable, key is
+  `GEMINI_API_KEY`/`GEMINI_MODEL` env vars), **GigaChat (Sber) is the
+  automatic fallback** on any Gemini error, and a no-AI regex fallback
+  (`heuristicParse`) exists for the text path only if both AI providers fail.
+  For the **Korea route**, pasting an encar.com listing URL into the same box
+  instead of text skips AI entirely for the structured fields: it fetches
+  `api.encar.com/v1/readside/vehicle/<id>` (the same JSON the site's own SPA
+  uses to hydrate — NOT the HTML page, which serves an empty client-rendered
+  shell to cloud/datacenter IPs including Vercel's, confirmed by live testing;
+  scraping `__PRELOADED_STATE__` out of the HTML only works from a residential
+  IP) and maps `category`/`spec`/`advertisement` deterministically. AI is only
+  used on the short `advertisement.oneLineText` seller blurb (if present) to
+  fill `condition`/`notes` — the merge logic gives structured fields priority
+  but must skip `null` structured keys or it silently wipes out whatever the
+  AI found (a real bug caught by live-testing a listing that had a blurb;
+  fixed in `parseEncarListing()`).
 - `api/auth.js`, `api/admin.js`, `api/state.js` — Telegram `initData`
   verification (`api/_lib/telegram.js`), the access-approval system
   (`api/_lib/access.js`), and cross-device config/history sync via KV.
