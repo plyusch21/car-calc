@@ -807,16 +807,31 @@ async function heuristicParseWithTranslation(text) {
 // текстовый конвейер, что и для обычных объявлений) используется на две
 // вещи из того же ответа: короткую пометку продавца (advertisement.
 // oneLineText) и полное текстовое описание (contents.text) — переводит их
-// в "состояние"/"примечания", если они вообще есть. Официальный отчёт о
-// страховых случаях/ДТП (тот самый, что на самой странице Encar открывается
-// по кнопке "사고이력") — за авторизацией на стороне Encar
-// (/v2/verification/.../report-analysis/insurance-history требует
-// Bearer-токен из личного кабинета, подтверждено разбором JS-бандла
-// страницы) — без входа в аккаунт Encar не достать, это не наше
-// техническое ограничение, а платный/закрытый API. Что доступно без
-// авторизации и реально структурировано — флаги залога/ареста
-// (condition.seizing.seizingCount/pledgeCount) — показываем в notes, но
-// только когда счётчик больше нуля (см. parseEncarListing).
+// в "состояние"/"примечания", если они вообще есть.
+//
+// Страховые случаи/ДТП (сумма, дата, количество) — то, что на самой
+// странице Encar показывается по кнопке "보험이력" ("страховая история"),
+// действительно доступно БЕЗ авторизации (владелец был прав, что видел это
+// без входа в аккаунт) — не путать с отдельным платным "AI-отчётом"
+// (/v2/verification/.../insurance-history, требует Bearer из личного
+// кабинета), это другая, более развёрнутая фича. Нашлось разбором JS-бандла
+// страницы (`cars/GET_ACCIDENTSUMMARY`/`GET_ACCIDENTOPEN` → конкретные
+// эндпоинты) и подтверждено живыми запросами:
+//   GET /v1/readside/record/vehicle/<vehicleId>/open?vehicleNo=<номер>
+// отдаёт accidentCnt/myAccidentCnt/otherAccidentCnt и массив accidents[]
+// с {date, insuranceBenefit, partCost, laborCost, paintingCost} по каждому
+// случаю — именно сумма+дата+количество, как и просил владелец. Ключевая
+// ловушка: <vehicleId> тут — это base.vehicleId, а НЕ carid из ссылки
+// (это разные числа, напр. carid=40040733 → vehicleId=40034590 —
+// manage.dummyVehicleId в base соответствует carid из ссылки, а
+// vehicleId — внутренний id, которым адресуются все под-ресурсы вроде
+// этого отчёта); vehicleNo — это base.vehicleNo (гос. номер), закодированный
+// через encodeURIComponent (там корейские иероглифы). Не у всех объявлений
+// есть данные (see fetchEncarAccidentRecord) — тогда просто ничего не
+// показываем, как и просил владелец. Флаги залога/ареста
+// (condition.seizing.seizingCount/pledgeCount) — тоже реальные структурные
+// данные без авторизации — показываем в notes, только когда счётчик больше
+// нуля (см. parseEncarListing).
 function isEncarUrl(str) {
   try {
     const u = new URL(str);
@@ -914,40 +929,93 @@ function mapEncarFields(base) {
   return sanityCheckParsed(out);
 }
 
+// Страховые случаи/ДТП — см. большой комментарий у секции выше про то, где
+// нашёлся этот эндпоинт и почему vehicleId/vehicleNo берутся именно из base,
+// а не из ссылки. Best-effort: не у каждого объявления есть эти данные
+// (тогда сайт либо отвечает без реального отчёта, либо не отвечает вовсе) —
+// в этом случае просто возвращаем null и ничего не показываем, никаких
+// сообщений об ошибке пользователю (это не сбой, а нормальный случай).
+async function fetchEncarAccidentRecord(base) {
+  const vehicleId = base.vehicleId;
+  const vehicleNo = base.vehicleNo;
+  if (!vehicleId || !vehicleNo) return null;
+  const url = 'https://api.encar.com/v1/readside/record/vehicle/' + vehicleId + '/open?vehicleNo=' + encodeURIComponent(vehicleNo);
+  try {
+    const r = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!data || data.openData === false) return null;
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Простая группировка тысяч обычным пробелом — без Intl/toLocaleString,
+// этот код серверный (Vercel/Node), а не WebView, так что причина не в
+// устаревшей ICU (см. комментарий у groupInt в index.html про другой,
+// клиентский случай) — просто нет смысла тянуть форматирование локали ради
+// одной строки, которая всё равно идёт в контекст ИИ или прямиком в notes.
+function groupThousandsRu(n) {
+  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+function summarizeEncarAccidents(rec) {
+  if (!rec) return null;
+  const my = rec.myAccidentCnt || 0;
+  const other = rec.otherAccidentCnt || 0;
+  const total = rec.accidentCnt != null ? rec.accidentCnt : (my + other);
+  if (!total || total <= 0) return null; // чисто — ничего не показываем
+  let s = 'страховые случаи (по данным Encar): ' + total +
+    (my || other ? ' (по вине владельца: ' + my + ', по вине других: ' + other + ')' : '');
+  if (Array.isArray(rec.accidents) && rec.accidents.length) {
+    const items = rec.accidents
+      .filter(a => a && a.date)
+      .map(a => a.date + (a.insuranceBenefit > 0 ? (', выплата ' + groupThousandsRu(a.insuranceBenefit) + ' вон') : ''));
+    if (items.length) s += '; ' + items.join('; ');
+  }
+  return s;
+}
+
 async function parseEncarListing(url) {
   const carId = extractEncarCarId(url);
   if (!carId) throw new Error('не нашли номер объявления в ссылке');
   const base = await fetchEncarBase(carId);
   const structured = mapEncarFields(base);
 
-  // Официальный отчёт о страховых случаях/ДТП (тот, что показывается на
-  // самом Encar по кнопке "사고이력") — за авторизацией на стороне Encar
-  // (эндпоинт /v2/verification/.../report-analysis/insurance-history
-  // требует Bearer-токен из личного кабинета) — без входа в аккаунт Encar
-  // достать его нельзя, это не техническое ограничение нашего кода, а
-  // платный/закрытый API. Поэтому по ДТП и страховым случаям используем то,
-  // что реально доступно без авторизации: свободный текст, который иногда
-  // пишет сам продавец (короткая пометка + полное описание объявления —
-  // оба поля из того же запроса, что и структурные данные), плюс флаги
-  // залога/ареста (condition.seizing) — это уже настоящие структурные
-  // данные, без угадывания. Если продавец ничего не написал и залога/ареста
-  // нет — ничего лишнего не подставляем, как и просил владелец.
+  // ИИ-перевод свободного текста продавца и запрос страховой истории не
+  // зависят друг от друга — запускаем параллельно, а не по очереди, чтобы
+  // не тратить время впустую (см. большой комментарий у секции выше про то,
+  // что даёт каждый из источников и откуда они взялись).
   const oneLine = ((base.advertisement && base.advertisement.oneLineText) || '').toString().trim();
   const longText = ((base.contents && base.contents.text) || '').toString().trim();
   const freeText = [oneLine, longText].filter(Boolean).join('\n\n');
-  let aiExtra = {};
-  if (freeText) {
+
+  async function runAi() {
+    if (!freeText) return {};
     try {
-      aiExtra = await callGeminiText(freeText);
+      return await callGeminiText(freeText);
     } catch (e) {
       if (GIGACHAT_AUTH_KEY) {
         try {
           const token = await getAccessToken();
-          aiExtra = await callGigaChat(token, freeText);
+          return await callGigaChat(token, freeText);
         } catch (e2) { /* без перевода пометки — не критично, структурные поля важнее */ }
       }
+      return {};
     }
   }
+
+  const [aiExtra, accidentRecord] = await Promise.all([
+    runAi(),
+    fetchEncarAccidentRecord(base)
+  ]);
 
   // Структурные поля всегда важнее того, что мог придумать ИИ по короткой
   // пометке продавца (напр. если он там же по ошибке "увидел" марку/год) —
@@ -959,6 +1027,13 @@ async function parseEncarListing(url) {
   for (const k of Object.keys(structured)) {
     if (structured[k] !== null && structured[k] !== undefined) merged[k] = structured[k];
   }
+  // Страховые случаи/ДТП — владелец явно просил именно в "состояние", а не
+  // в примечания. Дописываем к тому, что уже там (перевод ИИ), а не
+  // заменяем — summarizeEncarAccidents() возвращает null для чистой машины
+  // без аварий, так что condition в этом случае вообще не трогается.
+  const accidentSummary = summarizeEncarAccidents(accidentRecord);
+  if (accidentSummary) merged.condition = merged.condition ? (merged.condition + '; ' + accidentSummary) : accidentSummary;
+
   const extraNotes = [];
   if (base.vin) extraNotes.push('VIN: ' + base.vin);
   // seizing/pledge — залог/арест: реальные структурные данные (не текст на
