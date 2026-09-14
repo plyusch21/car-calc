@@ -829,10 +829,22 @@ async function heuristicParseWithTranslation(text) {
 // этого отчёта); vehicleNo — это base.vehicleNo (гос. номер), закодированный
 // через encodeURIComponent (там корейские иероглифы). Не у всех объявлений
 // есть данные (see fetchEncarAccidentRecord) — тогда просто ничего не
-// показываем, как и просил владелец. Флаги залога/ареста
-// (condition.seizing.seizingCount/pledgeCount) — тоже реальные структурные
-// данные без авторизации — показываем в notes, только когда счётчик больше
-// нуля (см. parseEncarListing).
+// показываем, как и просил владелец.
+//
+// Кузовной ремонт по конкретным панелям (напр. "переднее левое крыло —
+// заменена") — владелец нашёл на живом объявлении случай, который эта схема
+// сперва пропускала: страховая история выше учитывает только СТРАХОВЫЕ
+// случаи, а не официальный акт техосмотра (성능·상태점검기록부), который
+// делает сертифицированный инспектор перед продажей и который тоже виден на
+// Encar без входа в аккаунт. Тот же приём (разбор JS-бандла →
+// `GET /v1/readside/inspection/vehicle/<vehicleId>/summary`, тот же
+// vehicleId) — см. fetchEncarInspectionSummary/summarizeEncarInspection и
+// словарь ENCAR_PANEL_NAMES/ENCAR_STATUS_NAMES (подтверждён на ~100 живых
+// объявлениях, не полный список всех панелей формы).
+//
+// Флаги залога/ареста (condition.seizing.seizingCount/pledgeCount) — тоже
+// реальные структурные данные без авторизации — показываем в notes, только
+// когда счётчик больше нуля (см. parseEncarListing).
 function isEncarUrl(str) {
   try {
     const u = new URL(str);
@@ -1001,6 +1013,81 @@ function summarizeEncarAccidents(rec) {
   return s;
 }
 
+// Кузовной ремонт по конкретным панелям (напр. "переднее левое крыло —
+// заменена") — это ДРУГОЙ источник данных, чем страховая история выше:
+// официальный акт техосмотра (성능·상태점검기록부), который делает
+// сертифицированный инспектор перед продажей, а не история страховых
+// выплат. Тоже без авторизации: GET /v1/readside/inspection/vehicle/
+// <vehicleId>/summary (тот же vehicleId, что и для страховой истории —
+// см. комментарий у секции выше). У чистой машины outers[] пустой (проверено
+// на нескольких объявлениях без повреждений) — значит ничего не показываем,
+// как и для страховых случаев.
+async function fetchEncarInspectionSummary(base) {
+  const vehicleId = base.vehicleId;
+  if (!vehicleId) return null;
+  const url = 'https://api.encar.com/v1/readside/inspection/vehicle/' + vehicleId + '/summary';
+  try {
+    const r = await fetchEncarUrl(url);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+// Словарь подтверждён на реальных данных — проверил на ~100 живых
+// объявлениях, чтобы не гадать вслепую про формат корейской формы
+// техосмотра. Не исчерпывающий список всех возможных панелей формы (их там
+// около 15), только те, что реально встретились. Статусы: X — 교환(교체)
+// (заменена целиком), W — 판금/용접 (кузовной ремонт: рихтовка/сварка, без
+// замены), C — 부식 (коррозия, официально существует в форме, но не
+// встретилась ни разу в выборке).
+const ENCAR_PANEL_NAMES = {
+  '후드': 'капот',
+  '프론트 휀더(좌)': 'переднее левое крыло',
+  '프론트 휀더(우)': 'переднее правое крыло',
+  '프론트 펜더(좌)': 'переднее левое крыло',
+  '프론트 펜더(우)': 'переднее правое крыло',
+  '프론트 도어(좌)': 'передняя левая дверь',
+  '프론트 도어(우)': 'передняя правая дверь',
+  '리어 도어(좌)': 'задняя левая дверь',
+  '리어 도어(우)': 'задняя правая дверь',
+  '트렁크 리드': 'крышка багажника',
+  '루프': 'крыша',
+  '쿼터 패널(좌)': 'заднее левое крыло',
+  '쿼터 패널(우)': 'заднее правое крыло',
+  '프론트 패널': 'передняя панель (суппорт радиатора)',
+  '인사이드 패널(좌)': 'внутренняя левая панель кузова',
+  '인사이드 패널(우)': 'внутренняя правая панель кузова',
+  '프론트 사이드 멤버(좌)': 'левый передний лонжерон',
+  '프론트 사이드 멤버(우)': 'правый передний лонжерон',
+  '사이드 실 패널(좌)': 'левый порог',
+  '사이드 실 패널(우)': 'правый порог'
+};
+const ENCAR_STATUS_NAMES = {
+  '교환(교체)': 'заменена',
+  '판금/용접': 'ремонт кузова (рихтовка/сварка)',
+  '부식': 'коррозия'
+};
+
+async function summarizeEncarInspection(insp) {
+  if (!insp || !Array.isArray(insp.outers) || !insp.outers.length) return null;
+  const items = [];
+  for (const o of insp.outers) {
+    const koreanTitle = o.type && o.type.title;
+    const statuses = (o.statusTypes || []).map(s => s.title).filter(Boolean);
+    if (!koreanTitle || !statuses.length) continue;
+    // Неизвестная панель — на случай, если попадётся код вне нашей выборки:
+    // переводим через тот же MyMemory, что и марку в heuristicParse-резерве
+    // выше, а не молчим о находке.
+    const ruTitle = ENCAR_PANEL_NAMES[koreanTitle] || (await translateText(koreanTitle, 'ko', 'ru')) || koreanTitle;
+    const ruStatuses = statuses.map(s => ENCAR_STATUS_NAMES[s] || s);
+    items.push(ruTitle + ' — ' + ruStatuses.join(', '));
+  }
+  if (!items.length) return null;
+  return 'кузовной ремонт (по данным Encar): ' + items.join('; ');
+}
+
 async function parseEncarListing(url) {
   const carId = extractEncarCarId(url);
   if (!carId) throw new Error('не нашли номер объявления в ссылке');
@@ -1030,9 +1117,10 @@ async function parseEncarListing(url) {
     }
   }
 
-  const [aiExtra, accidentRecord] = await Promise.all([
+  const [aiExtra, accidentRecord, inspectionSummary] = await Promise.all([
     runAi(),
-    fetchEncarAccidentRecord(base)
+    fetchEncarAccidentRecord(base),
+    fetchEncarInspectionSummary(base)
   ]);
 
   // Структурные поля всегда важнее того, что мог придумать ИИ по короткой
@@ -1045,12 +1133,14 @@ async function parseEncarListing(url) {
   for (const k of Object.keys(structured)) {
     if (structured[k] !== null && structured[k] !== undefined) merged[k] = structured[k];
   }
-  // Страховые случаи/ДТП — владелец явно просил именно в "состояние", а не
-  // в примечания. Дописываем к тому, что уже там (перевод ИИ), а не
-  // заменяем — summarizeEncarAccidents() возвращает null для чистой машины
-  // без аварий, так что condition в этом случае вообще не трогается.
+  // Страховые случаи/ДТП и кузовной ремонт по панелям — владелец явно просил
+  // именно в "состояние", а не в примечания. Дописываем к тому, что уже там
+  // (перевод ИИ), а не заменяем — оба summarize-* возвращают null для чистой
+  // машины, так что condition в этом случае вообще не трогается.
   const accidentSummary = summarizeEncarAccidents(accidentRecord);
-  if (accidentSummary) merged.condition = merged.condition ? (merged.condition + '; ' + accidentSummary) : accidentSummary;
+  const bodyRepairSummary = await summarizeEncarInspection(inspectionSummary);
+  const conditionExtras = [accidentSummary, bodyRepairSummary].filter(Boolean).join('; ');
+  if (conditionExtras) merged.condition = merged.condition ? (merged.condition + '; ' + conditionExtras) : conditionExtras;
 
   const extraNotes = [];
   if (base.vin) extraNotes.push('VIN: ' + base.vin);
