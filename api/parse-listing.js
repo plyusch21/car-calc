@@ -791,18 +791,25 @@ async function heuristicParseWithTranslation(text) {
 
 // ---------------------------------------------------------------------
 // Encar (encar.com, маршрут "Корея"): вместо текста объявления пользователь
-// может вставить ссылку на объявление — страница отдаётся сервером уже
-// готовой HTML-версткой (SSR), с данными авто внутри инлайнового скрипта
-// `__PRELOADED_STATE__ = {...}` — поэтому не нужен headless-браузер, хватает
-// обычного fetch(). Большинство полей (марка/модель на английском, год,
-// пробег, объём, топливо, цена) достаём из этого JSON детерминированно, без
-// ИИ — они там уже структурированы и надёжнее, чем угадывание по тексту.
-// ИИ (тот же текстовый конвейер, что и для обычных объявлений) используется
-// только для короткой Корейской пометки продавца (advertisement.oneLineText),
-// если она вообще есть — на перевод "состояния"/"примечаний". Остальные блоки
-// с текстом (explain/sellingpoint/optionStandard/accident) в сыром SSR-ответе
-// пустые (подгружаются на клиенте отдельным запросом после рендера) — их
-// не пытаемся достать, честно ограничиваемся тем, что реально приходит.
+// может вставить ссылку на объявление. Изначально страница объявления
+// отдавала данные инлайновым скриптом `__PRELOADED_STATE__` при обычном
+// SSR-рендере — но живой тест с прода (Vercel) показал, что encar.com
+// отдаёт серверам в облаке (по всей видимости, по IP/ASN — с обычных
+// "домашних" IP страница рендерится нормально) не SSR-версию, а пустой
+// SPA-каркас без данных. Решение — использовать напрямую тот же JSON API,
+// которым сама SPA-страница подгружает эти данные при рендере:
+// api.encar.com/v1/readside/vehicle/<id> отдаёт РОВНО тот же объект,
+// что раньше вытаскивался из __PRELOADED_STATE__.cars.base — тот же
+// живой тест подтвердил, что этот путь у облачных серверов не блокируется.
+// Большинство полей (марка/модель на английском, год, пробег, объём,
+// топливо, цена) достаём из этого JSON детерминированно, без ИИ — они там
+// уже структурированы и надёжнее, чем угадывание по тексту. ИИ (тот же
+// текстовый конвейер, что и для обычных объявлений) используется только
+// для короткой корейской пометки продавца (advertisement.oneLineText),
+// если она вообще есть — на перевод "состояния"/"примечаний". Остальные
+// текстовые блоки (описание, опции, ДТП) у Encar отдаются отдельными
+// эндпоинтами, которых мы не разбирали — честно ограничиваемся тем, что
+// реально приходит с этого одного запроса.
 function isEncarUrl(str) {
   try {
     const u = new URL(str);
@@ -816,50 +823,20 @@ function extractEncarCarId(str) {
   return firstMatch(str, [/[?&]carid=(\d+)/i, /\/detail\/(\d+)/i]);
 }
 
-async function fetchEncarHtml(carId) {
-  const url = 'https://fem.encar.com/cars/detail/' + carId + '?carid=' + carId;
+async function fetchEncarBase(carId) {
+  const url = 'https://api.encar.com/v1/readside/vehicle/' + carId;
   const r = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
       'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
     },
     signal: AbortSignal.timeout(15000)
   });
+  if (r.status === 404) throw new Error('объявление не найдено (снято с продажи или неверная ссылка)');
   if (!r.ok) throw new Error('сайт ответил http ' + r.status);
-  return r.text();
-}
-
-// Простой обход символ-за-символом со счётчиком глубины скобок, учитывающий
-// строки (чтобы "}" внутри текстовых полей JSON не сбивал подсчёт) — надёжнее
-// невадного regex вроде /\{.*\};/, который либо не захватывает вложенность,
-// либо (жадный вариант) залезает далеко за пределы объекта.
-function extractBalancedJson(text, startIdx) {
-  let depth = 0, inStr = false, esc = false;
-  for (let i = startIdx; i < text.length; i++) {
-    const c = text[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (c === '\\') esc = true;
-      else if (c === '"') inStr = false;
-    } else {
-      if (c === '"') inStr = true;
-      else if (c === '{') depth++;
-      else if (c === '}') { depth--; if (depth === 0) return text.slice(startIdx, i + 1); }
-    }
-  }
-  return null;
-}
-
-function extractEncarBase(html) {
-  // Без "window." — на странице именно голое присвоение внутри <script>.
-  const marker = '__PRELOADED_STATE__ = {';
-  const idx = html.indexOf(marker);
-  if (idx === -1) throw new Error('не нашли данные объявления на странице (возможно, сайт изменил формат) [DEBUG len=' + html.length + ' head=' + JSON.stringify(html.slice(0, html.length > 4000 ? 1500 : html.length)) + ']');
-  const jsonText = extractBalancedJson(html, idx + marker.length - 1);
-  if (!jsonText) throw new Error('не удалось разобрать данные объявления на странице');
-  let data;
-  try { data = JSON.parse(jsonText); } catch (e) { throw new Error('данные объявления на странице повреждены'); }
-  const base = data && data.cars && data.cars.base;
+  let base;
+  try { base = await r.json(); } catch (e) { throw new Error('данные объявления повреждены'); }
   if (!base || !base.category) throw new Error('объявление не найдено (снято с продажи или неверная ссылка)');
   return base;
 }
@@ -933,11 +910,10 @@ function mapEncarFields(base) {
 async function parseEncarListing(url) {
   const carId = extractEncarCarId(url);
   if (!carId) throw new Error('не нашли номер объявления в ссылке');
-  const html = await fetchEncarHtml(carId);
-  const base = extractEncarBase(html);
+  const base = await fetchEncarBase(carId);
   const structured = mapEncarFields(base);
 
-  // Единственный свободный текст, который реально приходит в сыром SSR-ответе
+  // Единственный свободный текст, который реально приходит в этом ответе
   // (см. комментарий у секции выше) — короткая пометка продавца. Если её нет,
   // ИИ вообще не вызываем — структурных полей и так достаточно.
   const freeText = ((base.advertisement && base.advertisement.oneLineText) || '').toString().trim();
