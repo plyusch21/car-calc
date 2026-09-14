@@ -854,7 +854,7 @@ function extractEncarBase(html) {
   // Без "window." — на странице именно голое присвоение внутри <script>.
   const marker = '__PRELOADED_STATE__ = {';
   const idx = html.indexOf(marker);
-  if (idx === -1) throw new Error('не нашли данные объявления на странице (возможно, сайт изменил формат)');
+  if (idx === -1) throw new Error('не нашли данные объявления на странице (возможно, сайт изменил формат) [DEBUG len=' + html.length + ' head=' + JSON.stringify(html.slice(0, 300)) + ']');
   const jsonText = extractBalancedJson(html, idx + marker.length - 1);
   if (!jsonText) throw new Error('не удалось разобрать данные объявления на странице');
   let data;
