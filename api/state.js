@@ -4,7 +4,11 @@
  * Every call re-verifies Telegram initData and requires 'approved' status.
  *
  * KV schema: STRING "state:config" (JSON CONFIG blob), STRING
- * "state:history" (JSON array, capped at 500 entries server-side).
+ * "state:history" (JSON array, capped at 500 entries server-side), STRING
+ * "state:archive" (JSON array, capped at 50 — every calc that reached a
+ * result, automatic, separate from the manually-curated "history" above;
+ * see ЗАДАНИЕ.md Блок 3 — deliberately its own key, not folded into
+ * state:history, so the two caps/purposes don't collide).
  */
 
 const { kv } = require('./_lib/kv');
@@ -33,10 +37,13 @@ module.exports = async (req, res) => {
     const action = body.action;
 
     if (action === 'get') {
-      const [configRaw, historyRaw] = await Promise.all([kv('GET', 'state:config'), kv('GET', 'state:history')]);
+      const [configRaw, historyRaw, archiveRaw] = await Promise.all([
+        kv('GET', 'state:config'), kv('GET', 'state:history'), kv('GET', 'state:archive')
+      ]);
       res.status(200).send(JSON.stringify({
         config: configRaw ? JSON.parse(configRaw) : null,
-        history: historyRaw ? JSON.parse(historyRaw) : null
+        history: historyRaw ? JSON.parse(historyRaw) : null,
+        archive: archiveRaw ? JSON.parse(archiveRaw) : null
       }));
       return;
     }
@@ -50,6 +57,13 @@ module.exports = async (req, res) => {
     if (action === 'saveHistory') {
       const history = Array.isArray(body.history) ? body.history.slice(0, 500) : [];
       await kv('SET', 'state:history', JSON.stringify(history));
+      res.status(200).send(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (action === 'saveArchive') {
+      const archive = Array.isArray(body.archive) ? body.archive.slice(0, 50) : [];
+      await kv('SET', 'state:archive', JSON.stringify(archive));
       res.status(200).send(JSON.stringify({ ok: true }));
       return;
     }

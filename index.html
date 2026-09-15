@@ -95,6 +95,9 @@ body{
 .field{margin-bottom:12px;}
 .field:last-child{margin-bottom:0;}
 .field label{ display:block; font-size:12.5px; color:var(--muted); margin-bottom:5px; }
+.carried-hint{ font-size:10.5px; color:var(--muted); margin-top:4px; }
+.unfilled-hint{ font-size:10.5px; color:#d9b25f; margin-top:4px; }
+input.unfilled-input, select.unfilled-input{ border-color:#d9b25f; border-style:dashed; }
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
 .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;}
 input[type=text], input[type=number], select, textarea{
@@ -531,6 +534,16 @@ function saveHistory(){
     fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveHistory', history:state.history})}).catch(()=>{});
   }
 }
+// Архив — отдельный от истории ключ (см. api/state.js): сюда автоматически,
+// без нажатия кнопок, попадает КАЖДЫЙ расчёт, доведённый до результата
+// (см. pushArchive в showResult), капа в 50 хватает с запасом на "что я
+// вообще считал сегодня", не заменяет осознанное "Сохранить в историю".
+function saveArchive(){
+  Store.set('archive_v1', state.archive);
+  if(ACCESS && ACCESS.status==='approved'){
+    fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveArchive', archive:state.archive})}).catch(()=>{});
+  }
+}
 function deepMerge(base, override){
   if(Array.isArray(base)) return override!==undefined ? override : base;
   if(typeof base === 'object' && base!==null){
@@ -545,7 +558,7 @@ function deepMerge(base, override){
 /* ---------------------------------------------------------------------
    2. State
 --------------------------------------------------------------------- */
-const state = { view:'calc', route:'china', history: Store.get('history_v2', []), form: defaultForm('china'), formCache: {}, settingsSection: null };
+const state = { view:'calc', route:'china', history: Store.get('history_v2', []), archive: Store.get('archive_v1', []), form: defaultForm('china'), formCache: {}, settingsSection: null };
 
 function defaultForm(route){
   const r = CONFIG.routes[route];
@@ -563,6 +576,10 @@ function defaultForm(route){
     listingText:'', showListingParser:false
   };
 }
+// Поля, которые НЕ чистятся при сбросе формы после отправки/сохранения
+// (см. resetAfterDone в showResult) — двигатель/привод обычно тот же в
+// рамках одной сессии подбора для клиента, а не переспрашивать заново.
+const FORM_CARRY_FIELDS = ['volumeCm3','power','powerUnit','engineType','age','drivetrain','transmission'];
 const ENGINE_TYPES = {
   ben:      { label:'Бензиновый',   dtype:'ben' },
   dis:      { label:'Дизельный',    dtype:'dis' },
@@ -940,7 +957,34 @@ function renderContent(){
   if(state.view==='settings') return renderSettingsView(c);
 }
 
-function field(label, inputHtml){ return `<div class="field"><label>${label}</label>${inputHtml}</div>`; }
+function field(label, inputHtml, extraHtml){ return `<div class="field"><label>${label}</label>${inputHtml}${extraHtml||''}</div>`; }
+function removeFromArr(arr, item){ if(!arr) return; const i=arr.indexOf(item); if(i>=0) arr.splice(i,1); }
+
+// Поля, переживающие сброс формы после отправки/сохранения (FORM_CARRY_FIELDS,
+// см. resetAfterDone) — подпись под ними снимается, как только поле поправили
+// руками или его перезаписало распознавание (removeFromArr в runListingParse).
+function carriedHint(f, key){
+  return (f._carried && f._carried.includes(key)) ? `<div class="carried-hint" id="carried_${key}">перенесено из прошлого расчёта</div>` : '';
+}
+// Поля, которые распознавание объявления попыталось заполнить, но не нашло
+// (f._unfilled, см. UNFILLED_LABELS/runListingParse) — пунктирная рамка +
+// подпись, снимаются при вводе (см. clearFieldHints).
+function unfilledHint(f, key){
+  if(!f._unfilled || !f._unfilled.includes(key)) return '';
+  const [label, suffix] = UNFILLED_LABELS[key];
+  return `<div class="unfilled-hint" id="unfilled_${key}">${label} не указан${suffix} в объявлении — впишите вручную</div>`;
+}
+function unfilledClass(f, key){ return (f._unfilled && f._unfilled.includes(key)) ? ' unfilled-input' : ''; }
+// Вызывается из живых обработчиков ввода/изменения поля — снимает обе
+// подписи (и "перенесено", и "не указано") сразу же, без ре-рендера всей
+// формы, чтобы не сбивать фокус/курсор во время набора текста.
+function clearFieldHints(f, key){
+  removeFromArr(f._carried, key);
+  removeFromArr(f._unfilled, key);
+  const el1 = document.getElementById('carried_'+key); if(el1) el1.remove();
+  const el2 = document.getElementById('unfilled_'+key); if(el2) el2.remove();
+  const inputEl = document.getElementById('f_'+key); if(inputEl) inputEl.classList.remove('unfilled-input');
+}
 
 function cityOptions(selected){
   return CONFIG.delivery.cities.map(c=>`<option value="${c.name}" ${c.name===selected?'selected':''}>${c.name}</option>`).join('');
@@ -994,6 +1038,18 @@ function resizeImageToBase64(file, maxDim, quality){
 // /api/parse-listing и подставляет результат в форму f (только в пустые
 // поля — см. комментарий у FIELD_DEFAULTS). Никогда не бросает исключение —
 // всегда возвращает готовый статус-текст для показа пользователю.
+// Поля-цели автозаполнения, у которых есть свой видимый инпут/селект на
+// форме (и поэтому имеет смысл подсвечивать пунктиром, если распознавание
+// их не нашло) — см. UNFILLED_LABELS ниже. powerUnit (переключатель без
+// состояния "не выбрано") и prodMonth (мелкое парное поле — см. prodYear,
+// где "дата выпуска" трактуется целиком) сюда намеренно не входят.
+// [название, окончание причастия "не указан…"] — род/число у полей разные
+// (Марка — жен., Пробег — муж., Состояние — ср., Примечания — мн.).
+const UNFILLED_LABELS = {
+  model:['Марка/модель','а'], carTrim:['Комплектация','а'], mileage:['Пробег',''], prodYear:['Дата выпуска','а'],
+  drivetrain:['Привод',''], transmission:['Трансмиссия','а'], engineType:['Тип двигателя',''], volumeCm3:['Объём двигателя',''],
+  power:['Мощность','а'], carPrice:['Цена','а'], condition:['Состояние','о'], notes:['Примечания','ы']
+};
 async function runListingParse(payload, f){
   try{
     const res = await fetch(CONFIG.parseListingUrl, {
@@ -1001,25 +1057,35 @@ async function runListingParse(payload, f){
     });
     const data = await res.json();
     if(data.error) throw new Error(data.error);
-    // engineType/powerUnit в defaultForm НЕ пустые ('ben'/'ls' — значения по
-    // умолчанию для селектов без явного "не выбрано"), поэтому для них
-    // "пусто" — это "всё ещё значение по умолчанию", а не truthy-проверка.
-    const FIELD_DEFAULTS = { engineType:'ben', powerUnit:'ls' };
     const FIELD_MAP = ['model','carTrim','mileage','prodMonth','prodYear','drivetrain','transmission',
       'engineType','volumeCm3','power','powerUnit','carPrice','condition','notes'];
     let filled = 0;
+    if(!f._unfilled) f._unfilled = [];
     FIELD_MAP.forEach(k=>{
-      const v = data[k];
-      if(v===null || v===undefined || v==='') return;
-      const isEmpty = k in FIELD_DEFAULTS ? f[k]===FIELD_DEFAULTS[k] : !f[k];
-      if(!isEmpty) return;
-      if(k==='drivetrain' && !DRIVETRAIN_LABELS[v]) return;
-      if(k==='transmission' && !TRANSMISSION_LABELS[v]) return;
-      if(k==='engineType' && !ENGINE_TYPES[v]) return;
-      if(k==='powerUnit' && v!=='ls' && v!=='kvt') return;
-      f[k] = (k==='mileage' || k==='volumeCm3' || k==='power' || k==='carPrice') ? String(Math.round(num(v))) : String(v);
-      filled++;
+      let v = data[k];
+      if(v===null || v===undefined || v==='') v = null;
+      else if(k==='drivetrain' && !DRIVETRAIN_LABELS[v]) v = null;
+      else if(k==='transmission' && !TRANSMISSION_LABELS[v]) v = null;
+      else if(k==='engineType' && !ENGINE_TYPES[v]) v = null;
+      else if(k==='powerUnit' && v!=='ls' && v!=='kvt') v = null;
+      // Распознанное всегда побеждает — раньше подставлялось только в пустые
+      // поля, но это оставляло на форме случайные обрывки от предыдущего
+      // расчёта (см. Блок 3 ЗАДАНИЯ.md: перенесённые поля и так помечены
+      // отдельной подписью "перенесено", а не должны молча мешать новому
+      // распознаванию).
+      if(v!==null){
+        f[k] = (k==='mileage' || k==='volumeCm3' || k==='power' || k==='carPrice') ? String(Math.round(num(v))) : String(v);
+        filled++;
+        removeFromArr(f._carried, k);
+        removeFromArr(f._unfilled, k);
+      } else if(k in UNFILLED_LABELS && !f._unfilled.includes(k)){
+        f._unfilled.push(k);
+      }
     });
+    // "Дата выпуска" в форме — одно смысловое поле (prodMonth+prodYear), а
+    // подпись/пунктир вешаем только на prodYear (см. UNFILLED_LABELS) —
+    // но только если распознавание не нашло НИ месяца, ни года.
+    if(data.prodYear!=null && data.prodYear!=='') removeFromArr(f._unfilled, 'prodYear');
     if(filled>0) f.showCarDetails = true;
     const sourceNote = data.source==='heuristic' ? ' · резервный разбор без ИИ (GigaChat недоступен'+(data.aiError?': '+data.aiError:'')+'), часть полей могла не заполниться' : '';
     const statusText = (filled>0 ? ('Заполнено полей: '+filled) : 'Новых данных не нашли — либо их нет в тексте, либо все поля уже заполнены') + sourceNote;
@@ -1071,28 +1137,30 @@ function renderCalc(c){
 
     <div class="card">
       <h2>Параметры авто — ${cfg.label}</h2>
-      ${field('Марка / модель', `<input type="text" id="f_model" value="${f.model}" placeholder="напр. Toyota Alphard">`)}
+      ${field('Марка / модель', `<input type="text" id="f_model" class="${unfilledClass(f,'model')}" value="${f.model}" placeholder="напр. Toyota Alphard">`, unfilledHint(f,'model'))}
       <div class="row2">
-        ${field('Цена авто ('+suf+')', `<input type="text" id="f_carPrice" value="${formatNumInput(f.carPrice)}" inputmode="decimal">`)}
+        ${field('Цена авто ('+suf+')', `<input type="text" id="f_carPrice" class="${unfilledClass(f,'carPrice')}" value="${formatNumInput(f.carPrice)}" inputmode="decimal">`, unfilledHint(f,'carPrice'))}
         ${field('Расходы в стране ('+suf+')', `<input type="text" id="f_extraCosts" value="${formatNumInput(f.extraCosts)}" inputmode="decimal">`)}
       </div>
       <div class="field">
         <label>Тип двигателя</label>
-        <select id="f_engineType">
+        <select id="f_engineType" class="${unfilledClass(f,'engineType')}">
           ${Object.keys(ENGINE_TYPES).map(k=>`<option value="${k}" ${f.engineType===k?'selected':''}>${ENGINE_TYPES[k].label}</option>`).join('')}
         </select>
+        ${unfilledHint(f,'engineType')}${carriedHint(f,'engineType')}
       </div>
       <div class="row2">
-        ${isElectric ? '' : field('Объём двигателя (см³)', `<input type="text" id="f_volumeCm3" value="${formatNumInput(f.volumeCm3)}" inputmode="numeric">`)}
+        ${isElectric ? '' : field('Объём двигателя (см³)', `<input type="text" id="f_volumeCm3" class="${unfilledClass(f,'volumeCm3')}" value="${formatNumInput(f.volumeCm3)}" inputmode="numeric">`, unfilledHint(f,'volumeCm3')+carriedHint(f,'volumeCm3'))}
         <div class="field">
           <label>${isElectric?'Мощность электродвигателя':'Мощность двигателя'}</label>
           <div class="row2" style="gap:6px;">
-            <input type="text" id="f_power" value="${formatNumInput(f.power)}" inputmode="numeric">
+            <input type="text" id="f_power" class="${unfilledClass(f,'power')}" value="${formatNumInput(f.power)}" inputmode="numeric">
             <div class="seg" id="powerUnitSeg">
               <button data-unit="ls" class="${f.powerUnit==='ls'?'active':''}">л.с.</button>
               <button data-unit="kvt" class="${f.powerUnit==='kvt'?'active':''}">кВт</button>
             </div>
           </div>
+          ${unfilledHint(f,'power')}${carriedHint(f,'power')}
         </div>
       </div>
       <div class="field">
@@ -1100,6 +1168,7 @@ function renderCalc(c){
         <div class="seg" id="ageSeg">
           ${Object.keys(AGE_LABELS).map(k=>`<button data-age="${k}" class="${f.age===k?'active':''}">${AGE_LABELS[k]}</button>`).join('')}
         </div>
+        ${carriedHint(f,'age')}
       </div>
       ${route==='eaeu' ? `
       <div class="toggle-row field">
@@ -1123,22 +1192,23 @@ function renderCalc(c){
       </div>
       ${f.showCarDetails ? `
       <div class="row2">
-        ${field('Комплектация', `<input type="text" id="f_carTrim" value="${f.carTrim}">`)}
-        ${field('Пробег, км', `<input type="text" id="f_mileage" value="${formatNumInput(f.mileage)}" inputmode="numeric">`)}
+        ${field('Комплектация', `<input type="text" id="f_carTrim" class="${unfilledClass(f,'carTrim')}" value="${f.carTrim}">`, unfilledHint(f,'carTrim'))}
+        ${field('Пробег, км', `<input type="text" id="f_mileage" class="${unfilledClass(f,'mileage')}" value="${formatNumInput(f.mileage)}" inputmode="numeric">`, unfilledHint(f,'mileage'))}
       </div>
       <div class="field">
         <label>${route==='japan' ? 'Дата первой регистрации' : 'Дата производства'}</label>
         <div class="row2" style="gap:6px;">
           <input type="number" id="f_prodMonth" value="${f.prodMonth}" placeholder="мес." min="1" max="12" inputmode="numeric">
-          <input type="number" id="f_prodYear" value="${f.prodYear}" placeholder="год" inputmode="numeric">
+          <input type="number" id="f_prodYear" class="${unfilledClass(f,'prodYear')}" value="${f.prodYear}" placeholder="год" inputmode="numeric">
         </div>
+        ${unfilledHint(f,'prodYear')}
       </div>
       <div class="row2">
-        ${field('Привод', `<select id="f_drivetrain"><option value="">—</option>${Object.keys(DRIVETRAIN_LABELS).map(k=>`<option value="${k}" ${f.drivetrain===k?'selected':''}>${DRIVETRAIN_LABELS[k]}</option>`).join('')}</select>`)}
-        ${field('Трансмиссия', `<select id="f_transmission"><option value="">—</option>${Object.keys(TRANSMISSION_LABELS).map(k=>`<option value="${k}" ${f.transmission===k?'selected':''}>${TRANSMISSION_LABELS[k]}</option>`).join('')}</select>`)}
+        ${field('Привод', `<select id="f_drivetrain" class="${unfilledClass(f,'drivetrain')}"><option value="">—</option>${Object.keys(DRIVETRAIN_LABELS).map(k=>`<option value="${k}" ${f.drivetrain===k?'selected':''}>${DRIVETRAIN_LABELS[k]}</option>`).join('')}</select>`, unfilledHint(f,'drivetrain')+carriedHint(f,'drivetrain'))}
+        ${field('Трансмиссия', `<select id="f_transmission" class="${unfilledClass(f,'transmission')}"><option value="">—</option>${Object.keys(TRANSMISSION_LABELS).map(k=>`<option value="${k}" ${f.transmission===k?'selected':''}>${TRANSMISSION_LABELS[k]}</option>`).join('')}</select>`, unfilledHint(f,'transmission')+carriedHint(f,'transmission'))}
       </div>
-      ${field('Состояние', `<input type="text" id="f_condition" value="${f.condition}">`)}
-      ${field('Примечания', `<input type="text" id="f_notes" value="${f.notes}">`)}
+      ${field('Состояние', `<input type="text" id="f_condition" class="${unfilledClass(f,'condition')}" value="${f.condition}">`, unfilledHint(f,'condition'))}
+      ${field('Примечания', `<input type="text" id="f_notes" class="${unfilledClass(f,'notes')}" value="${f.notes}">`, unfilledHint(f,'notes'))}
       ` : ''}
     </div>
 
@@ -1195,6 +1265,7 @@ function renderCalc(c){
     if(!el) return;
     if(GROUPED_NUM_FIELDS.includes(k)){
       el.oninput = ()=>{
+        clearFieldHints(f, k);
         const clean = cleanNumInput(el.value);
         f[k] = clean;
         const digitsBeforeCursor = cleanNumInput(el.value.slice(0, el.selectionStart)).length;
@@ -1208,13 +1279,13 @@ function renderCalc(c){
         el.setSelectionRange(pos, pos);
       };
     } else {
-      el.oninput = ()=> f[k]=el.value;
+      el.oninput = ()=>{ clearFieldHints(f, k); f[k]=el.value; };
     }
   });
-  const drivetrainEl = document.getElementById('f_drivetrain'); if(drivetrainEl) drivetrainEl.onchange = ()=>{ f.drivetrain=drivetrainEl.value; };
-  document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ f.age=b.dataset.age; renderCalc(c); });
-  const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ f.engineType=engineEl.value; renderCalc(c); };
-  document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ f.powerUnit=b.dataset.unit; renderCalc(c); });
+  const drivetrainEl = document.getElementById('f_drivetrain'); if(drivetrainEl) drivetrainEl.onchange = ()=>{ clearFieldHints(f,'drivetrain'); f.drivetrain=drivetrainEl.value; };
+  document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ clearFieldHints(f,'age'); f.age=b.dataset.age; renderCalc(c); });
+  const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ clearFieldHints(f,'engineType'); f.engineType=engineEl.value; renderCalc(c); };
+  document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ clearFieldHints(f,'powerUnit'); f.powerUnit=b.dataset.unit; renderCalc(c); });
   const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; renderCalc(c); };
   const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
@@ -1263,7 +1334,7 @@ function renderCalc(c){
     const statusEl = document.getElementById('parseListingImageStatus');
     if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
   };
-  const transEl = document.getElementById('f_transmission'); if(transEl) transEl.onchange = ()=>{ f.transmission=transEl.value; };
+  const transEl = document.getElementById('f_transmission'); if(transEl) transEl.onchange = ()=>{ clearFieldHints(f,'transmission'); f.transmission=transEl.value; };
   const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
   const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; renderCalc(c); };
   const delT = document.getElementById('delOverrideToggle'); if(delT) delT.onclick = ()=>{ f.deliveryOverride=!f.deliveryOverride; renderCalc(c); };
@@ -1301,7 +1372,8 @@ function renderCalc(c){
     renderCalc(c);
     const statusEl = document.getElementById('customsStatus');
     if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
-    showResult(route, f);
+    const shown = showResult(route, f);
+    if(shown) pushArchive(route, f, shown);
   };
 }
 
@@ -1323,6 +1395,14 @@ function carDetailLines(f, route){
   return lines;
 }
 
+// Каждый расчёт, реально показанный пользователю (не открытый заново из
+// истории/архива на просмотр — см. вызовы showResult) — автоматически в
+// архив, без нажатия кнопок (см. saveArchive/ЗАДАНИЕ.md Блок 3).
+function pushArchive(route, f, r){
+  state.archive.unshift({ id:Date.now(), route, model:f.model||'Без названия', total:r.total, date:new Date().toISOString(), form:{...f} });
+  if(state.archive.length>50) state.archive.length = 50;
+  saveArchive();
+}
 function showResult(route, f, opts){
   const r = calcDeal(route, f);
   const cfg = CONFIG.routes[route];
@@ -1374,8 +1454,17 @@ function showResult(route, f, opts){
     .then(blob => blob ? new File([blob], 'baikal-auto-kp.png', {type:'image/png'}) : null)
     .catch(()=>null);
 
+  // После отправки/сохранения форма чистится, КРОМЕ этих полей — обычно
+  // это одна и та же машина/лот в рамках одной сессии подбора для клиента,
+  // и переспрашивать объём/мощность/привод на каждый пересчёт неудобно.
+  // Перенесённые значения помечаются подписью carriedHint (см. field()) до
+  // тех пор, пока их не поправят руками или не перезапишет распознавание.
   function resetAfterDone(){
-    state.form = defaultForm(route);
+    const nf = defaultForm(route);
+    const carried = [];
+    FORM_CARRY_FIELDS.forEach(k=>{ if(f[k]!==undefined && f[k]!==''){ nf[k]=f[k]; carried.push(k); } });
+    nf._carried = carried;
+    state.form = nf;
     state.formCache[route] = state.form;
     renderCalc(document.getElementById('content'));
   }
@@ -1397,6 +1486,8 @@ function showResult(route, f, opts){
     btn.disabled = false;
     if(sent) resetAfterDone();
   };
+
+  return r;
 }
 
 // Формат курса: у копеечных курсов (напр. вона) 2 знака после запятой
@@ -1826,7 +1917,37 @@ function openOtherRoutePicker(h){
   });
 }
 
+// Архив — отдельный список (state.archive, см. pushArchive/saveArchive),
+// открывается папкой внутри вкладки «Общие» (только там — привязки к
+// направлению у архива нет смысла показывать отдельно). Автоматический,
+// без ручного curation, поэтому без свайпа-удаления и без "Другое
+// направление" — сюда просто заглядывают посмотреть, что считали.
+function renderArchiveList(c){
+  historySwipeOpen = null;
+  const back = `<button class="btn secondary small" id="archiveBack" style="margin-bottom:14px;">← Назад</button>`;
+  const listHtml = state.archive.length ? state.archive.map(h=>{
+    const d = new Date(h.date);
+    return `<div class="histcard" data-aid="${h.id}">
+      <div class="l"><div class="m">${h.model}</div><div class="d">${CONFIG.routes[h.route].label} · ${d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div></div>
+      <div class="r"><div class="t">${fmt(h.total,'₽')}</div></div>
+    </div>`;
+  }).join('') : `<div class="emptystate"><div class="big">Пока пусто</div>Сюда попадёт каждый расчёт, доведённый до результата — последние 50</div>`;
+  c.innerHTML = back + `<div style="font-size:12px;color:var(--muted);margin:-6px 0 14px;">Заполняется автоматически при каждом расчёте, дошедшем до результата. Хранит последние 50 — более старые пропадают без предупреждения. Для того, что нужно сохранить надолго, используйте «Сохранить в историю».</div>` + listHtml;
+  document.getElementById('archiveBack').onclick = ()=>{ state.historyArchiveOpen=false; renderHistory(c); };
+  c.querySelectorAll('[data-aid]').forEach(el=> el.onclick = ()=>{
+    const h = state.archive.find(x=>x.id==el.dataset.aid);
+    if(!h) return;
+    state.route = h.route; state.form = {...defaultForm(h.route), ...h.form};
+    state.formCache[h.route] = state.form;
+    state.view='calc';
+    document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view==='calc'));
+    renderTabs(); renderContent();
+    setTimeout(()=> showResult(h.route, state.form, {scrollTop:true}), 50);
+  });
+}
+
 function renderHistory(c){
+  if(state.historyArchiveOpen) return renderArchiveList(c);
   const filter = state.historyFilter || 'all';
   const filtered = filter==='all' ? state.history : state.history.filter(h=>h.route===filter);
   historySwipeOpen = null;
@@ -1835,6 +1956,14 @@ function renderHistory(c){
     <button class="tab ${filter==='all'?'active':''}" data-f="all">Общие</button>
     ${Object.keys(CONFIG.routes).map(id=>`<button class="tab ${filter===id?'active':''}" data-f="${id}">${CONFIG.routes[id].label} ${ROUTE_FLAG[id]||''}</button>`).join('')}
   </div>`;
+
+  // Папка «Архив» — только на вкладке «Общие» (см. renderArchiveList выше).
+  const archiveFolderHtml = filter==='all' ? `<div class="histcard-wrap">
+    <div class="histcard" id="archiveFolderBtn">
+      <div class="l"><div class="m">📁 Архив</div><div class="d">Все расчёты, доведённые до результата · последние 50</div></div>
+      <div class="r"><div style="font-size:19px;color:var(--muted);">›</div></div>
+    </div>
+  </div>` : '';
 
   // Свайп влево открывает "Удалить" за карточкой (как избранное на iPhone) —
   // отдельная всегда видимая кнопка удаления больше не нужна, на её месте
@@ -1851,11 +1980,14 @@ function renderHistory(c){
   }).join('') + `<button class="btn secondary" id="clearHist" style="margin-top:4px;">${filter==='all'?'Очистить всю историю':'Очистить историю «'+CONFIG.routes[filter].label+'»'}</button>`
     : `<div class="emptystate"><div class="big">Пока пусто</div>Сохранённые расчёты появятся здесь</div>`;
 
-  c.innerHTML = filterHtml + listHtml;
+  c.innerHTML = filterHtml + archiveFolderHtml + listHtml;
+
+  const archiveFolderBtn = document.getElementById('archiveFolderBtn');
+  if(archiveFolderBtn) archiveFolderBtn.onclick = ()=>{ state.historyArchiveOpen=true; renderHistory(c); };
 
   c.querySelectorAll('#histFilterSeg .tab').forEach(b=> b.onclick = ()=>{ state.historyFilter = b.dataset.f; renderHistory(c); });
 
-  c.querySelectorAll('.histcard').forEach(el=>{
+  c.querySelectorAll('.histcard:not(#archiveFolderBtn)').forEach(el=>{
     bindHistorySwipe(el);
     el.onclick = (e)=>{
       if(e.target.closest('[data-otherroute]')) return;
@@ -2199,6 +2331,12 @@ async function bootGate(){
       Store.set('history_v2', state.history);
     } else if(state.history.length){
       fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveHistory', history:state.history})}).catch(()=>{});
+    }
+    if(data && Array.isArray(data.archive)){
+      state.archive = data.archive;
+      Store.set('archive_v1', state.archive);
+    } else if(state.archive.length){
+      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveArchive', archive:state.archive})}).catch(()=>{});
     }
   }catch(e){ /* работаем с тем, что было в localStorage, пока не появится связь */ }
 
