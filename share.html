@@ -53,28 +53,47 @@ async function dataUrlToFile(dataUrl, name){
   }
   if(payload.error){ fail(payload.error); return; }
 
-  sub.textContent = 'Нажмите «Поделиться» — откроется системное окно выбора мессенджера.';
+  sub.textContent = 'Нажмите «Отправить фото» — откроется системное окно выбора мессенджера. Текст расчёта уже скопирован в буфер, вставьте его следом.';
   const img = document.createElement('img');
   img.src = payload.imageDataUrl;
   content.appendChild(img);
 
   const btn = document.createElement('button');
-  btn.textContent = 'Поделиться';
+  btn.textContent = 'Отправить фото';
   content.appendChild(btn);
+
+  // Текст мог не пережить переход между приложениями — даём его скопировать
+  // ещё раз прямо здесь.
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = 'Скопировать текст ещё раз';
+  copyBtn.style.background = 'transparent';
+  copyBtn.style.border = '1px solid #2a3442';
+  content.appendChild(copyBtn);
+  copyBtn.onclick = async ()=>{
+    try{
+      await navigator.clipboard.writeText(payload.text || '');
+      statusEl.className = '';
+      statusEl.textContent = 'Текст скопирован.';
+    }catch(e){
+      statusEl.className = 'bad';
+      statusEl.textContent = 'Не вышло скопировать — выделите текст вручную.';
+    }
+  };
 
   btn.onclick = async ()=>{
     btn.disabled = true;
     try{
       const file = await dataUrlToFile(payload.imageDataUrl, 'baikal-auto-kp.png');
-      const data = { files:[file], text: payload.text, title: payload.title || 'Расчёт стоимости авто' };
+      // Только файл, без text и title: то же правило, что в самом
+      // приложении — WhatsApp на iOS не принимает файл вместе с текстом,
+      // поэтому текст везде идёт через буфер обмена.
+      const data = { files:[file] };
       if(navigator.share && (!navigator.canShare || navigator.canShare(data))){
         await navigator.share(data);
-        statusEl.textContent = '';
-      } else if(navigator.share){
-        await navigator.share({ text: payload.text, title: data.title });
-        statusEl.textContent = 'Этот браузер не делится фото вместе с текстом — отправлен только текст.';
+        statusEl.className = '';
+        statusEl.textContent = 'Отправлено. Текст вставьте из буфера.';
       } else {
-        fail('В этом браузере тоже нет системного «Поделиться». Зажмите фото выше и выберите «Поделиться» или «Сохранить изображение» вручную.');
+        fail('В этом браузере нет системного «Поделиться». Зажмите фото выше и выберите «Поделиться» или «Сохранить изображение».');
       }
     }catch(e){
       if(e.name !== 'AbortError'){ statusEl.textContent = 'Ошибка: ' + e.message; statusEl.className='bad'; }

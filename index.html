@@ -98,9 +98,13 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
 .btn.small{padding:9px; font-size:12.5px;}
 .row3 .btn{ padding:11px 4px; font-size:12.5px; }
-.btn-wa{ background:#25D366; color:#fff; }
-.btn-tg{ background:#2AABEE; color:#fff; }
-.btn-max{ background:#9B7FE0; color:#fff; }
+.btn-send{
+  background:linear-gradient(90deg,#25D366 0%, #2AABEE 52%, #9B7FE0 100%);
+  color:#fff; font-weight:700; letter-spacing:.2px;
+  box-shadow:0 6px 18px rgba(42,171,238,.22);
+}
+.btn-send:active{ opacity:.88; }
+.send-hint{ font-size:11px; color:var(--muted); text-align:center; margin-top:8px; line-height:1.4; }
 .linkbtn{
   display:flex; align-items:center; justify-content:space-between; gap:8px;
   background:var(--teal-soft); border:1px solid var(--teal); color:var(--teal);
@@ -200,6 +204,9 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .kp-header-div{ width:2px; align-self:stretch; background:rgba(255,255,255,.3); }
 .kp-h-title{ color:#fff; font-size:35px; font-weight:800; }
 .kp-h-route{ color:#fff; font-size:27px; font-weight:700; white-space:nowrap; }
+.kp-model{ padding:30px 48px 0; }
+.kp-model-label{ color:#8a93a6; font-size:15px; font-weight:700; letter-spacing:.03em; }
+.kp-model-name{ color:#1a2233; font-size:34px; font-weight:800; margin-top:6px; line-height:1.2; }
 .kp-stats{ display:flex; gap:16px; padding:28px 48px 0; }
 .kp-stat{ flex:1; background:#fff; border-radius:14px; padding:20px 22px; text-align:center; }
 .kp-stat-l{ color:#8a93a6; font-size:15px; font-weight:700; letter-spacing:.03em; }
@@ -1259,12 +1266,8 @@ function showResult(route, f, opts){
     </div>
     <button class="btn secondary" id="saveBtn" style="width:100%;">Сохранить в историю</button>
     <div class="field" style="margin:14px 0;">
-      <label style="text-align:center;margin-bottom:14px;">Отправить расчёт</label>
-      <div class="row3">
-        <button class="btn btn-wa" id="shareWhatsappBtn">WhatsApp</button>
-        <button class="btn btn-tg" id="shareTelegramBtn">Telegram</button>
-        <button class="btn btn-max" id="shareMaxBtn">MAX</button>
-      </div>
+      <button class="btn btn-send" id="shareBtn">Отправить в мессенджер</button>
+      <div class="send-hint">Уйдёт фото расчёта. Текст скопируется в буфер — вставьте его следом.</div>
     </div>
   `;
   // При обычном "Рассчитать" прокручиваем к чеку — это и есть результат,
@@ -1300,9 +1303,16 @@ function showResult(route, f, opts){
     toast('Сохранено в историю');
     resetAfterDone();
   };
-  document.getElementById('shareWhatsappBtn').onclick = async ()=>{ await shareResult(route, f, r, kpFilePromise, 'whatsapp'); resetAfterDone(); };
-  document.getElementById('shareTelegramBtn').onclick = async ()=>{ await shareResult(route, f, r, kpFilePromise, 'telegram'); resetAfterDone(); };
-  document.getElementById('shareMaxBtn').onclick = async ()=>{ await shareResult(route, f, r, kpFilePromise, 'max'); resetAfterDone(); };
+  document.getElementById('shareBtn').onclick = async ()=>{
+    const btn = document.getElementById('shareBtn');
+    btn.disabled = true;
+    // Форма очищается ТОЛЬКО если отправка действительно состоялась. Раньше
+    // отмена в системном окне выглядела для кода так же, как успех, и
+    // введённые данные пропадали ни за что.
+    const sent = await shareResult(route, f, r, kpFilePromise);
+    btn.disabled = false;
+    if(sent) resetAfterDone();
+  };
 }
 
 // Формат курса: у копеечных курсов (напр. вона) 2 знака после запятой
@@ -1371,7 +1381,6 @@ function buildKpHtml(route, f, r){
       <div class="kp-section">
         <div class="kp-h2">Параметры автомобиля</div>
         <div class="kp-card-white kp-params">
-          <div class="kp-prow"><div class="kp-plabel">Марка / модель</div><div class="kp-pval kp-pval-model">${f.model?esc(f.model):'—'}</div></div>
           <div class="kp-prow kp-prow-2">
             <div><div class="kp-plabel">${prodDateLabel}</div><div class="kp-pval">${prodDate}</div></div>
             <div><div class="kp-plabel">Вид топлива</div><div class="kp-pval">${em.label}</div></div>
@@ -1404,6 +1413,7 @@ function buildKpHtml(route, f, r){
         </div>
         <div class="kp-h-route">${shareRouteLabel} ${ROUTE_FLAG[route]||''}</div>
       </div>
+      ${f.model ? `<div class="kp-model"><div class="kp-model-label">Автомобиль</div><div class="kp-model-name">${esc(f.model)}</div></div>` : ''}
       <div class="kp-stats">
         <div class="kp-stat"><div class="kp-stat-l">ДАТА РАСЧЁТА</div><div class="kp-stat-v">${dateStr}</div></div>
         <div class="kp-stat"><div class="kp-stat-l">${RATE_STAT_LABEL[route]}</div><div class="kp-stat-v">${fmtRate(r.effectiveRate)} ₽</div></div>
@@ -1474,22 +1484,32 @@ async function renderKpImageBlob(route, f, r, maxScale){
   }
 }
 
-async function shareResult(route, f, r, kpFilePromise, channel){
+// Единая отправка клиенту — одинаково на всех устройствах и во всех
+// мессенджерах: системным «Поделиться» уходит ТОЛЬКО фото, а текст расчёта
+// кладётся в буфер обмена, чтобы вставить его следом.
+//
+// Почему одинаково для всех. Раньше поведение различалось по платформам и
+// мессенджерам: WhatsApp на iOS в принципе не принимает файл и текст одной
+// посылкой; на части Android-сборок в WebView Telegram нет navigator.share
+// вовсе; canShare({files,text}) на разных устройствах отвечает по-разному.
+// Из-за этого фото то уходило, то нет, и предсказать это было нельзя.
+// Решение владельца: одно понятное поведение везде — фото файлом, текст в
+// буфере. Поэтому отдельной ветки под iOS-WhatsApp больше НЕТ: то, что
+// раньше было исключением для одной связки, стало общим путём.
+//
+// Возвращает true, если отправка состоялась (вызывающий код тогда очищает
+// форму), и false, если человек отменил её или фото подготовить не вышло.
+async function shareResult(route, f, r, kpFilePromise){
   const suf = CUR_SUFFIX[route];
-  // По просьбе владельца: клиенту направление ЕАЭС всегда подписывается
-  // "Китай" в тексте расчёта — по факту это тот же китайский автомобиль,
-  // ЕАЭС/Киргизия — таможенный маршрут для нас, а не страна для клиента.
-  // Флаг при этом берём настоящий (ROUTE_FLAG[route], т.е. глобус для ЕАЭС),
-  // а не флаг Китая — флаг отражает фактический маршрут, а не текст подписи.
+  // Клиенту направление ЕАЭС всегда подписывается «Китай» — по факту это тот
+  // же китайский автомобиль, ЕАЭС/Киргизия — таможенный маршрут для нас, а
+  // не страна для клиента. Флаг при этом настоящий (глобус для ЕАЭС).
   const shareRouteLabel = route==='eaeu' ? 'Китай' : CONFIG.routes[route].label;
   const dateStr = new Date().toLocaleDateString('ru-RU');
-  // Формат текста один для всех — без звёздочек (см. ниже, почему WhatsApp
-  // всё равно их не увидит) и с тире перед строками курса/комиссии для
-  // читаемости без жирного шрифта.
   const b = s => s;
   const dash = '- ';
-  // Значения из "Доп. данных" (ручной ввод или разбор ИИ) могут случайно
-  // содержать "*" — непарный символ выглядел бы странно в тексте.
+  // Значения из «Доп. данных» (ручной ввод или разбор ИИ) могут случайно
+  // содержать «*» — непарный символ выглядел бы в тексте странно.
   const esc = s => String(s).replace(/\*/g, '');
 
   const em = ENGINE_TYPES[f.engineType] || ENGINE_TYPES.ben;
@@ -1522,7 +1542,7 @@ async function shareResult(route, f, r, kpFilePromise, channel){
     ? `Комиссия за перевод (${r.bankPct}%): ${fmt(r.nativeCommission, suf)}`
     : `Комиссия за перевод (${r.bankPct}%): ${fmt(r.bankCommissionRub, '₽')}`;
 
-  // Город "под ключ" — реально посчитанный город доставки, если доставку
+  // Город «под ключ» — реально посчитанный город доставки, если доставку
   // считали; если нет — по умолчанию Владивосток (там принимаем авто).
   const destCity = f.deliveryEnabled && f.deliveryCity ? f.deliveryCity : 'Владивосток';
   const destGenitive = CITY_GENITIVE[destCity] || destCity;
@@ -1542,73 +1562,54 @@ async function shareResult(route, f, r, kpFilePromise, channel){
   lines.push(b(`ИТОГО цена под ключ: ${fmt(r.total,'₽')}`));
   lines.push(`с учётом всех расходов до ${destGenitive} на дату расчета`);
   const text = lines.join('\n');
-
-  // Фото-КП идёт вложением — прикрепить файл умеет только системное окно
-  // "Поделиться". Сам рендер картинки запущен заранее (см. showResult) —
-  // здесь просто дожидаемся готового файла, не начиная рендер по клику.
-  const file = kpFilePromise ? await kpFilePromise : null;
   const title = 'Расчёт стоимости авто';
 
-  // WhatsApp на iOS в принципе не умеет принимать файл и текст вместе в
-  // одном "Поделиться" — это задокументированное ограничение самого
-  // WhatsApp (та же проблема известна react-native-share, Flutter
-  // share_plus и другим): он либо забирает текст без фото, либо фото без
-  // текста, и на "Отправить" внутри WhatsApp всё обрывается. Это именно
-  // ограничение iOS-варианта WhatsApp — на Android та же комбинация
-  // файл+текст прекрасно уходит (там WhatsApp работает как Telegram/MAX
-  // ниже), поэтому спецветка только для iOS, определяем платформу через
-  // Telegram.WebApp.platform (это сам Telegram сообщает нам, на чём открыт
-  // Mini App — надёжнее, чем гадать по user agent).
-  const platform = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.platform) || '';
-  if(channel==='whatsapp' && platform==='ios'){
-    // Никакого текста в самом share() — даже "title" WhatsApp подставляет
-    // в поле сообщения как обычный текст, а он вместе с файлом это как раз
-    // и есть та самая комбинация "файл+текст", которую WhatsApp не берёт.
-    // Поэтому здесь совсем без полей текста/заголовка — просто файл.
-    if(navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
-    if(file && navigator.share){ navigator.share({files:[file]}).catch(()=>{}); }
-    else if(navigator.share){ if(!file) toast('Не удалось подготовить фото КП — текст скопирован в буфер', 2500); navigator.share({text}).catch(()=>{}); }
-    return;
+  // 1. Текст — в буфер сразу, пока мы ещё внутри пользовательского нажатия:
+  //    часть платформ разрешает запись в буфер только в этом окне.
+  let textCopied = false;
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+      textCopied = true;
+    }
+  }catch(e){ /* буфер недоступен — честно скажем об этом в подсказке ниже */ }
+
+  // Рендер картинки стартовал заранее (см. showResult) — здесь только ждём.
+  const file = kpFilePromise ? await kpFilePromise : null;
+  if(!file){
+    toast(textCopied
+      ? 'Фото КП подготовить не удалось. Текст расчёта скопирован — отправьте текстом'
+      : 'Фото КП подготовить не удалось, и буфер обмена недоступен', 4000);
+    return false;
   }
 
-  const fullData = file ? {files:[file], text, title} : {text, title};
-  // canShare проверяем на ПОЛНЫЙ набор данных (файл+текст вместе), а не
-  // только на файл отдельно — этот путь теперь общий для Telegram, MAX и
-  // WhatsApp на Android/десктопе (см. ветку iOS-WhatsApp выше).
-  const canFull = !!(file && navigator.canShare && navigator.canShare(fullData));
-  const shareData = canFull ? fullData : {text, title};
+  const shareData = { files:[file] };
+  const canFile = !navigator.canShare || navigator.canShare(shareData);
 
-  if(navigator.share){
-    // Раньше при неудаче с фото человек просто видел, что отправился
-    // только текст, без всякого объяснения. Причина (не удалось
-    // отрисовать картинку — file===null, или устройство не даёт делиться
-    // файлом и текстом вместе — canFull===false) остаётся вне нашего
-    // контроля, но теперь хотя бы видно, что именно произошло.
-    if(!file){ toast('Не удалось подготовить фото КП — отправляю только текст', 2500); }
-    else if(!canFull){ toast('Это устройство не поддерживает отправку фото вместе с текстом — отправляю только текст', 2500); }
-    navigator.share(shareData).catch(()=>{});
-    return;
+  // 2. Фото — системным «Поделиться». Ни text, ни title не передаём
+  //    сознательно: WhatsApp на iOS подставляет даже title в поле
+  //    сообщения, а это снова та самая пара «файл + текст», которую он
+  //    не принимает.
+  if(navigator.share && canFile){
+    try{
+      await navigator.share(shareData);
+      toast(textCopied ? 'Фото ушло. Текст в буфере — вставьте его следом' : 'Фото ушло, а текст скопировать не вышло', 3500);
+      return true;
+    }catch(e){
+      if(e && e.name === 'AbortError') return false; // человек сам закрыл окно выбора
+      // любая другая ошибка — идём запасными путями ниже
+    }
   }
 
-  // На части Android-сборок (например, Honor/Magic OS — сообщил владелец)
-  // Web Share API в WebView Telegram нет вообще: navigator.share не
-  // существует как функция. Проверка владельца через отдельную страницу
-  // /diag (вне Telegram) показала, что на том же телефоне в обычном Chrome
-  // всё это работает штатно — то есть дело не в устройстве, а именно в
-  // WebView, которым Telegram на Android открывает Mini Apps. Зато
-  // Telegram.WebApp.openLink() открывает не эту песочницу, а настоящий
-  // внешний браузер ("Mini App will not be closed" — сам Mini App не
-  // закрывается). Проблема лишь в том, что blob/файл в памяти нельзя
-  // передать в другой процесс — поэтому картинку кладём на 10 минут во
-  // временное хранилище на сервере (api/share-relay.js), открываем во
-  // внешнем браузере страницу share.html с её id, а там уже по своему,
-  // отдельному нажатию (Web Share API требует именно свежего жеста в ТОЙ
-  // странице) вызывается navigator.share — и там, как показала проверка,
-  // всё работает.
-  navigator.clipboard && navigator.clipboard.writeText(text).catch(()=>{});
+  // 3. Android в Telegram: navigator.share там может отсутствовать вовсе
+  //    (проверено на устройстве владельца — в обычном Chrome на том же
+  //    телефоне всё работает, дело именно в WebView Telegram). Зато
+  //    Telegram.WebApp.openLink() открывает настоящий внешний браузер и
+  //    сам мини-апп при этом не закрывается. Картинку туда передаём через
+  //    короткоживущее хранилище (api/share-relay.js), потому что blob из
+  //    памяти одного приложения не виден другому.
   const tg = window.Telegram && window.Telegram.WebApp;
-  let relayOk = false;
-  if(file && tg && tg.openLink){
+  if(tg && tg.openLink){
     try{
       const relayBlob = await renderKpImageBlob(route, f, r, 2);
       if(relayBlob){
@@ -1618,38 +1619,32 @@ async function shareResult(route, f, r, kpFilePromise, channel){
           rd.onerror = rej;
           rd.readAsDataURL(relayBlob);
         });
-        const putRes = await fetch('/api/share-relay', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'put', imageDataUrl:dataUrl, text, title }) });
+        const putRes = await fetch('/api/share-relay', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ initData:getInitData(), action:'put', imageDataUrl:dataUrl, text, title }) });
         const putData = await putRes.json();
         if(putData.id){
           tg.openLink(location.origin + '/share?id=' + putData.id);
-          toast('Текст скопирован. Во внешнем браузере нажмите «Поделиться»', 3500);
-          relayOk = true;
+          toast('Открыл внешний браузер — нажмите там «Отправить фото». Текст уже в буфере', 4000);
+          return true;
         }
       }
-    }catch(e){ /* не получилось — используем запасной путь ниже */ }
+    }catch(e){ /* не получилось — последний путь ниже */ }
   }
-  if(relayOk) return;
 
-  // Запасной путь, если внешний браузер открыть не вышло (не в Telegram,
-  // нет openLink, сбой сети и т.п.): долгое нажатие на изображение —
-  // фундаментальная, не зависящая от Web Share API возможность самого
-  // Android/Chrome, работает даже там, где не хватает JS-API.
-  if(file){
-    const reader = new FileReader();
-    reader.onload = ()=>{
-      openSheet(`
-        <h3>Фото готово</h3>
-        <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;">Текст уже скопирован в буфер обмена. Зажмите фото пальцем и выберите «Поделиться» или «Сохранить изображение» — так оно уйдёт в мессенджер как обычное фото.</p>
-        <img src="${reader.result}" style="width:100%;border-radius:12px;display:block;">
-        <button class="btn secondary" id="closeShareImgSheet" style="margin-top:14px;">Готово</button>
-      `);
-      document.getElementById('closeShareImgSheet').onclick = closeSheet;
-    };
-    reader.readAsDataURL(file);
-    toast('Текст скопирован — фото ниже, зажмите его пальцем', 2500);
-  } else {
-    toast('Скопировано в буфер обмена (фото подготовить не удалось)', 2500);
-  }
+  // 4. Последний путь: показать картинку, чтобы сохранить или переслать её
+  //    вручную. Долгое нажатие на изображение работает даже там, где не
+  //    хватает JS-API.
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    openSheet(`
+      <h3>Фото расчёта готово</h3>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;">${textCopied ? 'Текст уже в буфере обмена. ' : ''}Зажмите фото и выберите «Поделиться» или «Сохранить изображение».</p>
+      <img src="${reader.result}" style="width:100%;border-radius:12px;display:block;">
+      <button class="btn secondary" id="closeShareImgSheet" style="margin-top:14px;">Готово</button>
+    `);
+    document.getElementById('closeShareImgSheet').onclick = closeSheet;
+  };
+  reader.readAsDataURL(file);
+  return false;
 }
 
 // Поля описания самого авто, которые переносятся при "Другое направление" —

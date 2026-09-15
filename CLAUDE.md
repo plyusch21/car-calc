@@ -98,50 +98,54 @@ header, city genitive fallback) — grep `eaeu.*Китай` if extending it.
 
 ## Sharing a quote to the client (`shareResult` in index.html)
 
-Sends: a text message (`text`) + a branded PNG "commercial offer" image
-(`buildKpHtml` → `renderKpImageBlob` via html2canvas, off-screen render at
-1080px base width) via `navigator.share({files, text, title})`. One merged
-button with three colored segments (WhatsApp/Telegram/MAX) — they all go
-through the same share call; there is no per-messenger text formatting
-difference anymore (no bold markup anywhere — WhatsApp's `*bold*` and any
-Telegram/MAX markdown-on-paste hypothesis were both dead ends, see git log
-around Sept 2026 if curious why).
+**One button, one behaviour, every device and every messenger.** The single
+tri-colour "Отправить в мессенджер" button (green→blue→purple gradient, the
+old WhatsApp/Telegram/MAX colours merged into one control) does exactly two
+things, in this order:
 
-**Known platform quirks, handle with care:**
-- **iOS WhatsApp** can't accept a file+text share together (documented
-  WhatsApp iOS share-extension limitation, same issue known to
-  react-native-share/Flutter share_plus). Worked around by detecting
-  `Telegram.WebApp.platform==='ios'` and, only for WhatsApp there, sharing
-  the photo alone (`navigator.share({files:[file]})`) while copying the
-  caption text to the clipboard separately. **Do not extend this iOS
-  special-case to other channels or platforms** — it was tuned specifically
-  for this one confirmed-working combination.
-- **Telegram's Android Mini App WebView doesn't expose `navigator.share` at
-  all** (confirmed via the owner's own device — plain Chrome on the same
-  phone has full Share API support, including file+text together; inside
-  Telegram's Android container it's `undefined`). This is a Telegram
-  platform gap, not something fixable in our JS. Worked around by detecting
-  `navigator.share` is missing and routing through
-  `Telegram.WebApp.openLink()` (opens the real external browser, doesn't
-  close the Mini App) to `share.html?id=...`, where the image+text (already
-  rendered) are handed off via the short-lived `api/share-relay.js` KV
-  store, and the user taps "Поделиться" **in that external-browser page**
-  (Web Share API needs a fresh user gesture in the page that calls it — an
-  app-to-app handoff doesn't count, hence the one extra tap there). Falls
-  back further to a bottom-sheet showing the image for long-press
-  save/share if even that fails. **Do not try to "fix" this by calling
-  `navigator.share` a second time on failure inside the Mini App itself —
-  a retry-after-failure pattern there was tried once and it actively broke
-  WhatsApp by interrupting an in-flight share; removed for good reason.**
-- If Telegram ever ships a native Android fix for this (their own docs
-  imply `navigator.share` *should* work in native clients, so this may well
-  be a bug on their end rather than permanent), the `openLink` relay branch
-  will simply stop being reached (guarded behind `!navigator.share`) — no
-  need to rip it out, it's self-obsoleting.
-- `diag.html` (`/diag`) is a no-auth standalone page for testing
-  `navigator.share`/`canShare`/`clipboard`/download capability directly,
-  outside the Mini App gate — useful if a sharing bug is reported again on
-  an unfamiliar device; walk the reporter through it before guessing at fixes.
+1. copies the quote **text** to the clipboard (`navigator.clipboard.writeText`,
+   inside the click so platforms that gate clipboard writes on a user gesture
+   allow it);
+2. shares **only the PNG** — `navigator.share({files:[file]})`, with **no
+   `text` and no `title`**.
+
+The owner then pastes the text next to the photo in whichever messenger he
+picked. This is a deliberate product decision (Sept 2026), not a workaround:
+it was the only behaviour that is identical on all three of his devices
+(iPhone / Honor 200 Lite / MacBook Air) across Telegram, WhatsApp and MAX.
+
+**Why `text` and `title` are never passed to `navigator.share`:** WhatsApp on
+iOS cannot accept a file and text in one share, and it treats even `title` as
+message text — so any of those fields re-creates the exact combination it
+rejects. What used to be an iOS-WhatsApp-only special case is now the common
+path; **there is no per-platform or per-messenger branch in `shareResult` any
+more, and adding one back would undo the decision above.**
+
+`shareResult` returns `true` when the share actually happened and `false`
+when the user cancelled (`AbortError`) or the image couldn't be prepared.
+**The caller clears the form only on `true`** — previously a cancelled share
+looked identical to a successful one and silently wiped the entered data.
+
+**Fallback chain, in order (all photo-only, all keeping the text in the
+clipboard):**
+- **`navigator.share` missing** — happens in Telegram's Android Mini App
+  WebView (confirmed on the owner's device; plain Chrome on the same phone
+  has the full Share API). Not fixable in our JS. Routed through
+  `Telegram.WebApp.openLink()` to `share.html?id=...` in the real external
+  browser, with the rendered image handed over via the short-lived
+  `api/share-relay.js` KV store (a blob in one app's memory can't cross to
+  another). One extra tap there is unavoidable: the Web Share API needs a
+  fresh gesture in the page that calls it. If Telegram ever ships a fix,
+  this branch simply stops being reached — it is self-obsoleting.
+- **Everything else failed** — a bottom sheet showing the image for
+  long-press save/share.
+- **Do not** call `navigator.share` a second time after a failure inside the
+  Mini App: that retry pattern was tried once and actively broke WhatsApp by
+  interrupting an in-flight share.
+
+`diag.html` (`/diag`) is a standalone page for testing
+`navigator.share`/`canShare`/`clipboard`/download capability outside the
+Mini App gate — walk the reporter through it before guessing at fixes.
 
 ## The KP (commercial-offer) image
 
