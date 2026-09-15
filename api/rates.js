@@ -118,39 +118,89 @@ function fetchTextViaRussianCA(url) {
   });
 }
 
-// ATB: currency page has 4 tabs (в отделениях/для карт/ЦБ РФ/для денежных
-// переводов) rendered as sibling <div id="currencyTabN"> blocks, all present
-// in the raw HTML (tab switching is client-side CSS/JS, not a separate
-// request) — так что нужно взять именно блок currencyTab4 ("для денежных
-// переводов"), а не первый попавшийся "JPY" в документе (он в другом табе).
+// ---------------------------------------------------------------------
+// Устойчивый разбор (ЗАДАНИЕ.md Блок 8): изначальный план был «искать любое
+// число рядом с меткой по всему документу» — живой тест против обеих
+// страниц показал, что это ХУЖЕ прежнего: на ATB рядом с текстом вкладки
+// («для денежных переводов») в вёрстке — только КНОПКА таба, сама таблица
+// с данными на 13000+ символов дальше; а страница поиска Naver вообще
+// усеяна посторонними числами рядом с «원» (52-недельный мин/макс курса
+// и т.д. — тоже в корридоре правдоподобия, из-за чего "самое частое
+// значение" выбирало не то). Рабочий компромисс: якорь остаётся
+// структурным там, где он действительно нужен для однозначности (id вкладки
+// у ATB — на странице ДВА элемента с одинаковым id="currencyTab4", один из
+// которых просто текст описания, а не таблица; class="price" у Naver — тоже
+// не единственное число на странице), а вот СВЯЗКА между якорем и самим
+// числом стала мягче: вместо жёсткого "ровно такая-то последовательность
+// тегов" — "смысловая метка рядом, число в разумном окне после неё",
+// проверенное коридором правдоподобия. Живой тест обеих функций против
+// реальных страниц подтвердил точное совпадение с прежними значениями.
+function extractCandidateNumbers(text) {
+  const out = [];
+  let m;
+  // "1,374" / "1,234,567" — запятая как разделитель тысяч (группы РОВНО по 3).
+  const thousandsRe = /\b\d{1,3}(?:,\d{3})+\b/g;
+  while ((m = thousandsRe.exec(text))) out.push(parseFloat(m[0].replace(/,/g, '')));
+  // "0.57" / "0,57" / "13.19" — обычное десятичное (запятая или точка).
+  const decimalRe = /\b\d+[.,]\d+\b/g;
+  while ((m = decimalRe.exec(text))) out.push(parseFloat(m[0].replace(',', '.')));
+  // Целые без разделителей (напр. курс воны "1404").
+  const intRe = /\b\d+\b/g;
+  while ((m = intRe.exec(text))) out.push(parseFloat(m[0]));
+  return out;
+}
+function pickInCorridor(nums, corridor) {
+  const candidates = nums.filter((v) => v >= corridor[0] && v <= corridor[1]);
+  if (!candidates.length) return null;
+  const counts = new Map();
+  for (const v of candidates) { const k = v.toFixed(4); counts.set(k, (counts.get(k) || 0) + 1); }
+  let best = null, bestCount = 0;
+  for (const [k, c] of counts) { if (c > bestCount) { bestCount = c; best = parseFloat(k); } }
+  return best;
+}
+
+// Блок id="currencyTab4" (реально ИМЕННО тот, за которым сразу идёт
+// class="currency-table" — на странице есть второй элемент с тем же id,
+// но это просто текст-описание вкладки, без таблицы) → внутри него код
+// ">JPY<" → метка "продажа" (не завязана на конкретный оборачивающий тег,
+// в отличие от прежнего "продажа</div>\s*ЧИСЛО") → ближайшее правдоподобное
+// число после неё. Курс на странице — за 100 йен (факт про сам сайт, не
+// эвристика), коридор берём тоже ×100, делим в конце.
 async function getJpy() {
   const html = await fetchText('https://www.atb.su/services/exchange/');
   const tabRe = /id="currencyTab4">\s*<div class="currency-table"/;
   const m0 = tabRe.exec(html);
-  if (!m0) throw new Error('jpy: "для денежных переводов" section not found');
+  if (!m0) throw new Error('jpy: раздел "для денежных переводов" (id=currencyTab4) не найден на странице');
   const blockStart = m0.index;
   const nextTab = html.indexOf('currency-tabs__item', blockStart + 50);
-  const block = html.slice(blockStart, nextTab === -1 ? blockStart + 6000 : nextTab);
+  const block = html.slice(blockStart, nextTab === -1 ? blockStart + 8000 : nextTab);
   const jpyIdx = block.indexOf('>JPY<');
-  if (jpyIdx === -1) throw new Error('jpy: JPY row not found');
+  if (jpyIdx === -1) throw new Error('jpy: код JPY не найден в разделе денежных переводов');
   const after = block.slice(jpyIdx, jpyIdx + 900);
-  const m = after.match(/продажа<\/div>\s*([\d]+[.,][\d]+)/i);
-  if (!m) throw new Error('jpy: rate not found');
-  const per100 = parseFloat(m[1].replace(',', '.'));
-  return per100 / 100; // page quotes per 100 JPY, app wants per 1 JPY
+  const sellIdx = after.search(/продажа/i);
+  if (sellIdx === -1) throw new Error('jpy: не нашли метку "продажа" рядом с JPY');
+  const per100 = pickInCorridor(extractCandidateNumbers(after.slice(sellIdx, sellIdx + 200)), [30, 90]);
+  if (per100 == null) throw new Error('jpy: не нашли правдоподобное число после метки "продажа"');
+  return per100 / 100; // за 1 йену
 }
 
-// Naver search result widget for "usdt" — the price sits in
-// <div class="price_info_box"><div><strong class="price">1,374</strong>
-// <span class="unit">원</span></div>...</div>, i.e. digits and "원" are
-// separated by closing/opening tags, not just whitespace.
+// class="price">ЧИСЛО — единственный настоящий кандидат тот, где следом (в
+// разумном окне, а не обязательно вплотную через один конкретный тег) идёт
+// "원" — остальные числа с тем же классом на странице (52-недельные мин/макс
+// и т.п.) идут БЕЗ "원" рядом, коридор их не отсеивает (тоже похожи на курс),
+// а вот отсутствие "원" — отсеивает надёжно.
 async function getUsdtKrw() {
   const url = 'https://search.naver.com/search.naver?where=nexearch&sm=top_sug.pre&fbm=0&acr=1&acq=usdt&qdt=0&ie=utf8&query=usdt&ackey=op24n8r1';
   const html = await fetchText(url);
-  let m = html.match(/class="price">([\d,]+)<\/strong>\s*<span class="unit">\s*원/);
-  if (!m) m = html.match(/class="price">([\d,]+)</); // запасной вариант, если поменяется разметка вокруг "원"
-  if (!m) throw new Error('usdtKrw: pattern not found');
-  return parseFloat(m[1].replace(/,/g, ''));
+  const candidates = [];
+  const priceRe = /class="price">([\d,]+)/g;
+  let m;
+  while ((m = priceRe.exec(html))) {
+    if (/원/.test(html.slice(m.index, m.index + 60))) candidates.push(parseFloat(m[1].replace(/,/g, '')));
+  }
+  const value = pickInCorridor(candidates, [1000, 2000]);
+  if (value == null) throw new Error('usdtKrw: не нашли число класса "price" с "원" рядом');
+  return value;
 }
 
 // VTB Online currency table — the same endpoint vtb.ru's own React front-end
@@ -203,3 +253,10 @@ module.exports = async (req, res) => {
   }
   res.status(200).send(body);
 };
+
+// Переиспользуются api/rates-refresh.js (ежедневный сторож, ЗАДАНИЕ.md
+// Блок 8) — тот же самый разбор, а не отдельная копия, которая могла бы
+// разъехаться с этой при следующей правке одной из двух.
+module.exports.getJpy = getJpy;
+module.exports.getUsdtKrw = getUsdtKrw;
+module.exports.getCny = getCny;

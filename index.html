@@ -433,14 +433,6 @@ const DEFAULT_CONFIG = {
       autoAvailable:true, manualOverride:false, direct:true, directUrl:'https://www.cbr-xml-daily.ru/daily_json.js', directPath:'Valute.USD.Value',
       adjustment:3, adjustmentLabel:'+ 3',
       raw: 86.83, autoRaw:86.83, value:89.83, updatedAt:null
-    },
-    EUR: {
-      label:'ЕВРО ЦБ РФ / ₽', short:'ЕВРО (ЦБ)',
-      sourceUrl:'https://www.cbr.ru/currency_base/daily/',
-      sourceNote:'Официальный курс ЦБ РФ — используется только для расчёта пошлины по авто младше 3 лет (ставка в % от стоимости с минимумом в €/см³).',
-      autoAvailable:true, manualOverride:false, direct:true, directUrl:'https://www.cbr-xml-daily.ru/daily_json.js', directPath:'Valute.EUR.Value',
-      adjustment:0, adjustmentLabel:'',
-      raw: 100, autoRaw:100, value:100, updatedAt:null
     }
   },
 
@@ -522,7 +514,7 @@ function mergeRatesState(defaultRates, storedRates){
     const def = defaultRates[id];
     out[id] = {...def};
     const st = (storedRates && storedRates[id]) || {};
-    ['raw','value','autoRaw','autoUpdatedAt','updatedAt','manualOverride'].forEach(k=>{
+    ['raw','value','autoRaw','autoUpdatedAt','updatedAt','manualOverride','problemFlag','problemReason','rejectedRaw'].forEach(k=>{
       if(st[k]!==undefined) out[id][k] = st[k];
     });
     // Раньше у части курсов (например, юаня) автообновления вообще не было,
@@ -686,9 +678,48 @@ function openExternal(url){
 /* ---------------------------------------------------------------------
    4. Currency rates — fetch via server-side proxy, manual always wins
 --------------------------------------------------------------------- */
-function applyAutoRate(r, raw){
+// Коридор правдоподобия и порог "скачка" — ЗАДАНИЕ.md Блок 8. Значение вне
+// коридора вообще не применяется; скачок больше 15% от прошлого авто-курса —
+// тоже, вместо тихой подмены. "Застой 3 дня" здесь не проверяем — для этого
+// нужна история за несколько дней, а не одно свежее значение; это делает
+// ежедневный сторож (api/rates-refresh.js), у которого есть доступ к истории.
+const RATE_CORRIDORS = { JPY:[0.3,0.9], CNY:[8,20], KRW_USDT:[1000,2000], USDT_RUB:[50,200] };
+const RATE_SPIKE_PCT = 15;
+
+// Лог истории — best-effort, не блокирует и не валит обновление курса, если
+// не получилось записать (см. api/_lib/rateHistory.js).
+function logRateHistory(id, r){
+  if(!(ACCESS && ACCESS.status==='approved')) return;
+  fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    initData:getInitData(), action:'logRate', rateId:id, entry:{raw:r.autoRaw, value:r.value, source:'auto'}
+  })}).catch(()=>{});
+}
+
+function applyAutoRate(id, r, raw){
+  const corridor = RATE_CORRIDORS[id];
+  if(corridor && (raw < corridor[0] || raw > corridor[1])){
+    r.fetchError = true; r.problemFlag = true; r.rejectedRaw = raw;
+    r.problemReason = 'вне коридора правдоподобия ('+corridor[0]+'–'+corridor[1]+'): получено '+raw;
+    return;
+  }
+  // Сравниваем с прошлым АВТО-значением (не с r.raw — при включённой ручной
+  // корректировке там значение владельца, а не то, с чем сравнивать новое
+  // авто). r.updatedAt пуст, пока не было ни одного настоящего успешного
+  // автообновления (в отличие от autoRaw — у него всегда есть значение-
+  // заглушка из кода), поэтому именно им отличаем "есть с чем сравнивать"
+  // от "это первое обновление вообще".
+  if(r.updatedAt!=null && r.autoRaw>0){
+    const diffPct = Math.abs(raw - r.autoRaw) / r.autoRaw * 100;
+    if(diffPct > RATE_SPIKE_PCT){
+      r.fetchError = true; r.problemFlag = true; r.rejectedRaw = raw;
+      r.problemReason = 'скачок больше 15% (было '+r.autoRaw+', стало '+raw+')';
+      return;
+    }
+  }
+  r.problemFlag = false; r.problemReason = null; r.rejectedRaw = null;
   r.autoRaw = raw; r.autoUpdatedAt = Date.now(); r.fetchError = false;
   if(!r.manualOverride){ r.raw = raw; r.value = raw + r.adjustment; r.updatedAt = r.autoUpdatedAt; }
+  logRateHistory(id, r);
 }
 
 async function fetchAutoRates(){
@@ -703,7 +734,7 @@ async function fetchAutoRates(){
       proxyTargets.forEach(id=>{
         const r = CONFIG.rates[id];
         const raw = data[r.proxyKey];
-        if(raw!==undefined && raw!==null && !isNaN(raw)) applyAutoRate(r, raw);
+        if(raw!==undefined && raw!==null && !isNaN(raw)) applyAutoRate(id, r, raw);
         else { r.fetchError = true; }
       });
     }catch(e){ proxyTargets.forEach(id=> CONFIG.rates[id].fetchError = true); }
@@ -717,7 +748,7 @@ async function fetchAutoRates(){
       const data = await res.json();
       const raw = r.directPath.split('.').reduce((o,k)=>(o&&o[k]!==undefined)?o[k]:undefined, data);
       if(raw===undefined || isNaN(raw)) throw new Error('path not found');
-      applyAutoRate(r, parseFloat(raw));
+      applyAutoRate(id, r, parseFloat(raw));
     }catch(e){ r.fetchError = true; }
   }));
 
@@ -933,7 +964,7 @@ function bindRateWidget(route){
   if(!el) return;
   el.onclick = ()=>{
     const data = rateWidgetData(route);
-    if(data.ids.length===1) openRateEditor(data.ids[0]); else openRatesSheet();
+    openRateHistory(data.ids);
   };
 }
 
@@ -951,6 +982,28 @@ function refreshRatesUI(){
   }
 }
 
+// Курсы ЦБ РФ — только справочно (ЗАДАНИЕ.md Блок 8), в расчёте не
+// участвуют. Номинал у йены и воны не 1 (см. cbrRateToRub в api/customs.js —
+// та же логика, только на клиенте: делим на Nominal).
+async function fetchCbrReference(){
+  try{
+    const res = await fetch('https://www.cbr-xml-daily.ru/daily_json.js', {cache:'no-store'});
+    if(!res.ok) throw new Error('http '+res.status);
+    const data = await res.json();
+    const v = data.Valute || {};
+    const per1 = (code)=> (v[code] && v[code].Value!=null) ? (v[code].Value / (v[code].Nominal||1)) : null;
+    return { USD:per1('USD'), CNY:per1('CNY'), JPY:per1('JPY'), KRW:per1('KRW'), EUR:per1('EUR') };
+  }catch(e){ return null; }
+}
+const CBR_REF_LABELS = { USD:'Доллар США', CNY:'Юань', JPY:'Йена', KRW:'Вона', EUR:'Евро' };
+function cbrReferenceHtml(cbr){
+  if(!cbr) return '<div class="notice warn">Не удалось загрузить курсы ЦБ</div>';
+  return Object.keys(CBR_REF_LABELS).map(code=>{
+    const v = cbr[code];
+    return `<div class="rline"><div class="k">${CBR_REF_LABELS[code]}</div><div class="v mono">${v!=null ? v.toFixed(4) : '—'}</div></div>`;
+  }).join('');
+}
+
 function openRatesSheet(){
   const R = CONFIG.rates;
   openSheet(`
@@ -964,7 +1017,7 @@ function openRatesSheet(){
           <div>
             <div style="font-weight:600; font-size:14.5px;">${r.label}</div>
             <div style="font-size:11.5px; color:${stale?'var(--danger)':'var(--muted)'}; margin-top:2px;">
-              ${stale ? 'Не удалось обновить — используется последнее значение' : (r.manualOverride ? 'Указано вручную' : (r.autoAvailable ? 'Автообновление' : 'Только вручную'))}
+              ${stale ? (r.problemReason || 'Не удалось обновить — используется последнее значение') : (r.manualOverride ? 'Указано вручную' : (r.autoAvailable ? 'Автообновление' : 'Только вручную'))}
               ${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : (r.autoAvailable && !r.manualOverride ? ' · ещё не обновлялось' : '')}
             </div>
           </div>
@@ -973,9 +1026,16 @@ function openRatesSheet(){
       </div>`;
     }).join('')}
     <button class="btn secondary" id="refreshRatesBtn2">Обновить сейчас</button>
+    <h3 style="margin-top:22px;">Курсы ЦБ (справочно)</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Только для справки — в расчёте не участвуют.</p>
+    <div class="card" id="cbrRefCard">Загрузка…</div>
   `);
   document.getElementById('refreshRatesBtn2').onclick = async ()=>{ toast('Обновляю…'); await fetchAutoRates(); toast('Готово'); };
   document.querySelectorAll('#sheetBody [data-rate]').forEach(el=> el.onclick = ()=> openRateEditor(el.dataset.rate));
+  fetchCbrReference().then(cbr=>{
+    const card = document.getElementById('cbrRefCard');
+    if(card) card.innerHTML = cbrReferenceHtml(cbr);
+  });
 }
 
 // Компактная карточка-превью для верха "Настроек": видно всё сразу
@@ -985,7 +1045,7 @@ function ratesPreviewCardHtml(){
   const R = CONFIG.rates;
   return `<div class="card" id="ratesPreviewCard" style="cursor:pointer;">
     <h2 style="display:flex; justify-content:space-between; align-items:center; text-align:left;"><span>Курсы валют</span><span style="font-size:15px;">›</span></h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">Обновляется при открытии приложения</p>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">Обновляется дважды в сутки и при открытии приложения</p>
     ${Object.keys(R).map(id=>{
       const r = R[id];
       const stale = r.fetchError;
@@ -2333,14 +2393,39 @@ document.getElementById('sheetOverlay').onclick = (e)=>{ if(e.target.id==='sheet
   }, {passive:true});
 })();
 
+// История курса (ЗАДАНИЕ.md Блок 8) — принимает один id или несколько (для
+// Кореи блок курса на экране расчёта собран из двух валют, показываем обе
+// истории одним листом, а не заставляем выбирать).
+async function openRateHistory(ids){
+  const labels = ids.map(id => CONFIG.rates[id].label).join(' + ');
+  openSheet(`<h3>История курса</h3><div style="font-size:12px;color:var(--muted);margin:-4px 0 12px;">${labels}</div><div id="rateHistoryBody">Загрузка…</div>`);
+  try{
+    const results = await Promise.all(ids.map(id => fetch('/api/state', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({initData:getInitData(), action:'getRateHistory', rateId:id})
+    }).then(r=>r.json()).then(data=>({id, history: data.history||[]}))));
+    const body = document.getElementById('rateHistoryBody');
+    const anyHistory = results.some(r => r.history.length);
+    if(!anyHistory){ body.innerHTML = '<div class="emptystate"><div class="big">Пока пусто</div>История появится после следующих обновлений курса</div>'; return; }
+    body.innerHTML = results.map(({id, history}) => (ids.length>1 ? `<div style="font-weight:600;font-size:13px;margin:10px 0 4px;">${CONFIG.rates[id].label}</div>` : '') +
+      history.map(h => `<div class="rline"><div class="k">${new Date(h.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}<span class="hint">${h.source==='auto'?'автообновление':(h.source||'')}</span></div><div class="v mono">${h.value}</div></div>`).join('')
+    ).join('');
+  }catch(e){
+    const body = document.getElementById('rateHistoryBody');
+    if(body) body.innerHTML = '<div class="notice">Не удалось загрузить: '+e.message+'</div>';
+  }
+}
+
 function openRateEditor(id){
   const r = CONFIG.rates[id];
   openSheet(`
     <h3>${r.label}</h3>
     <a class="linkbtn" href="javascript:void(0)" id="openSrc">Открыть источник ↗</a>
     <div class="src-line">${r.sourceNote}</div>
+    ${r.problemFlag ? `<div class="notice" style="margin-top:12px;">Автообновление не применено: ${r.problemReason||'значение не прошло проверку'}${r.rejectedRaw!=null ? '. Получено: '+r.rejectedRaw+', оставлено прежнее: '+r.raw : ''}</div>` : ''}
+    <a class="linkbtn" href="javascript:void(0)" id="openHistory" style="margin-top:8px;">История курса →</a>
     ${r.autoAvailable ? `
-      <div class="field" style="margin-top:14px;"><label>Обновляется при открытии приложения</label>
+      <div class="field" style="margin-top:14px;"><label>Обновляется дважды в сутки и при открытии приложения</label>
         <div style="font-size:12.5px; color:var(--muted);">Последнее авто-значение: ${r.autoRaw!=null?r.autoRaw:'—'}${r.autoUpdatedAt ? ' · '+new Date(r.autoUpdatedAt).toLocaleString('ru-RU') : ''}</div>
       </div>
       <div class="toggle-row field" style="margin-top:10px;">
@@ -2353,6 +2438,7 @@ function openRateEditor(id){
     <button class="btn" id="saveRateBtn" style="margin-top:6px;">Сохранить</button>
   `);
   document.getElementById('openSrc').onclick = ()=> openExternal(r.sourceUrl);
+  document.getElementById('openHistory').onclick = ()=> openRateHistory([id]);
   const rawEl = document.getElementById('r_raw');
   const compEl = document.getElementById('r_computed');
   if(rawEl && compEl) rawEl.oninput = ()=>{ compEl.textContent = (num(rawEl.value)+r.adjustment).toFixed(4); };
