@@ -749,6 +749,7 @@ async function fetchCustomsQuote(route, f){
   const isElectric = em.dtype === 'electric';
 
   const payload = {
+    initData: getInitData(),
     ageCode: CUSTOMS_AGE_CODE[f.age],
     carValue,
     carCurrency,
@@ -771,9 +772,13 @@ async function fetchCustomsQuote(route, f){
   const res = await fetch(CONFIG.customsProxyUrl, {
     method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
   });
-  if(!res.ok) throw new Error('HTTP '+res.status);
-  const data = await res.json();
+  // Сервер теперь может ответить не только 200 (напр. 401 при непройденной
+  // авторизации) — тело всё равно JSON с понятным полем error, читаем его
+  // в любом случае, а не показываем голый код статуса.
+  let data;
+  try{ data = await res.json(); }catch(e){ throw new Error('HTTP '+res.status); }
   if(data.error) throw new Error(data.error);
+  if(!res.ok) throw new Error('HTTP '+res.status);
   return data; // { duty, util, dutyItems, utilBasis }
 }
 
@@ -1116,7 +1121,7 @@ const UNFILLED_LABELS = {
 async function runListingParse(payload, f){
   try{
     const res = await fetch(CONFIG.parseListingUrl, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...payload, initData:getInitData()})
     });
     const data = await res.json();
     if(data.error) throw new Error(data.error);

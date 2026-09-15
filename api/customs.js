@@ -285,6 +285,16 @@ module.exports = async (req, res) => {
     try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }
   }
 
+  // Без этого кто угодно, узнавший адрес приложения, мог жечь платный ключ
+  // TKS и, занимая распределённую блокировку tks:ratelimit (см. acquireTksSlot
+  // выше), ронять расчёт у самого владельца (см. ЗАДАНИЕ.md Блок 7).
+  const { authenticate } = require('./_lib/access');
+  const auth = await authenticate(body.initData);
+  if (!auth.ok || auth.record.status !== 'approved') {
+    res.status(401).send(JSON.stringify({ error: auth.ok ? 'доступ не подтверждён' : auth.error }));
+    return;
+  }
+
   const { ageCode, dtype, carValue, carCurrency } = body;
   if (!ageCode || !dtype || carValue == null || !carCurrency) {
     res.status(200).send(JSON.stringify({ error: 'не переданы обязательные параметры (возраст/тип двигателя/стоимость/валюта)' }));

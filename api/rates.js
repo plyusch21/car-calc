@@ -169,7 +169,26 @@ async function getCny() {
   return rate.offer; // курс продажи — банк продаёт юани клиенту
 }
 
+// Эндпоинт остаётся без авторизации (курсы — не приватные данные, и их
+// запрашивает каждый, кто открыл приложение, включая ещё не одобренных —
+// см. ЗАДАНИЕ.md Блок 7), но чтобы не ходить на банковские сайты при
+// каждом открытии, ответ кешируется в KV на 10 минут. Неудачу всех трёх
+// источников сразу НЕ кешируем — иначе временный сбой "залипнет" в кеше
+// на все 10 минут вместо того, чтобы дать следующему запросу попробовать
+// снова.
+const { kv } = require('./_lib/kv');
+const RATES_CACHE_KEY = 'rates:cache';
+const RATES_CACHE_TTL_SEC = 600;
+
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+  try {
+    const cached = await kv('GET', RATES_CACHE_KEY);
+    if (cached) { res.status(200).send(cached); return; }
+  } catch (e) { /* хранилище недоступно — идём за свежими данными, как и раньше без кеша */ }
+
   const out = { jpy: null, usdtKrw: null, cny: null, timestamp: Date.now(), errors: {} };
 
   await Promise.all([
@@ -178,7 +197,9 @@ module.exports = async (req, res) => {
     getCny().then(v => (out.cny = v)).catch(e => (out.errors.cny = String(e.message || e)))
   ]);
 
-  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.status(200).send(JSON.stringify(out));
+  const body = JSON.stringify(out);
+  if (out.jpy != null || out.usdtKrw != null || out.cny != null) {
+    kv('SET', RATES_CACHE_KEY, body, 'EX', RATES_CACHE_TTL_SEC).catch(() => {});
+  }
+  res.status(200).send(body);
 };

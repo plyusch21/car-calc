@@ -11,8 +11,14 @@
  * already-rendered image (as a data URL) and caption text here, gets back
  * a short id, opens share.html?id=... in the external browser, and that
  * page fetches the payload back by id and shares it there instead — where
- * navigator.share works. One-time use, short TTL, no auth (this data is
- * exactly what the operator is about to hand to a client anyway).
+ * navigator.share works. One-time use, short TTL.
+ *
+ * Auth: "put" (creating the handoff) requires approved Telegram initData —
+ * otherwise anyone who found this URL could stash arbitrary data here for
+ * free. "get" (reading it back) stays open on purpose: share.html runs in
+ * the external system browser, which has no Telegram initData at all — but
+ * the id is 12 random bytes (unguessable) and single-use (deleted on read),
+ * so this is safe without auth.
  */
 
 const { kv } = require('./_lib/kv');
@@ -34,6 +40,16 @@ module.exports = async (req, res) => {
 
   try {
     if (body.action === 'put') {
+      // Только "put" — "get" остаётся без проверки: его вызывает share.html
+      // во внешнем браузере, где initData нет и быть не может, а id из
+      // 12 случайных байт не подобрать, и читается он один раз (см.
+      // ЗАДАНИЕ.md Блок 7 и комментарий в шапке файла).
+      const { authenticate } = require('./_lib/access');
+      const auth = await authenticate(body.initData);
+      if (!auth.ok || auth.record.status !== 'approved') {
+        res.status(401).send(JSON.stringify({ error: auth.ok ? 'доступ не подтверждён' : auth.error }));
+        return;
+      }
       const imageDataUrl = String(body.imageDataUrl || '');
       if (!imageDataUrl.startsWith('data:image/')) {
         res.status(200).send(JSON.stringify({ error: 'нет картинки' }));

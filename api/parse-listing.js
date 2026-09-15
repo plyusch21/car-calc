@@ -1240,6 +1240,15 @@ module.exports = async (req, res) => {
     try { body = JSON.parse(body || '{}'); } catch (e) { body = {}; }
   }
 
+  // Без этого кто угодно, узнавший адрес приложения, мог жечь бесплатную
+  // квоту Gemini/GigaChat на чужие запросы (см. ЗАДАНИЕ.md Блок 7).
+  const { authenticate } = require('./_lib/access');
+  const auth = await authenticate(body.initData);
+  if (!auth.ok || auth.record.status !== 'approved') {
+    res.status(401).send(JSON.stringify({ error: auth.ok ? 'доступ не подтверждён' : auth.error }));
+    return;
+  }
+
   // Фото аукционного листа (пока только маршрут "Япония" на клиенте).
   // Gemini — основной путь, GigaChat — резерв на любой ТЕХНИЧЕСКИЙ сбой.
   // Картинку не разобрать регуляркой (heuristicParse работает только с
@@ -1248,7 +1257,14 @@ module.exports = async (req, res) => {
   const image = (body.image || '').toString();
 
   // Диагностический режим со страницы /diag — приложение его не вызывает.
+  // Разрешён только владельцу (см. ЗАДАНИЕ.md Блок 7) — это отладочный путь
+  // без резерва и без ограничений, посторонним подтверждённым пользователям
+  // он не нужен.
   if (image && body.debugFreeform) {
+    if (!auth.record.isOwner) {
+      res.status(401).send(JSON.stringify({ error: 'доступно только владельцу' }));
+      return;
+    }
     try {
       const raw = await callGeminiFreeform(image, (body.mimeType || '').toString());
       res.status(200).send(JSON.stringify({ raw }));
