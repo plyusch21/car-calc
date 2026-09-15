@@ -2305,6 +2305,29 @@ function openTextFieldSheet(f, key, label, onDone){
 }
 document.getElementById('sheetOverlay').onclick = (e)=>{ if(e.target.id==='sheetOverlay') closeSheet(); };
 
+// Клавиатура сворачивается сама (см. ЗАДАНИЕ.md Блок 6): по тапу куда угодно
+// кроме полей ввода, и по прокрутке больше чем на 25px — с порогом, чтобы
+// случайный сдвиг на пару пикселей при обычном тапе её не убирал раньше
+// времени. Глобально, не только на экране расчёта.
+(function setupKeyboardDismiss(){
+  function isFormField(el){ return !!el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA' || el.tagName==='SELECT'); }
+  document.addEventListener('click', (e)=>{
+    const active = document.activeElement;
+    if(!isFormField(active)) return;
+    if(isFormField(e.target) || (e.target.closest && e.target.closest('input,textarea,select'))) return;
+    active.blur();
+  }, true);
+
+  let scrollAnchor = null;
+  window.addEventListener('focusin', (e)=>{ scrollAnchor = isFormField(e.target) ? window.scrollY : null; });
+  window.addEventListener('scroll', ()=>{
+    const active = document.activeElement;
+    if(!isFormField(active)){ scrollAnchor = null; return; }
+    if(scrollAnchor===null){ scrollAnchor = window.scrollY; return; }
+    if(Math.abs(window.scrollY - scrollAnchor) > 25){ active.blur(); scrollAnchor = null; }
+  }, {passive:true});
+})();
+
 function openRateEditor(id){
   const r = CONFIG.rates[id];
   openSheet(`
