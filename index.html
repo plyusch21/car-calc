@@ -602,6 +602,18 @@ function fmt(n, suffix){
   return (rounded<0?'-':'')+groupInt(Math.abs(rounded).toString())+(suffix?(' '+suffix):'');
 }
 function num(v){ const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?0:n; }
+// Изменение любого поля, от которого зависит запрос в TKS (цена, объём,
+// мощность, тип двигателя, возраст, каталожная стоимость, полная пошлина
+// ЕАЭС) — сбрасывает уже посчитанную таможню и прячет чек. Иначе после
+// правки цены клиенту может уйти КП с таможней, посчитанной для СТАРОЙ
+// цены — тихая и дорогая ошибка (см. ЗАДАНИЕ.md Блок 4). Если включено
+// «Указать вручную» — это значение владельца, не трогаем.
+function invalidateCustomsAuto(f){
+  if(f.customsOverride) return;
+  f.customsAuto = '';
+  const zone = document.getElementById('resultZone');
+  if(zone) zone.innerHTML = '';
+}
 // Живое форматирование числовых полей ввода той же группировкой — формат
 // только отображается, а в состояние формы (f[key]) всегда пишется «чистое»
 // значение без пробелов, которое понимает num().
@@ -1259,6 +1271,10 @@ function renderCalc(c){
 
   bindRateWidget(route);
 
+  // Эти пять полей влияют на запрос в TKS — их правка обнуляет уже
+  // посчитанную таможню (см. invalidateCustomsAuto). Остальные поля цикла
+  // (комиссии, доп. данные для клиента и т.п.) на таможню не влияют.
+  const CUSTOMS_AFFECTING = ['carPrice','extraCosts','volumeCm3','power','customsValueManual'];
   ['model','carPrice','extraCosts','volumeCm3','power','customsManual','deliveryManual','agentFee','brokerFee',
    'customsValueManual','carTrim','mileage','prodMonth','prodYear','condition','notes'].forEach(k=>{
     const el = document.getElementById('f_'+k);
@@ -1266,6 +1282,7 @@ function renderCalc(c){
     if(GROUPED_NUM_FIELDS.includes(k)){
       el.oninput = ()=>{
         clearFieldHints(f, k);
+        if(CUSTOMS_AFFECTING.includes(k)) invalidateCustomsAuto(f);
         const clean = cleanNumInput(el.value);
         f[k] = clean;
         const digitsBeforeCursor = cleanNumInput(el.value.slice(0, el.selectionStart)).length;
@@ -1283,10 +1300,10 @@ function renderCalc(c){
     }
   });
   const drivetrainEl = document.getElementById('f_drivetrain'); if(drivetrainEl) drivetrainEl.onchange = ()=>{ clearFieldHints(f,'drivetrain'); f.drivetrain=drivetrainEl.value; };
-  document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ clearFieldHints(f,'age'); f.age=b.dataset.age; renderCalc(c); });
-  const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ clearFieldHints(f,'engineType'); f.engineType=engineEl.value; renderCalc(c); };
-  document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ clearFieldHints(f,'powerUnit'); f.powerUnit=b.dataset.unit; renderCalc(c); });
-  const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; renderCalc(c); };
+  document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ clearFieldHints(f,'age'); f.age=b.dataset.age; invalidateCustomsAuto(f); renderCalc(c); });
+  const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ clearFieldHints(f,'engineType'); f.engineType=engineEl.value; invalidateCustomsAuto(f); renderCalc(c); };
+  document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ clearFieldHints(f,'powerUnit'); f.powerUnit=b.dataset.unit; invalidateCustomsAuto(f); renderCalc(c); });
+  const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; invalidateCustomsAuto(f); renderCalc(c); };
   const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
   const listingParserT = document.getElementById('listingParserToggle'); if(listingParserT) listingParserT.onclick = ()=>{ f.showListingParser=!f.showListingParser; renderCalc(c); };
@@ -1404,9 +1421,16 @@ function pushArchive(route, f, r){
   saveArchive();
 }
 function showResult(route, f, opts){
+  const zone = document.getElementById('resultZone');
+  // Без этого пустое customsAuto превращается в calcDeal() в 0 — и клиенту
+  // может уйти КП, заниженное на всю сумму пошлины. Ручной ввод (f.customsOverride)
+  // — это значение владельца, ему всегда доверяем и чек не блокируем.
+  if(!f.customsOverride && !num(f.customsAuto)){
+    zone.innerHTML = `<div class="notice">Таможенные платежи не рассчитаны. Нажмите «Рассчитать» ещё раз или включите «Указать вручную».</div>`;
+    return null;
+  }
   const r = calcDeal(route, f);
   const cfg = CONFIG.routes[route];
-  const zone = document.getElementById('resultZone');
   const carLines = carDetailLines(f, route);
 
   zone.innerHTML = `
