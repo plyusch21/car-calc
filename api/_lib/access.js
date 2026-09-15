@@ -13,6 +13,7 @@
 
 const { kv } = require('./kv');
 const { verifyInitData } = require('./telegram');
+const { sendOwnerMessage, escapeTg } = require('./notify');
 
 async function authenticate(initData) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -40,6 +41,15 @@ async function authenticate(initData) {
       approvedAt: isFirstEver ? Date.now() : null
     };
     await kv('HSET', 'access', uid, JSON.stringify(record));
+    // Раньше о новой заявке владелец узнавал, только если сам заходил в
+    // Настройки → Доступ к приложению (ЗАДАНИЕ.md Блок 10).
+    if (!isFirstEver) {
+      const who = escapeTg(name || 'без имени') + (username ? ' (@' + escapeTg(username) + ')' : '');
+      // Ждём отправку: authenticate() вызывается из api/auth.js прямо перед
+      // res.send — если не дождаться, serverless-функция может завершиться
+      // раньше, чем уйдёт fetch к Bot API (см. notify.js).
+      await sendOwnerMessage('🆕 Новая заявка на доступ: <b>' + who + '</b>. Одобрить — в Настройках → «Доступ к приложению».');
+    }
   } else if (record.name !== name || record.username !== username) {
     record.name = name; record.username = username;
     await kv('HSET', 'access', uid, JSON.stringify(record));

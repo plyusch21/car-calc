@@ -7,6 +7,7 @@
 
 const { kv } = require('./_lib/kv');
 const { authenticate, dealsLevelOf } = require('./_lib/access');
+const { sendTelegramMessage } = require('./_lib/notify');
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -51,6 +52,13 @@ module.exports = async (req, res) => {
       record.status = action === 'approve' ? 'approved' : 'revoked';
       if (action === 'approve') record.approvedAt = Date.now();
       await kv('HSET', 'access', targetId, JSON.stringify(record));
+      // Уведомление тому, кого одобрили, а не владельцу — это же он сам
+      // только что нажал «Одобрить» и так знает результат (ЗАДАНИЕ.md Блок 10).
+      // Раньше человек узнавал об одобрении, только заново открыв приложение
+      // и нажав «Проверить ещё раз» на экране ожидания.
+      if (action === 'approve') {
+        await sendTelegramMessage(targetId, '✅ Доступ к приложению одобрен — можно открывать калькулятор.');
+      }
       res.status(200).send(JSON.stringify({ ok: true }));
       return;
     }

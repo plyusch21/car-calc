@@ -258,7 +258,8 @@ async function fetchFromAlta(p) {
   const altaRes = await fetch(ALTA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA, 'Accept-Language': 'ru-RU,ru;q=0.9' },
-    body: params.toString()
+    body: params.toString(),
+    signal: AbortSignal.timeout(8000) // тот же таймаут, что и у TKS выше
   });
   if (!altaRes.ok) throw new Error('alta.ru http ' + altaRes.status);
   const html = await altaRes.text();
