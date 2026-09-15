@@ -1160,11 +1160,21 @@ async function parseEncarListing(url) {
     }
   }
 
-  const [aiExtra, accidentRecord, inspectionSummary] = await Promise.all([
-    runAi(),
-    fetchEncarAccidentRecord(base),
-    fetchEncarInspectionSummary(base)
-  ]);
+  // ИИ и Encar — разные хосты, их держим параллельно. А вот два вызова к
+  // самому api.encar.com (страховая история + акт осмотра) — живой тест
+  // показал, что запущенные ОДНОВРЕМЕННО они мешают друг другу чаще, чем по
+  // отдельности (похоже на лимит на число одновременных соединений с одного
+  // источника у Encar, а не общая нестабильность — та же пара запросов по
+  // очереди почти всегда проходит оба раза). Поэтому эти два — друг за
+  // другом, а не в одном Promise.all.
+  async function fetchEncarExtras() {
+    const accidentRecord = await fetchEncarAccidentRecord(base);
+    const inspectionSummary = await fetchEncarInspectionSummary(base);
+    return { accidentRecord, inspectionSummary };
+  }
+
+  const [aiExtra, encarExtras] = await Promise.all([runAi(), fetchEncarExtras()]);
+  const { accidentRecord, inspectionSummary } = encarExtras;
 
   // Структурные поля всегда важнее того, что мог придумать ИИ по короткой
   // пометке продавца (напр. если он там же по ошибке "увидел" марку/год) —
