@@ -107,12 +107,22 @@ input[type=text], input[type=number], select, textarea{
 select{font-family:'Inter',sans-serif;}
 textarea{font-family:'Inter',sans-serif; resize:vertical;}
 input:focus, select:focus, textarea:focus{border-color:var(--accent);}
+.textfield-btn{
+  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:9px;
+  padding:10px 11px; font-size:13.5px; font-family:'Inter',sans-serif; text-align:left; cursor:pointer;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;
+}
+.textfield-btn .ph{ color:var(--muted); }
 
 .seg{ display:flex; background:var(--panel-2); border-radius:9px; padding:3px; border:1px solid var(--border); }
 .seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:8px 4px; border-radius:7px; font-size:12.5px; cursor:pointer; font-family:'Inter',sans-serif; }
 .seg button.active{background:var(--accent); color:#08131c; font-weight:600;}
 
 .toggle-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+.advanced-toggle{ display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-size:12.5px; color:var(--muted); padding:6px 0; }
+.advanced-chevron{ transition:transform .15s ease; }
+.advanced-chevron.open{ transform:rotate(90deg); }
+#advancedBody{ margin-top:4px; }
 .switch{ width:40px; height:24px; border-radius:99px; background:var(--panel-2); border:1px solid var(--border); position:relative; cursor:pointer; flex:0 0 auto; }
 .switch .knob{ position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--muted); transition:left .15s; }
 .switch.on{background:var(--teal-soft); border-color:var(--teal);}
@@ -348,6 +358,47 @@ const Store = {
   set(key, val){ memStore[key]=val; try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 };
 
+// Город/тип кузова доставки запоминаются между расчётами — личная привычка
+// того, кто считает (обычно возит из одного города), не общая настройка
+// организации (для тех живёт /api/state), поэтому Telegram.WebApp.
+// CloudStorage — общее между устройствами хранилище САМОГО пользователя, с
+// откатом на localStorage там, где CloudStorage недоступен. Сам тумблер
+// «Учитывать доставку по РФ» при этом остаётся выключенным по умолчанию —
+// запоминаем только куда/каким кузовом, а не включаем доставку сама по себе.
+let SAVED_DELIVERY_PREFS = Store.get('delivery_prefs_v1', null);
+function saveDeliveryPrefs(city, bodyTypeIdx){
+  const prefs = { city, bodyTypeIdx };
+  SAVED_DELIVERY_PREFS = prefs;
+  Store.set('delivery_prefs_v1', prefs);
+  try{
+    const cs = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage;
+    if(cs && cs.setItem) cs.setItem('delivery_prefs_v1', JSON.stringify(prefs));
+  }catch(e){}
+}
+function loadDeliveryPrefsFromCloud(){
+  try{
+    const cs = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage;
+    if(!cs || !cs.getItem) return;
+    cs.getItem('delivery_prefs_v1', (err, val)=>{
+      if(err || !val) return;
+      try{
+        const parsed = JSON.parse(val);
+        const hadLocal = !!SAVED_DELIVERY_PREFS;
+        SAVED_DELIVERY_PREFS = parsed;
+        Store.set('delivery_prefs_v1', parsed);
+        // Локального кэша ещё не было — форма уже открылась со стандартным
+        // городом (см. defaultForm), донастраиваем её тоже, раз владелец
+        // ещё явно её не трогал, а не только следующий расчёт.
+        if(!hadLocal && state.form){
+          if(parsed.city) state.form.deliveryCity = parsed.city;
+          if(parsed.bodyTypeIdx!=null) state.form.bodyTypeIdx = parsed.bodyTypeIdx;
+          if(state.view==='calc') renderCalc(document.getElementById('content'));
+        }
+      }catch(e){}
+    });
+  }catch(e){}
+}
+
 /* ---------------------------------------------------------------------
    1. Default configuration
 --------------------------------------------------------------------- */
@@ -567,13 +618,13 @@ function defaultForm(route){
     engineType:'ben', power:'', powerUnit:'ls',
     customsAuto:'', customsManual:'', customsOverride:false, eaeuFullDuty:false,
     customsValueOverride:false, customsValueManual:'',
-    deliveryCity: CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : '',
-    bodyTypeIdx: 1,
+    deliveryCity: (SAVED_DELIVERY_PREFS && SAVED_DELIVERY_PREFS.city) || (CONFIG.delivery.cities[0] ? CONFIG.delivery.cities[0].name : ''),
+    bodyTypeIdx: (SAVED_DELIVERY_PREFS && SAVED_DELIVERY_PREFS.bodyTypeIdx!=null) ? SAVED_DELIVERY_PREFS.bodyTypeIdx : 1,
     deliveryOverride:false, deliveryManual:'', deliveryEnabled:false,
     brokerFee: r.brokerFee, agentFee: r.agentFee, bankPct: r.bankCommissionPct,
     showCarDetails:false,
     carTrim:'', prodMonth:'', prodYear:'', mileage:'', drivetrain:'', transmission:'', condition:'', notes:'',
-    listingText:'', showListingParser:false
+    listingText:''
   };
 }
 // Поля, которые НЕ чистятся при сбросе формы после отправки/сохранения
@@ -1120,12 +1171,7 @@ function renderCalc(c){
   c.innerHTML = `
     ${rateWidgetHtml(route)}
     <div class="card">
-      <h2>Автозаполнение</h2>
-      <div class="toggle-row field">
-        <div style="font-size:12.5px;">${route==='japan' ? 'Автозаполнение по объявлению' : route==='korea' ? 'Автозаполнение по тексту или ссылке Encar' : 'Автозаполнение по тексту объявления'}</div>
-        <div class="switch ${f.showListingParser?'on':''}" id="listingParserToggle"><div class="knob"></div></div>
-      </div>
-      ${f.showListingParser ? `
+      <h2>${route==='japan' ? 'Автозаполнение по объявлению' : route==='korea' ? 'Автозаполнение по тексту или ссылке Encar' : 'Автозаполнение по тексту объявления'}</h2>
       <div class="smartfill">
         <textarea id="f_listingText" rows="1" style="text-align:center;" placeholder="${route==='korea' ? 'Текст объявления или ссылка на encar.com' : 'Введите данные (RU/EN/CN/JP)'}">${escapeHtml(f.listingText)}</textarea>
         <button class="btn secondary" id="parseListingBtn" type="button">Распознать текст</button>
@@ -1144,7 +1190,6 @@ function renderCalc(c){
         <div class="smartfill-hint">Лист всегда на японском — читается автоматически. На нём указана дата первой регистрации, а не выпуска — так она и попадёт в расчёт.</div>
         ` : ''}
       </div>
-      ` : ''}
     </div>
 
     <div class="card">
@@ -1182,18 +1227,23 @@ function renderCalc(c){
         </div>
         ${carriedHint(f,'age')}
       </div>
-      ${route==='eaeu' ? `
-      <div class="toggle-row field">
-        <div style="font-size:12.5px;">Считать таможенные платежи как в остальных направлениях</div>
-        <div class="switch ${f.eaeuFullDuty?'on':''}" id="eaeuFullDutyToggle"><div class="knob"></div></div>
+      <div class="advanced-toggle" id="advancedToggle"><span>Дополнительно</span><span class="advanced-chevron ${f._advancedOpen?'open':''}">›</span></div>
+      ${f._advancedOpen ? `
+      <div id="advancedBody">
+        ${route==='eaeu' ? `
+        <div class="toggle-row field">
+          <div style="font-size:12.5px;">Считать таможенные платежи как в остальных направлениях</div>
+          <div class="switch ${f.eaeuFullDuty?'on':''}" id="eaeuFullDutyToggle"><div class="knob"></div></div>
+        </div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">По умолчанию ЕАЭС — только утильсбор. Включите, если по сделке нужна полная пошлина + утильсбор, как для Японии/Кореи/Китая.</div>` : ''}
+        <div class="toggle-row field" style="margin-top:8px;">
+          <div style="font-size:12.5px;">Указать таможенную стоимость по каталогу</div>
+          <div class="switch ${f.customsValueOverride?'on':''}" id="customsValueOverrideToggle"><div class="knob"></div></div>
+        </div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">Актуально для авто младше 3 лет: если фактическая цена ниже каталожной, таможня посчитает пошлину от каталожной стоимости. Включите и укажите её, чтобы расчёт пошлины/утильсбора не разошёлся с реальностью — цена сделки для клиента не меняется.</div>
+        ${f.customsValueOverride ? field('Таможенная стоимость авто ('+suf+')', `<input type="text" id="f_customsValueManual" value="${formatNumInput(f.customsValueManual)}" inputmode="decimal">`) : ''}
       </div>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">По умолчанию ЕАЭС — только утильсбор. Включите, если по сделке нужна полная пошлина + утильсбор, как для Японии/Кореи/Китая.</div>` : ''}
-      <div class="toggle-row field" style="margin-top:8px;">
-        <div style="font-size:12.5px;">Указать таможенную стоимость по каталогу</div>
-        <div class="switch ${f.customsValueOverride?'on':''}" id="customsValueOverrideToggle"><div class="knob"></div></div>
-      </div>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">Актуально для авто младше 3 лет: если фактическая цена ниже каталожной, таможня посчитает пошлину от каталожной стоимости. Включите и укажите её, чтобы расчёт пошлины/утильсбора не разошёлся с реальностью — цена сделки для клиента не меняется.</div>
-      ${f.customsValueOverride ? field('Таможенная стоимость авто ('+suf+')', `<input type="text" id="f_customsValueManual" value="${formatNumInput(f.customsValueManual)}" inputmode="decimal">`) : ''}
+      ` : ''}
     </div>
 
     <div class="card">
@@ -1219,8 +1269,8 @@ function renderCalc(c){
         ${field('Привод', `<select id="f_drivetrain" class="${unfilledClass(f,'drivetrain')}"><option value="">—</option>${Object.keys(DRIVETRAIN_LABELS).map(k=>`<option value="${k}" ${f.drivetrain===k?'selected':''}>${DRIVETRAIN_LABELS[k]}</option>`).join('')}</select>`, unfilledHint(f,'drivetrain')+carriedHint(f,'drivetrain'))}
         ${field('Трансмиссия', `<select id="f_transmission" class="${unfilledClass(f,'transmission')}"><option value="">—</option>${Object.keys(TRANSMISSION_LABELS).map(k=>`<option value="${k}" ${f.transmission===k?'selected':''}>${TRANSMISSION_LABELS[k]}</option>`).join('')}</select>`, unfilledHint(f,'transmission')+carriedHint(f,'transmission'))}
       </div>
-      ${field('Состояние', `<input type="text" id="f_condition" class="${unfilledClass(f,'condition')}" value="${f.condition}">`, unfilledHint(f,'condition'))}
-      ${field('Примечания', `<input type="text" id="f_notes" class="${unfilledClass(f,'notes')}" value="${f.notes}">`, unfilledHint(f,'notes'))}
+      ${field('Состояние', `<button type="button" class="textfield-btn${unfilledClass(f,'condition')}" id="f_condition_btn">${f.condition ? escapeHtml(f.condition) : '<span class="ph">Нажмите, чтобы указать</span>'}</button>`, unfilledHint(f,'condition'))}
+      ${field('Примечания', `<button type="button" class="textfield-btn${unfilledClass(f,'notes')}" id="f_notes_btn">${f.notes ? escapeHtml(f.notes) : '<span class="ph">Нажмите, чтобы указать</span>'}</button>`, unfilledHint(f,'notes'))}
       ` : ''}
     </div>
 
@@ -1276,7 +1326,7 @@ function renderCalc(c){
   // (комиссии, доп. данные для клиента и т.п.) на таможню не влияют.
   const CUSTOMS_AFFECTING = ['carPrice','extraCosts','volumeCm3','power','customsValueManual'];
   ['model','carPrice','extraCosts','volumeCm3','power','customsManual','deliveryManual','agentFee','brokerFee',
-   'customsValueManual','carTrim','mileage','prodMonth','prodYear','condition','notes'].forEach(k=>{
+   'customsValueManual','carTrim','mileage','prodMonth','prodYear'].forEach(k=>{
     const el = document.getElementById('f_'+k);
     if(!el) return;
     if(GROUPED_NUM_FIELDS.includes(k)){
@@ -1303,10 +1353,12 @@ function renderCalc(c){
   document.querySelectorAll('#ageSeg button').forEach(b=> b.onclick = ()=>{ clearFieldHints(f,'age'); f.age=b.dataset.age; invalidateCustomsAuto(f); renderCalc(c); });
   const engineEl = document.getElementById('f_engineType'); if(engineEl) engineEl.onchange = ()=>{ clearFieldHints(f,'engineType'); f.engineType=engineEl.value; invalidateCustomsAuto(f); renderCalc(c); };
   document.querySelectorAll('#powerUnitSeg button').forEach(b=> b.onclick = ()=>{ clearFieldHints(f,'powerUnit'); f.powerUnit=b.dataset.unit; invalidateCustomsAuto(f); renderCalc(c); });
+  const advancedT = document.getElementById('advancedToggle'); if(advancedT) advancedT.onclick = ()=>{ f._advancedOpen=!f._advancedOpen; renderCalc(c); };
+  const conditionBtn = document.getElementById('f_condition_btn'); if(conditionBtn) conditionBtn.onclick = ()=> openTextFieldSheet(f, 'condition', 'Состояние', ()=>renderCalc(c));
+  const notesBtn = document.getElementById('f_notes_btn'); if(notesBtn) notesBtn.onclick = ()=> openTextFieldSheet(f, 'notes', 'Примечания', ()=>renderCalc(c));
   const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; invalidateCustomsAuto(f); renderCalc(c); };
   const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
-  const listingParserT = document.getElementById('listingParserToggle'); if(listingParserT) listingParserT.onclick = ()=>{ f.showListingParser=!f.showListingParser; renderCalc(c); };
   const listingTa = document.getElementById('f_listingText'); if(listingTa) listingTa.oninput = ()=> f.listingText = listingTa.value;
   const parseBtn = document.getElementById('parseListingBtn');
   if(parseBtn) parseBtn.onclick = async ()=>{
@@ -1352,8 +1404,8 @@ function renderCalc(c){
     if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
   };
   const transEl = document.getElementById('f_transmission'); if(transEl) transEl.onchange = ()=>{ clearFieldHints(f,'transmission'); f.transmission=transEl.value; };
-  const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; renderCalc(c); };
-  const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; renderCalc(c); };
+  const cityEl = document.getElementById('f_city'); if(cityEl) cityEl.onchange = ()=>{ f.deliveryCity=cityEl.value; saveDeliveryPrefs(f.deliveryCity, f.bodyTypeIdx); renderCalc(c); };
+  const bodyEl = document.getElementById('f_body'); if(bodyEl) bodyEl.onchange = ()=>{ f.bodyTypeIdx=+bodyEl.value; saveDeliveryPrefs(f.deliveryCity, f.bodyTypeIdx); renderCalc(c); };
   const delT = document.getElementById('delOverrideToggle'); if(delT) delT.onclick = ()=>{ f.deliveryOverride=!f.deliveryOverride; renderCalc(c); };
   // Вложенный тумблер "вручную" и его значение раньше переживали выключение
   // родительского "Учитывать доставку" — секция просто скрывалась, а флаг
@@ -2229,6 +2281,28 @@ function bindDeliveryTable(){
 --------------------------------------------------------------------- */
 function openSheet(html){ document.getElementById('sheetBody').innerHTML = `<div class="sheet-handle"></div>` + html; document.getElementById('sheetOverlay').classList.add('open'); }
 function closeSheet(){ document.getElementById('sheetOverlay').classList.remove('open'); }
+
+// «Состояние»/«Примечания» открывают этот шит вместо однострочного поля —
+// распознавание аукционного листа кладёт туда длинный текст, который в
+// однострочном инпуте не прочитать (см. ЗАДАНИЕ.md Блок 5).
+function openTextFieldSheet(f, key, label, onDone){
+  openSheet(`
+    <h3>${label}</h3>
+    <textarea id="sheetTextarea" rows="9" style="width:100%;box-sizing:border-box;">${escapeHtml(f[key]||'')}</textarea>
+    <div class="row2" style="margin-top:14px;">
+      <button class="btn secondary" id="sheetCancelBtn">Отмена</button>
+      <button class="btn" id="sheetDoneBtn">Готово</button>
+    </div>
+  `);
+  document.getElementById('sheetTextarea').focus();
+  document.getElementById('sheetCancelBtn').onclick = closeSheet;
+  document.getElementById('sheetDoneBtn').onclick = ()=>{
+    clearFieldHints(f, key);
+    f[key] = document.getElementById('sheetTextarea').value;
+    closeSheet();
+    onDone();
+  };
+}
 document.getElementById('sheetOverlay').onclick = (e)=>{ if(e.target.id==='sheetOverlay') closeSheet(); };
 
 function openRateEditor(id){
@@ -2321,6 +2395,7 @@ async function bootGate(){
 
   const tg = window.Telegram.WebApp;
   try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#121a1b'); tg.setBackgroundColor && tg.setBackgroundColor('#121a1b'); }catch(e){}
+  loadDeliveryPrefsFromCloud();
   try{
     // Telegram рисует свои кнопки (закрыть/свернуть/⋯) поверх окна мини-приложения,
     // а не в отдельной полосе — если не оставить место, они налезают на контент.
