@@ -21,9 +21,10 @@ module.exports = async (req, res) => {
   try {
     const result = await authenticate(body.initData);
     if (!result.ok) {
-      res.status(200).send(JSON.stringify({ status: 'error', error: result.error }));
+      res.status(401).send(JSON.stringify({ status: 'error', error: result.error }));
       return;
     }
+    // pending/revoked — не ошибка, а обычный статус: 200, как и approved.
     res.status(200).send(JSON.stringify({
       status: result.record.status, // 'approved' | 'pending' | 'revoked'
       isOwner: !!result.record.isOwner,
@@ -34,6 +35,7 @@ module.exports = async (req, res) => {
       dealsLevel: dealsLevelOf(result.record)
     }));
   } catch (e) {
-    res.status(200).send(JSON.stringify({ status: 'error', error: e.message || String(e) }));
+    console.error('api/auth error:', e);
+    res.status(500).send(JSON.stringify({ status: 'error', error: e.message || String(e) }));
   }
 };

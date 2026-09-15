@@ -241,10 +241,16 @@ module.exports = async (req, res) => {
 
   const out = { jpy: null, usdtKrw: null, cny: null, timestamp: Date.now(), errors: {} };
 
+  // 200 остаётся правильным кодом даже при частичном сбое одного источника —
+  // это осознанно другая форма ответа, не тот анти-паттерн "200 при полном
+  // провале", который правит остальной ЗАДАНИЕ.md Блок 9: клиент видит
+  // errors{} и решает сам (см. index.html). console.error — чтобы поломка
+  // источника была видна в логах Vercel, а не только красной строкой в
+  // настройках, куда владелец заходит редко.
   await Promise.all([
-    getJpy().then(v => (out.jpy = v)).catch(e => (out.errors.jpy = String(e.message || e))),
-    getUsdtKrw().then(v => (out.usdtKrw = v)).catch(e => (out.errors.usdtKrw = String(e.message || e))),
-    getCny().then(v => (out.cny = v)).catch(e => (out.errors.cny = String(e.message || e)))
+    getJpy().then(v => (out.jpy = v)).catch(e => { console.error('api/rates: getJpy failed:', e); out.errors.jpy = String(e.message || e); }),
+    getUsdtKrw().then(v => (out.usdtKrw = v)).catch(e => { console.error('api/rates: getUsdtKrw failed:', e); out.errors.usdtKrw = String(e.message || e); }),
+    getCny().then(v => (out.cny = v)).catch(e => { console.error('api/rates: getCny failed:', e); out.errors.cny = String(e.message || e); })
   ]);
 
   const body = JSON.stringify(out);

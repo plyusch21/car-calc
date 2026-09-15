@@ -562,12 +562,23 @@ let ACCESS = null;
 function getInitData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
 
 let configSyncTimer = null;
+// Версия настроек для оптимистичной блокировки (ЗАДАНИЕ.md Блок 9) — растёт
+// на каждое успешное сохранение на сервере (api/state.js), присылается назад
+// сервером. Настройки общие на всю организацию — без этой проверки кто-то,
+// кто открыл приложение раньше и ещё не сохранился, мог тихо затереть более
+// свежую правку другого менеджера.
+let CONFIG_VERSION = 0;
 function saveConfig(){
   Store.set('cfg_v2', CONFIG);
   if(ACCESS && ACCESS.status==='approved'){
     clearTimeout(configSyncTimer);
-    configSyncTimer = setTimeout(()=>{
-      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveConfig', config:CONFIG})}).catch(()=>{});
+    configSyncTimer = setTimeout(async ()=>{
+      try{
+        const res = await fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveConfig', config:CONFIG, configVersion:CONFIG_VERSION})});
+        const data = await res.json();
+        if(res.ok && data.ok){ CONFIG_VERSION = data.configVersion; }
+        else if(res.status===409){ toast(data.error || 'Настройки изменил кто-то другой — перезагрузите приложение'); }
+      }catch(e){}
     }, 600);
   }
 }
@@ -2533,11 +2544,12 @@ async function bootGate(){
   try{
     const r2 = await fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'get'})});
     const data = await r2.json();
+    CONFIG_VERSION = (data && Number.isFinite(data.configVersion)) ? data.configVersion : 0;
     if(data && data.config){
       CONFIG = applyStoredConfig(data.config);
       Store.set('cfg_v2', CONFIG);
     } else {
-      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveConfig', config:CONFIG})}).catch(()=>{});
+      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveConfig', config:CONFIG, configVersion:CONFIG_VERSION})}).catch(()=>{});
     }
     if(data && Array.isArray(data.history)){
       state.history = data.history;

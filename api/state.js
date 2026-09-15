@@ -3,15 +3,19 @@
  * every approved device sees the same data, not per-device localStorage.
  * Every call re-verifies Telegram initData and requires 'approved' status.
  *
- * KV schema: STRING "state:config" (JSON CONFIG blob), STRING
- * "state:history" (JSON array, capped at 500 entries server-side), STRING
- * "state:archive" (JSON array, capped at 50 — every calc that reached a
- * result, automatic, separate from the manually-curated "history" above;
- * see ЗАДАНИЕ.md Блок 3 — deliberately its own key, not folded into
- * state:history, so the two caps/purposes don't collide). Rate history
- * (ЗАДАНИЕ.md Блок 8) lives under its own "rates:hist:<ID>" sorted-set keys,
- * one per currency — see api/_lib/rateHistory.js — also not inside
- * state:config for the same reason.
+ * KV schema: STRING "state:config" (JSON CONFIG blob) + STRING
+ * "state:config:v" (plain integer, optimistic-concurrency version — see
+ * saveConfig below); STRING "state:history:<uid>" (JSON array, capped at
+ * 500 entries server-side, ONE PER USER — see ЗАДАНИЕ.md Блок 9: this used
+ * to be a single shared "state:history" key, which meant two people saving
+ * around the same time would silently clobber each other's history; the
+ * legacy key is migrated once per user into their own on first read, then
+ * left alone); STRING "state:archive" (JSON array, capped at 50 — still
+ * shared/global on purpose, see ЗАДАНИЕ.md Блок 3 — the spec for this block
+ * only asked to split "history", not "archive"). Rate history (Блок 8)
+ * lives under its own "rates:hist:<ID>" sorted-set keys — see
+ * api/_lib/rateHistory.js — also not inside state:config for the same
+ * "don't make one key do two jobs" reason.
  */
 
 const { kv } = require('./_lib/kv');
@@ -31,35 +35,73 @@ module.exports = async (req, res) => {
 
   try {
     const auth = await authenticate(body.initData);
-    if (!auth.ok) { res.status(200).send(JSON.stringify({ error: auth.error })); return; }
+    if (!auth.ok) { res.status(401).send(JSON.stringify({ error: auth.error })); return; }
     if (auth.record.status !== 'approved') {
-      res.status(200).send(JSON.stringify({ error: 'доступ не подтверждён', status: auth.record.status }));
+      res.status(401).send(JSON.stringify({ error: 'доступ не подтверждён', status: auth.record.status }));
       return;
     }
 
     const action = body.action;
+    const historyKey = 'state:history:' + auth.uid;
 
     if (action === 'get') {
-      const [configRaw, historyRaw, archiveRaw] = await Promise.all([
-        kv('GET', 'state:config'), kv('GET', 'state:history'), kv('GET', 'state:archive')
+      const [configRaw, configVerRaw, historyRaw, archiveRaw] = await Promise.all([
+        kv('GET', 'state:config'), kv('GET', 'state:config:v'), kv('GET', historyKey), kv('GET', 'state:archive')
       ]);
+      let history = historyRaw ? JSON.parse(historyRaw) : null;
+      // Разовая миграция: раньше была одна общая "state:history" на всех —
+      // владелец, скорее всего, единственный, кто ею пользовался. Переносим
+      // в его личный ключ при первом чтении, если у него своего ещё нет.
+      if (history === null && auth.record.isOwner) {
+        const legacyRaw = await kv('GET', 'state:history');
+        if (legacyRaw) {
+          history = JSON.parse(legacyRaw);
+          await kv('SET', historyKey, legacyRaw);
+        }
+      }
       res.status(200).send(JSON.stringify({
         config: configRaw ? JSON.parse(configRaw) : null,
-        history: historyRaw ? JSON.parse(historyRaw) : null,
+        configVersion: configVerRaw ? parseInt(configVerRaw, 10) : 0,
+        history,
         archive: archiveRaw ? JSON.parse(archiveRaw) : null
       }));
       return;
     }
 
     if (action === 'saveConfig') {
+      // Оптимистичная блокировка (ЗАДАНИЕ.md Блок 9): настройки общие на всю
+      // организацию, и раньше кто угодно мог молча затереть чужую правку,
+      // сохранённую параллельно. Клиент присылает версию, которую он читал
+      // (configVersion); если она не совпадает с текущей — значит, кто-то
+      // уже сохранил более новую версию, отказываем и просим перечитать,
+      // а не затираем её. Небольшое окно гонки между чтением версии и
+      // записью здесь всё равно остаётся (простой REST-KV без транзакций),
+      // но это на порядки лучше, чем не проверять вообще ничего — реальная
+      // одновременная правка настроек двумя менеджерами случается редко.
+      const clientVersion = Number.isFinite(body.configVersion) ? body.configVersion : parseInt(body.configVersion, 10);
+      if (!Number.isFinite(clientVersion)) {
+        res.status(400).send(JSON.stringify({ error: 'нет configVersion — пришлите версию, которую читали' }));
+        return;
+      }
+      const currentVerRaw = await kv('GET', 'state:config:v');
+      const currentVersion = currentVerRaw ? parseInt(currentVerRaw, 10) : 0;
+      if (clientVersion !== currentVersion) {
+        res.status(409).send(JSON.stringify({
+          error: 'Настройки уже изменил кто-то другой — перезагрузите и повторите правку.',
+          configVersion: currentVersion
+        }));
+        return;
+      }
+      const newVersion = currentVersion + 1;
       await kv('SET', 'state:config', JSON.stringify(body.config || {}));
-      res.status(200).send(JSON.stringify({ ok: true }));
+      await kv('SET', 'state:config:v', String(newVersion));
+      res.status(200).send(JSON.stringify({ ok: true, configVersion: newVersion }));
       return;
     }
 
     if (action === 'saveHistory') {
       const history = Array.isArray(body.history) ? body.history.slice(0, 500) : [];
-      await kv('SET', 'state:history', JSON.stringify(history));
+      await kv('SET', historyKey, JSON.stringify(history));
       res.status(200).send(JSON.stringify({ ok: true }));
       return;
     }
@@ -90,8 +132,9 @@ module.exports = async (req, res) => {
       return;
     }
 
-    res.status(200).send(JSON.stringify({ error: 'неизвестное действие' }));
+    res.status(400).send(JSON.stringify({ error: 'неизвестное действие' }));
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+    console.error('api/state error:', e);
+    res.status(500).send(JSON.stringify({ error: e.message || String(e) }));
   }
 };

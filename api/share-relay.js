@@ -52,11 +52,11 @@ module.exports = async (req, res) => {
       }
       const imageDataUrl = String(body.imageDataUrl || '');
       if (!imageDataUrl.startsWith('data:image/')) {
-        res.status(200).send(JSON.stringify({ error: 'нет картинки' }));
+        res.status(400).send(JSON.stringify({ error: 'нет картинки' }));
         return;
       }
       if (imageDataUrl.length > MAX_LEN) {
-        res.status(200).send(JSON.stringify({ error: 'картинка слишком большая' }));
+        res.status(400).send(JSON.stringify({ error: 'картинка слишком большая' }));
         return;
       }
       const id = crypto.randomBytes(12).toString('hex');
@@ -72,16 +72,17 @@ module.exports = async (req, res) => {
 
     if (body.action === 'get') {
       const id = String(body.id || '');
-      if (!id) { res.status(200).send(JSON.stringify({ error: 'нет id' })); return; }
+      if (!id) { res.status(400).send(JSON.stringify({ error: 'нет id' })); return; }
       const raw = await kv('GET', 'share:' + id);
-      if (!raw) { res.status(200).send(JSON.stringify({ error: 'ссылка устарела, попробуйте снова' })); return; }
+      if (!raw) { res.status(400).send(JSON.stringify({ error: 'ссылка устарела, попробуйте снова' })); return; }
       kv('DEL', 'share:' + id).catch(() => {});
       res.status(200).send(raw);
       return;
     }
 
-    res.status(200).send(JSON.stringify({ error: 'неизвестное действие' }));
+    res.status(400).send(JSON.stringify({ error: 'неизвестное действие' }));
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+    console.error('api/share-relay error:', e);
+    res.status(500).send(JSON.stringify({ error: e.message || String(e) }));
   }
 };

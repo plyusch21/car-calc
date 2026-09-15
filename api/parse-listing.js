@@ -1269,7 +1269,8 @@ module.exports = async (req, res) => {
       const raw = await callGeminiFreeform(image, (body.mimeType || '').toString());
       res.status(200).send(JSON.stringify({ raw }));
     } catch (e) {
-      res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+      console.error('api/parse-listing debugFreeform error:', e);
+      res.status(502).send(JSON.stringify({ error: e.message || String(e) }));
     }
     return;
   }
@@ -1292,7 +1293,7 @@ module.exports = async (req, res) => {
     }
 
     if (!GIGACHAT_AUTH_KEY) {
-      res.status(200).send(JSON.stringify({ error: 'Gemini недоступен (' + geminiError + '), GIGACHAT_AUTH_KEY не настроен на сервере' }));
+      res.status(502).send(JSON.stringify({ error: 'Gemini недоступен (' + geminiError + '), GIGACHAT_AUTH_KEY не настроен на сервере' }));
       return;
     }
     try {
@@ -1301,14 +1302,15 @@ module.exports = async (req, res) => {
       const parsed = await callGigaChatVision(token, fileId);
       res.status(200).send(JSON.stringify(parsed));
     } catch (e) {
-      res.status(200).send(JSON.stringify({ error: 'Gemini недоступен (' + geminiError + '), GigaChat тоже не справился: ' + (e.message || String(e)) }));
+      console.error('api/parse-listing image error: Gemini failed:', geminiError, '; GigaChat failed:', e);
+      res.status(502).send(JSON.stringify({ error: 'Gemini недоступен (' + geminiError + '), GigaChat тоже не справился: ' + (e.message || String(e)) }));
     }
     return;
   }
 
   const text = (body.text || '').toString().trim();
   if (!text) {
-    res.status(200).send(JSON.stringify({ error: 'пустой текст объявления' }));
+    res.status(400).send(JSON.stringify({ error: 'пустой текст объявления' }));
     return;
   }
 
@@ -1320,7 +1322,8 @@ module.exports = async (req, res) => {
       const parsed = await parseEncarListing(text);
       res.status(200).send(JSON.stringify(parsed));
     } catch (e) {
-      res.status(200).send(JSON.stringify({ error: 'Encar: ' + (e.message || String(e)) }));
+      console.error('api/parse-listing Encar error:', e);
+      res.status(502).send(JSON.stringify({ error: 'Encar: ' + (e.message || String(e)) }));
     }
     return;
   }
@@ -1355,6 +1358,7 @@ module.exports = async (req, res) => {
     fallback.aiError = aiError;
     res.status(200).send(JSON.stringify(fallback));
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: 'ИИ недоступны (' + aiError + '), резервный разбор тоже не удался: ' + (e.message || String(e)) }));
+    console.error('api/parse-listing error: both AI providers and heuristic fallback failed:', aiError, e);
+    res.status(502).send(JSON.stringify({ error: 'ИИ недоступны (' + aiError + '), резервный разбор тоже не удался: ' + (e.message || String(e)) }));
   }
 };

@@ -297,7 +297,7 @@ module.exports = async (req, res) => {
 
   const { ageCode, dtype, carValue, carCurrency } = body;
   if (!ageCode || !dtype || carValue == null || !carCurrency) {
-    res.status(200).send(JSON.stringify({ error: 'не переданы обязательные параметры (возраст/тип двигателя/стоимость/валюта)' }));
+    res.status(400).send(JSON.stringify({ error: 'не переданы обязательные параметры (возраст/тип двигателя/стоимость/валюта)' }));
     return;
   }
 
@@ -313,7 +313,8 @@ module.exports = async (req, res) => {
       const result = await fetchFromAlta(body);
       res.status(200).send(JSON.stringify({ ...result, tksError: tksErr.message || String(tksErr) }));
     } catch (altaErr) {
-      res.status(200).send(JSON.stringify({
+      console.error('api/customs error: TKS failed:', tksErr, '; alta.ru failed:', altaErr);
+      res.status(502).send(JSON.stringify({
         error: 'Не удалось получить расчёт ни от TKS (' + (tksErr.message || tksErr) + '), ни от alta.ru (' + (altaErr.message || altaErr) + ')'
       }));
     }

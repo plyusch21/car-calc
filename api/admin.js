@@ -22,8 +22,8 @@ module.exports = async (req, res) => {
 
   try {
     const auth = await authenticate(body.initData);
-    if (!auth.ok) { res.status(200).send(JSON.stringify({ error: auth.error })); return; }
-    if (!auth.record.isOwner) { res.status(200).send(JSON.stringify({ error: 'Доступ к этому разделу — только у владельца' })); return; }
+    if (!auth.ok) { res.status(401).send(JSON.stringify({ error: auth.error })); return; }
+    if (!auth.record.isOwner) { res.status(401).send(JSON.stringify({ error: 'Доступ к этому разделу — только у владельца' })); return; }
 
     const action = body.action;
 
@@ -43,11 +43,11 @@ module.exports = async (req, res) => {
 
     if (action === 'approve' || action === 'revoke') {
       const targetId = String(body.targetId || '');
-      if (!targetId) { res.status(200).send(JSON.stringify({ error: 'targetId обязателен' })); return; }
+      if (!targetId) { res.status(400).send(JSON.stringify({ error: 'targetId обязателен' })); return; }
       const raw = await kv('HGET', 'access', targetId);
-      if (!raw) { res.status(200).send(JSON.stringify({ error: 'пользователь не найден' })); return; }
+      if (!raw) { res.status(400).send(JSON.stringify({ error: 'пользователь не найден' })); return; }
       const record = JSON.parse(raw);
-      if (record.isOwner) { res.status(200).send(JSON.stringify({ error: 'нельзя менять доступ владельца' })); return; }
+      if (record.isOwner) { res.status(400).send(JSON.stringify({ error: 'нельзя менять доступ владельца' })); return; }
       record.status = action === 'approve' ? 'approved' : 'revoked';
       if (action === 'approve') record.approvedAt = Date.now();
       await kv('HSET', 'access', targetId, JSON.stringify(record));
@@ -61,21 +61,22 @@ module.exports = async (req, res) => {
       const targetId = String(body.targetId || '');
       const levelRaw = String(body.level || '');
       if (['none', 'own', 'read_all', 'full'].indexOf(levelRaw) === -1) {
-        res.status(200).send(JSON.stringify({ error: 'неизвестный уровень доступа' }));
+        res.status(400).send(JSON.stringify({ error: 'неизвестный уровень доступа' }));
         return;
       }
       const raw = await kv('HGET', 'access', targetId);
-      if (!raw) { res.status(200).send(JSON.stringify({ error: 'пользователь не найден' })); return; }
+      if (!raw) { res.status(400).send(JSON.stringify({ error: 'пользователь не найден' })); return; }
       const record = JSON.parse(raw);
-      if (record.isOwner) { res.status(200).send(JSON.stringify({ error: 'у владельца всегда полный доступ' })); return; }
+      if (record.isOwner) { res.status(400).send(JSON.stringify({ error: 'у владельца всегда полный доступ' })); return; }
       record.dealsLevel = levelRaw;
       await kv('HSET', 'access', targetId, JSON.stringify(record));
       res.status(200).send(JSON.stringify({ ok: true }));
       return;
     }
 
-    res.status(200).send(JSON.stringify({ error: 'неизвестное действие' }));
+    res.status(400).send(JSON.stringify({ error: 'неизвестное действие' }));
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+    console.error('api/admin error:', e);
+    res.status(500).send(JSON.stringify({ error: e.message || String(e) }));
   }
 };

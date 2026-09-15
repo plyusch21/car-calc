@@ -123,7 +123,7 @@ module.exports = async (req, res) => {
   const alerts = [];
 
   let cbr = null;
-  try { cbr = await fetchCbr(); } catch (e) { alerts.push('Курс ЦБ РФ недоступен для сверки: ' + (e.message || e)); }
+  try { cbr = await fetchCbr(); } catch (e) { console.error('api/rates-refresh: fetchCbr failed:', e); alerts.push('Курс ЦБ РФ недоступен для сверки: ' + (e.message || e)); }
 
   const fetchers = {
     JPY: () => ratesHandler.getJpy(),
@@ -139,6 +139,7 @@ module.exports = async (req, res) => {
       report[id] = { raw, ok: !problems.length, problems };
       if (problems.length) alerts.push(`<b>${id}</b>: ` + problems.join('; '));
     } catch (e) {
+      console.error('api/rates-refresh: ' + id + ' failed:', e);
       report[id] = { ok: false, error: e.message || String(e) };
       alerts.push(`<b>${id}</b>: не удалось обновить — ${e.message || e}`);
     }
@@ -153,6 +154,7 @@ module.exports = async (req, res) => {
       report.USDT_RUB = { raw: cbr.USD, ok: !problems.length, problems };
       if (problems.length) alerts.push('<b>USDT_RUB</b>: ' + problems.join('; '));
     } catch (e) {
+      console.error('api/rates-refresh: USDT_RUB failed:', e);
       report.USDT_RUB = { ok: false, error: e.message || String(e) };
     }
   } else {

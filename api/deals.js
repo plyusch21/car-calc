@@ -176,6 +176,22 @@ function canWrite(level, deal, uid) {
   return false;
 }
 
+// Контрагенты — тот же дух, что и canRead/canWrite для сделок, но раньше
+// вообще не проверялся (ЗАДАНИЕ.md Блок 9): уровень «только свои» видел и
+// правил всю базу дилеров, включая условия работы. 'own' — только те
+// контрагенты, что связаны хоть с одной ВИДИМОЙ ему сделкой; 'read_all' и
+// 'full' и так видят все сделки, поэтому им и контрагентов не сужаем —
+// иначе только что созданный, но ещё ни к одной сделке не привязанный
+// контрагент был бы не найти.
+function visiblePartyIds(deals) {
+  const ids = new Set();
+  for (const d of deals) {
+    if (d.partyId) ids.add(d.partyId);
+    if (d.endBuyerId) ids.add(d.endBuyerId);
+  }
+  return ids;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   if (req.method !== 'POST') {
@@ -190,22 +206,25 @@ module.exports = async (req, res) => {
 
   try {
     const auth = await authenticate(body.initData);
-    if (!auth.ok) { res.status(200).send(JSON.stringify({ error: auth.error })); return; }
+    if (!auth.ok) { res.status(401).send(JSON.stringify({ error: auth.error })); return; }
     if (auth.record.status !== 'approved') {
-      res.status(200).send(JSON.stringify({ error: 'доступ не подтверждён', status: auth.record.status }));
+      res.status(401).send(JSON.stringify({ error: 'доступ не подтверждён', status: auth.record.status }));
       return;
     }
     const level = dealsLevelOf(auth.record);
     if (level === 'none') {
-      res.status(200).send(JSON.stringify({ error: 'Раздел учёта сделок вам не открыт — попросите владельца выдать доступ' }));
+      res.status(401).send(JSON.stringify({ error: 'Раздел учёта сделок вам не открыт — попросите владельца выдать доступ' }));
       return;
     }
     const uid = auth.uid;
     const action = body.action;
 
     if (action === 'bootstrap') {
-      const [deals, parties] = await Promise.all([readHash('deals:idx'), readHash('parties:idx')]);
+      const [deals, allParties] = await Promise.all([readHash('deals:idx'), readHash('parties:idx')]);
       const visible = deals.filter(d => canRead(level, d, uid));
+      const parties = (level === 'own' && !auth.record.isOwner)
+        ? allParties.filter(p => visiblePartyIds(visible).has(p.id))
+        : allParties;
       let users = [];
       if (auth.record.isOwner || level === 'full') {
         const raw = await kv('HGETALL', 'access');
@@ -223,9 +242,9 @@ module.exports = async (req, res) => {
 
     if (action === 'getDeal') {
       const raw = await kv('GET', 'deal:' + str(body.id, 40));
-      if (!raw) { res.status(200).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
+      if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
       const deal = JSON.parse(raw);
-      if (!canRead(level, deal, uid)) { res.status(200).send(JSON.stringify({ error: 'нет доступа к этой сделке' })); return; }
+      if (!canRead(level, deal, uid)) { res.status(400).send(JSON.stringify({ error: 'нет доступа к этой сделке' })); return; }
       const log = await readLog(deal.id);
       res.status(200).send(JSON.stringify({ deal, log, canWrite: canWrite(level, deal, uid) }));
       return;
@@ -237,13 +256,13 @@ module.exports = async (req, res) => {
       let before = null;
       if (id) {
         const raw = await kv('GET', 'deal:' + id);
-        if (!raw) { res.status(200).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
+        if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
         before = JSON.parse(raw);
-        if (!canWrite(level, before, uid)) { res.status(200).send(JSON.stringify({ error: 'эту сделку вам править нельзя' })); return; }
+        if (!canWrite(level, before, uid)) { res.status(400).send(JSON.stringify({ error: 'эту сделку вам править нельзя' })); return; }
       }
 
       const type = oneOf(incoming.type, DEAL_TYPES) || (before && before.type);
-      if (!type) { res.status(200).send(JSON.stringify({ error: 'не указан тип сделки' })); return; }
+      if (!type) { res.status(400).send(JSON.stringify({ error: 'не указан тип сделки' })); return; }
 
       const deal = {
         id: id || newId(),
@@ -315,12 +334,20 @@ module.exports = async (req, res) => {
     if (action === 'getParty') {
       const pid = str(body.id, 40);
       const raw = await kv('GET', 'party:' + pid);
-      if (!raw) { res.status(200).send(JSON.stringify({ error: 'контрагент не найден' })); return; }
+      if (!raw) { res.status(400).send(JSON.stringify({ error: 'контрагент не найден' })); return; }
       const party = JSON.parse(raw);
       const [allDeals, allParties] = await Promise.all([readHash('deals:idx'), readHash('parties:idx')]);
+      const linkedDeals = allDeals.filter(d => (d.partyId === pid || d.endBuyerId === pid) && canRead(level, d, uid));
+      // 'own' — доступ только к контрагентам своих сделок (см. visiblePartyIds
+      // выше); linkedDeals уже отфильтрован по canRead, так что пустой список
+      // здесь и значит "не связан ни с одной видимой мне сделкой".
+      if (level === 'own' && !auth.record.isOwner && !linkedDeals.length) {
+        res.status(400).send(JSON.stringify({ error: 'нет доступа к этому контрагенту' }));
+        return;
+      }
       res.status(200).send(JSON.stringify({
         party,
-        deals: allDeals.filter(d => (d.partyId === pid || d.endBuyerId === pid) && canRead(level, d, uid)),
+        deals: linkedDeals,
         // Частники, которых привёл этот дилер.
         linked: party.kind === 'dealer' ? allParties.filter(p => p.dealerId === pid) : []
       }));
@@ -334,6 +361,13 @@ module.exports = async (req, res) => {
       if (pid) {
         const raw = await kv('GET', 'party:' + pid);
         if (raw) before = JSON.parse(raw);
+      }
+      // Правка СУЩЕСТВУЮЩЕГО контрагента — только владелец и full (ЗАДАНИЕ.md
+      // Блок 9). Создание нового остаётся открытым любому с доступом к
+      // разделу — иначе на "своей" сделке нельзя завести нового клиента.
+      if (before && !auth.record.isOwner && level !== 'full') {
+        res.status(400).send(JSON.stringify({ error: 'редактировать существующих контрагентов может только владелец или пользователь с полным доступом' }));
+        return;
       }
       const kind = oneOf(incoming.kind, PARTY_KINDS) || (before && before.kind) || 'person';
       const party = {
@@ -350,7 +384,7 @@ module.exports = async (req, res) => {
         createdAt: before ? before.createdAt : Date.now(),
         updatedAt: Date.now()
       };
-      if (!party.name) { res.status(200).send(JSON.stringify({ error: 'у контрагента должно быть имя' })); return; }
+      if (!party.name) { res.status(400).send(JSON.stringify({ error: 'у контрагента должно быть имя' })); return; }
 
       await kv('SET', 'party:' + party.id, JSON.stringify(party));
       await kv('HSET', 'parties:idx', party.id, JSON.stringify(partyIndexRow(party)));
@@ -373,12 +407,22 @@ module.exports = async (req, res) => {
       const pid = await kv('HGET', 'parties:phone', phone);
       if (!pid) { res.status(200).send(JSON.stringify({ party: null })); return; }
       const raw = await kv('GET', 'party:' + pid);
-      res.status(200).send(JSON.stringify({ party: raw ? JSON.parse(raw) : null }));
+      if (!raw) { res.status(200).send(JSON.stringify({ party: null })); return; }
+      const party = JSON.parse(raw);
+      // Без прав на запись (ЗАДАНИЕ.md Блок 9) — не отдаём телефон/заметки/
+      // условия работы дилера, только то, что реально нужно интерфейсу
+      // "это тот же человек?" и созданию сделки на него: id/имя/тип/город.
+      // Именно терминов работы дилера ("условия работы") касалось задание —
+      // не id, без которого сделку было бы не на кого оформить.
+      const party_ = (auth.record.isOwner || level === 'full')
+        ? party
+        : { id: party.id, name: party.name, kind: party.kind, city: party.city, found: true };
+      res.status(200).send(JSON.stringify({ party: party_ }));
       return;
     }
 
     if (action === 'deleteParty') {
-      if (!auth.record.isOwner) { res.status(200).send(JSON.stringify({ error: 'удалять контрагентов может только владелец' })); return; }
+      if (!auth.record.isOwner) { res.status(400).send(JSON.stringify({ error: 'удалять контрагентов может только владелец' })); return; }
       const pid = str(body.id, 40);
       const raw = await kv('GET', 'party:' + pid);
       if (raw) {
@@ -395,7 +439,7 @@ module.exports = async (req, res) => {
     // Выгрузка — полные записи со всеми этапами и логом. Файлы собирает
     // клиент (ему же их и отдавать пользователю), сервер отдаёт данные.
     if (action === 'export') {
-      if (level !== 'full') { res.status(200).send(JSON.stringify({ error: 'выгрузка доступна при полном уровне доступа' })); return; }
+      if (level !== 'full') { res.status(400).send(JSON.stringify({ error: 'выгрузка доступна при полном уровне доступа' })); return; }
       const [dealIdx, partyIdx] = await Promise.all([readHash('deals:idx'), readHash('parties:idx')]);
       const deals = [];
       for (const row of dealIdx) {
@@ -414,9 +458,10 @@ module.exports = async (req, res) => {
       return;
     }
 
-    res.status(200).send(JSON.stringify({ error: 'неизвестное действие' }));
+    res.status(400).send(JSON.stringify({ error: 'неизвестное действие' }));
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: e.message || String(e) }));
+    console.error('api/deals error:', e);
+    res.status(500).send(JSON.stringify({ error: e.message || String(e) }));
   }
 };
 
