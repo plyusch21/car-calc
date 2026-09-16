@@ -14,6 +14,21 @@ WhatsApp, Telegram, or MAX.
 - Owner/operator: the person who opens this app inside Telegram; there's a
   simple approval system (see Access below) for other staff
 
+## Как читать этот код, не сжигая контекст
+
+`index.html` (195 КБ, ~55 000 токенов) и `deals.html` (80 КБ, ~22 000
+токенов) — самые крупные файлы в репозитории, и оба слишком большие, чтобы
+читать целиком при каждой мелкой правке. Вместо этого:
+
+- Смотреть `.claude/map.md` — карту строк обоих файлов (пронумерованные
+  секции + все функции, каждая с диапазоном строк).
+- Читать нужный диапазон через `sed -n 'START,ENDp' файл`, а не файл
+  целиком.
+- Искать конкретное имя/строку через `grep -n`.
+- Править точечно (`Edit`), не переписывая файл заново.
+- После любой правки, сдвигающей нумерацию строк в этих двух файлах,
+  перегенерировать карту: `bash tools/mapgen.sh`.
+
 ## Architecture
 
 Deliberately a **single-file vanilla-JS app** (`index.html`) + a handful of
