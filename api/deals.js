@@ -357,6 +357,7 @@ module.exports = async (req, res) => {
       const deal = JSON.parse(raw);
       if (!canWrite(level, deal, uid)) { res.status(400).send(JSON.stringify({ error: 'эту сделку вам удалять нельзя' })); return; }
       deal.removed = true;
+      deal.removedAt = Date.now();
       deal.archived = true;
       deal.updatedAt = Date.now();
       deal.updatedBy = uid;

@@ -14,7 +14,8 @@
     { "src": "api/parse-listing.js", "use": "@vercel/node" },
     { "src": "api/share-relay.js", "use": "@vercel/node" },
     { "src": "api/deals.js", "use": "@vercel/node" },
-    { "src": "api/rates-refresh.js", "use": "@vercel/node" }
+    { "src": "api/rates-refresh.js", "use": "@vercel/node" },
+    { "src": "api/deals-cleanup.js", "use": "@vercel/node" }
   ],
   "routes": [
     { "src": "/api/rates", "dest": "/api/rates.js" },
@@ -26,6 +27,7 @@
     { "src": "/api/share-relay", "dest": "/api/share-relay.js" },
     { "src": "/api/deals", "dest": "/api/deals.js" },
     { "src": "/api/rates-refresh", "dest": "/api/rates-refresh.js" },
+    { "src": "/api/deals-cleanup", "dest": "/api/deals-cleanup.js" },
     { "src": "/diag", "dest": "/diag.html" },
     { "src": "/share", "dest": "/share.html" },
     { "src": "/deals", "dest": "/deals.html" },
@@ -33,6 +35,7 @@
     { "src": "/(.*)", "dest": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/rates-refresh", "schedule": "0 0 * * *" }
+    { "path": "/api/rates-refresh", "schedule": "0 0 * * *" },
+    { "path": "/api/deals-cleanup", "schedule": "30 0 * * *" }
   ]
 }

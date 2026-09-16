@@ -202,6 +202,17 @@ function isArchived(deal){
 // но НЕ потому что дошла до последнего этапа. Отдельная (красная) пометка,
 // чтобы не путать с настоящим завершением сделки.
 function isRemoved(deal){ return !!deal.removed; }
+// Дилер, у которого ВСЕ когда-либо заведённые сделки удалены (свайпом),
+// не предлагается при заведении нового физика — фактически неактивен.
+// Дилер без единой сделки (только что создан) остаётся доступен, как и
+// дилер хотя бы с одной сделкой в работе или уже завершённой (завершённые
+// из выбора не убираем — сам дилер никуда не делся).
+function isDealerActive(dealerId){
+  const physikIds = new Set(state.parties.filter(p=>p.dealerId===dealerId).map(p=>p.id));
+  const dealerDeals = state.deals.filter(d=> physikIds.has(d.partyId));
+  if(!dealerDeals.length) return true;
+  return dealerDeals.some(d=> !isRemoved(d));
+}
 /* "Движение" — это отметка этапа. Заметку поправили — сделка не сдвинулась,
    поэтому счётчик простоя считаем по последней отметке, а до первой — от
    даты создания. */
@@ -551,139 +562,101 @@ function openNewDealSheet(){
       </select>
     </div>
     <div class="field">
-      <label>Телефон физика (конечного покупателя)</label>
-      <input type="tel" id="ndPhone" placeholder="+7 999 123-45-67" inputmode="tel">
+      <label>ФИО физика (конечного покупателя)</label>
+      <input type="text" id="ndName" placeholder="Иванов Иван Иванович">
     </div>
     <button class="btn" id="ndNext">Дальше</button>
     <button class="btn secondary" id="ndCancel" style="margin-top:8px;">Отмена</button>
   `);
   document.getElementById('ndCancel').onclick = closeSheet;
-  document.getElementById('ndNext').onclick = async ()=>{
+  document.getElementById('ndNext').onclick = ()=>{
     const type = document.getElementById('ndType').value;
-    const phone = document.getElementById('ndPhone').value.trim();
-    if(!phone){ toast('Укажите телефон — по нему ищем физика'); return; }
-    let found = null;
-    try{ found = (await api('findPartyByPhone', {phone})).party; }
-    catch(e){ toast('Не удалось найти: ' + e.message); return; }
-    if(found && found.kind === 'dealer'){
-      toast('Этот номер — дилер «' + found.name + '». Заведите физика от этого дилера в его карточке.');
-      return;
-    }
-    if(found) askSamePerson(found, type, phone);
-    else openPartySheet({ phone, kind:'person' }, (party)=> pickDealerStep(type, party));
+    const name = document.getElementById('ndName').value.trim();
+    if(!name){ toast('Укажите ФИО физика'); return; }
+    openPartySheet({ kind:'person', name }, (party)=> createDeal(type, party), {
+      checkPhoneDup: true,
+      onDup: (found, attempted)=> askSamePerson(found, type, attempted)
+    });
   };
 }
 
 /* Телефон совпал. Полное совпадение подставляем молча только если и имя
    то же; если имя другое — решает человек, потому что один номер вполне
-   может быть и у нового клиента (перешёл номер, семья, перепродажа). */
-function askSamePerson(found, type, phone){
+   может быть и у нового клиента (перешёл номер, семья, перепродажа). Если
+   это правда новый человек — возвращаем его в ту же форму с уже введёнными
+   именем/каналом/городом/дилером, чистим только телефон. */
+function askSamePerson(found, type, attempted){
   openSheet(`
     <h3>Такой телефон уже есть</h3>
     <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 14px;">
-      ${esc(phone)} — записан как <b>${esc(found.name)}</b>${found.city?' ('+esc(found.city)+')':''}.
+      ${esc(attempted.phone)} — записан как <b>${esc(found.name)}</b>${found.city?' ('+esc(found.city)+')':''}.
       Это тот же человек или новый физик с тем же номером?
     </p>
     <button class="btn" id="sameYes">Тот же — создать сделку для него</button>
-    <button class="btn secondary" id="sameNo" style="margin-top:8px;">Новый физик</button>
+    <button class="btn secondary" id="sameNo" style="margin-top:8px;">Новый физик — исправить телефон</button>
     <button class="btn secondary" id="sameCancel" style="margin-top:8px;">Отмена</button>
   `);
   document.getElementById('sameCancel').onclick = closeSheet;
-  document.getElementById('sameYes').onclick = ()=> pickDealerStep(type, found);
-  document.getElementById('sameNo').onclick = ()=> openPartySheet({ phone:'', kind:'person' }, (party)=> pickDealerStep(type, party));
+  document.getElementById('sameYes').onclick = ()=> createDeal(type, found);
+  document.getElementById('sameNo').onclick = ()=> openPartySheet(Object.assign({}, attempted, {phone:''}), (party)=> createDeal(type, party), {
+    checkPhoneDup: true,
+    onDup: (found2, attempted2)=> askSamePerson(found2, type, attempted2)
+  });
 }
 
-// Шаг после физика: через какого дилера (если через какого-то вообще) идёт
-// эта сделка — выбрать существующего, завести нового или пропустить.
-function pickDealerStep(type, party){
-  const dealers = state.parties.filter(x=>x.kind==='dealer');
-  openSheet(`
-    <h3>Через дилера?</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 14px;">Если ${esc(party.name)} пришёл через дилера — выберите его или заведите нового. Если сделка напрямую — просто пропустите.</p>
-    <div class="field">
-      <select id="ndDealer">
-        <option value="">— нет, напрямую —</option>
-        ${dealers.map(d=>`<option value="${esc(d.id)}" ${party.dealerId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
-      </select>
-    </div>
-    <button class="btn secondary" id="ndNewDealer" style="margin-bottom:8px;">+ Новый дилер</button>
-    <button class="btn" id="ndDealerNext">Дальше</button>
-  `);
-  document.getElementById('ndNewDealer').onclick = ()=> openPartySheet({kind:'dealer'}, (dealer)=> finishDealerStep(type, party, dealer.id));
-  document.getElementById('ndDealerNext').onclick = ()=> finishDealerStep(type, party, document.getElementById('ndDealer').value);
-}
-
-async function finishDealerStep(type, party, dealerId){
-  if((party.dealerId||'') !== (dealerId||'')){
-    try{
-      party = (await api('saveParty', {party: Object.assign({}, party, {dealerId: dealerId||''})})).party;
-      await reloadIndexes();
-    }catch(e){ toast('Не удалось сохранить дилера: ' + e.message); return; }
-  }
-  createDeal(type, party);
-}
-
-function openPartySheet(initial, onSaved){
+// Физик — единственный тип, который тут заводится (дилер — просто метка на
+// физике, выбирается или создаётся ниже прямо в этой форме), поэтому
+// отдельного выбора "Тип" нет — kind фиксирован вызывающей стороной.
+function openPartySheet(initial, onSaved, opts){
   const p = initial || {};
   const isDealer = p.kind === 'dealer';
-  const dealers = state.parties.filter(x=>x.kind==='dealer');
+  // Неактивных (все сделки удалены) дилеров не предлагаем — кроме уже
+  // назначенного этому физику: иначе при открытии на редактирование поле
+  // тихо обнулилось бы, раз текущего значения нет среди опций.
+  const dealers = state.parties.filter(x=> x.kind==='dealer' && (isDealerActive(x.id) || x.id===p.dealerId));
   openSheet(`
     <h3>${p.id ? esc(p.name||'Контрагент') : (isDealer?'Новый дилер':'Новый физик')}</h3>
-    <div class="field">
-      <label>Тип</label>
-      <select id="pKind">
-        <option value="person" ${!isDealer?'selected':''}>Физик</option>
-        <option value="dealer" ${isDealer?'selected':''}>Дилер</option>
-      </select>
-    </div>
-    <div class="field"><label>ФИО / наименование</label><input type="text" id="pName" value="${esc(p.name||'')}"></div>
     <div class="field"><label>Телефон</label><input type="tel" id="pPhone" value="${esc(p.phone||'')}" inputmode="tel"></div>
+    <div class="field"><label>ФИО / наименование</label><input type="text" id="pName" value="${esc(p.name||'')}"></div>
 
-    <div id="pDealerFields" style="${isDealer?'':'display:none;'}">
-      <div class="field"><label>Ник в Telegram (опционально)</label><input type="text" id="pTgUser" placeholder="без @" value="${esc(p.telegramUsername||'')}"></div>
-    </div>
-
-    <div id="pPersonFields" style="${isDealer?'display:none;':''}">
-      <div class="row2">
-        <div class="field"><label>Канал связи</label>
-          <select id="pChannel">
-            ${['','Telegram','WhatsApp','MAX','Звонок','Email'].map(x=>`<option value="${esc(x)}" ${p.channel===x?'selected':''}>${esc(x||'не указан')}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field"><label>Город</label><input type="text" id="pCity" value="${esc(p.city||'')}"></div>
-      </div>
-      <div class="field">
-        <label>Привёл дилер</label>
-        <select id="pDealer">
-          <option value="">— нет —</option>
-          ${dealers.map(d=>`<option value="${esc(d.id)}" ${p.dealerId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
+    ${isDealer ? `
+    <div class="field"><label>Ник в Telegram (опционально)</label><input type="text" id="pTgUser" placeholder="без @" value="${esc(p.telegramUsername||'')}"></div>
+    ` : `
+    <div class="row2">
+      <div class="field"><label>Канал связи</label>
+        <select id="pChannel">
+          ${['','Telegram','WhatsApp','MAX','Звонок','Email'].map(x=>`<option value="${esc(x)}" ${p.channel===x?'selected':''}>${esc(x||'не указан')}</option>`).join('')}
         </select>
       </div>
-      <div id="passportToggle" style="cursor:pointer;color:var(--accent);font-size:13px;margin:4px 0 10px;">Паспортные данные (опционально) ▾</div>
-      <div id="passportFields" style="display:none;">
-        <div class="row2">
-          <div class="field"><label>Дата рождения</label><input type="text" id="pBirth" placeholder="ДД.ММ.ГГГГ" value="${esc(p.birthDate||'')}"></div>
-          <div class="field"><label>Паспорт (серия и номер)</label><input type="text" id="pPassNum" value="${esc(p.passportNumber||'')}"></div>
-        </div>
-        <div class="field"><label>Кем и когда выдан</label><input type="text" id="pPassBy" value="${esc(p.passportIssuedBy||'')}"></div>
-        <div class="field"><label>Адрес регистрации (прописка)</label><textarea id="pReg">${esc(p.registrationAddress||'')}</textarea></div>
-        <div class="row2">
-          <div class="field"><label>ИНН</label><input type="text" id="pInn" inputmode="numeric" value="${esc(p.inn||'')}"></div>
-          <div class="field"><label>СНИЛС</label><input type="text" id="pSnils" inputmode="numeric" value="${esc(p.snils||'')}"></div>
-        </div>
+      <div class="field"><label>Город</label><input type="text" id="pCity" value="${esc(p.city||'')}"></div>
+    </div>
+    <div class="field">
+      <label>Привёл дилер</label>
+      <select id="pDealer">
+        <option value="">— нет —</option>
+        ${dealers.map(d=>`<option value="${esc(d.id)}" ${p.dealerId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn secondary small" id="pNewDealer" style="margin-bottom:10px;">+ Новый дилер</button>
+    <div id="passportToggle" style="cursor:pointer;color:var(--accent);font-size:13px;margin:4px 0 10px;">Паспортные данные (опционально) ▾</div>
+    <div id="passportFields" style="display:none;">
+      <div class="row2">
+        <div class="field"><label>Дата рождения</label><input type="text" id="pBirth" placeholder="ДД.ММ.ГГГГ" value="${esc(p.birthDate||'')}"></div>
+        <div class="field"><label>Паспорт (серия и номер)</label><input type="text" id="pPassNum" value="${esc(p.passportNumber||'')}"></div>
+      </div>
+      <div class="field"><label>Кем и когда выдан</label><input type="text" id="pPassBy" value="${esc(p.passportIssuedBy||'')}"></div>
+      <div class="field"><label>Адрес регистрации (прописка)</label><textarea id="pReg">${esc(p.registrationAddress||'')}</textarea></div>
+      <div class="row2">
+        <div class="field"><label>ИНН</label><input type="text" id="pInn" inputmode="numeric" value="${esc(p.inn||'')}"></div>
+        <div class="field"><label>СНИЛС</label><input type="text" id="pSnils" inputmode="numeric" value="${esc(p.snils||'')}"></div>
       </div>
     </div>
+    `}
 
     <div class="field"><label>Заметки</label><textarea id="pNotes">${esc(p.notes||'')}</textarea></div>
     <button class="btn" id="pSave">Сохранить</button>
     <button class="btn secondary" id="pCancel" style="margin-top:8px;">Отмена</button>
   `);
-  const kindSel = document.getElementById('pKind');
-  kindSel.onchange = ()=>{
-    const dealerNow = kindSel.value === 'dealer';
-    document.getElementById('pDealerFields').style.display = dealerNow ? '' : 'none';
-    document.getElementById('pPersonFields').style.display = dealerNow ? 'none' : '';
-  };
   const passToggle = document.getElementById('passportToggle');
   if(passToggle) passToggle.onclick = ()=>{
     const box = document.getElementById('passportFields');
@@ -691,11 +664,12 @@ function openPartySheet(initial, onSaved){
     box.style.display = open ? 'none' : '';
     passToggle.textContent = 'Паспортные данные (опционально) ' + (open?'▾':'▴');
   };
-  document.getElementById('pCancel').onclick = closeSheet;
-  document.getElementById('pSave').onclick = async ()=>{
-    const kind = kindSel.value;
-    const party = { id: p.id || '', kind, name: document.getElementById('pName').value.trim(), phone: document.getElementById('pPhone').value.trim(), notes: document.getElementById('pNotes').value.trim() };
-    if(kind === 'dealer'){
+  // Собирает текущие значения формы в объект той же формы, что и p — нужно
+  // и для сохранения, и для возврата в эту же форму после вложенного
+  // создания дилера, чтобы уже введённое не потерялось.
+  function captureFields(){
+    const party = { id: p.id || '', kind: isDealer?'dealer':'person', name: document.getElementById('pName').value.trim(), phone: document.getElementById('pPhone').value.trim(), notes: document.getElementById('pNotes').value.trim() };
+    if(isDealer){
       party.telegramUsername = document.getElementById('pTgUser').value.trim();
     } else {
       party.channel = document.getElementById('pChannel').value;
@@ -708,7 +682,24 @@ function openPartySheet(initial, onSaved){
       party.inn = document.getElementById('pInn').value.trim();
       party.snils = document.getElementById('pSnils').value.trim();
     }
+    return party;
+  }
+  const newDealerBtn = document.getElementById('pNewDealer');
+  if(newDealerBtn) newDealerBtn.onclick = ()=>{
+    const captured = captureFields();
+    openPartySheet({kind:'dealer'}, (dealer)=>{
+      openPartySheet(Object.assign({}, captured, {dealerId: dealer.id}), onSaved, opts);
+    });
+  };
+  document.getElementById('pCancel').onclick = closeSheet;
+  document.getElementById('pSave').onclick = async ()=>{
+    const party = captureFields();
     if(!party.name){ toast('Без имени/названия не сохранить'); return; }
+    if(opts && opts.checkPhoneDup && !party.id && party.phone){
+      let found = null;
+      try{ found = (await api('findPartyByPhone', {phone: party.phone})).party; }catch(e){ /* сеть недоступна — не блокируем создание из-за этого */ }
+      if(found){ closeSheet(); opts.onDup(found, party); return; }
+    }
     try{
       const saved = (await api('saveParty', {party})).party;
       await reloadIndexes();
