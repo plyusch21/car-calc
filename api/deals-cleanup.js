@@ -1,13 +1,14 @@
 /**
- * /api/deals-cleanup — ежедневный сторож архива сделок.
+ * /api/deals-cleanup — ежедневный уборщик остатков прежнего «мягкого»
+ * удаления сделок.
  *
- * Удалённые (свайп → «Удалить», не настоящее завершение — см. action
- * 'removeDeal' в api/deals.js) сделки хранятся в архиве не вечно, а
- * RETENTION_DAYS дней — после этого стираются насовсем: сама запись,
- * лог изменений, строка в индексе. Завершённые по последнему этапу
- * сделки («Выдан авто», deal.removed === false) эта функция не трогает
- * никогда, сколько бы времени ни прошло — это настоящие деловые записи,
- * а не мусор.
+ * Сейчас удаление сделки безвозвратное и мгновенное (см. action
+ * 'removeDeal' в api/deals.js): запись, лог и строка индекса стираются
+ * сразу, в архиве остаются только успешно завершённые сделки. Но в базе
+ * могли остаться записи с deal.removed === true, помеченные по старым
+ * правилам, — приложение их уже не показывает (bootstrap их отфильтровывает),
+ * и эта функция добивает их физически. Завершённые сделки не трогает
+ * никогда — это настоящие деловые записи, а не мусор.
  *
  * Запускается по расписанию Vercel Cron (см. vercel.json — раз в сутки,
  * как /api/rates-refresh: более частый график на Hobby-плане однажды
@@ -15,8 +16,6 @@
  */
 
 const { kv } = require('./_lib/kv');
-
-const RETENTION_DAYS = 50;
 
 async function readHash(key) {
   const raw = await kv('HGETALL', key);
@@ -29,25 +28,13 @@ async function readHash(key) {
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
   let purged = 0;
   const errors = [];
 
   try {
     const idx = await readHash('deals:idx');
     for (const { id, row } of idx) {
-      if (!row.removed) continue; // не удалена (в работе или завершена) — не трогаем
-      let removedAt = null;
-      try {
-        const raw = await kv('GET', 'deal:' + id);
-        if (raw) removedAt = JSON.parse(raw).removedAt || null;
-      } catch (e) {
-        console.error('api/deals-cleanup: read deal:' + id + ' failed:', e);
-        continue;
-      }
-      // Нет метки времени удаления (старая запись до этого поля) — не
-      // трогаем: лучше ничего не стереть по ошибке, чем стереть лишнее.
-      if (!removedAt || removedAt > cutoff) continue;
+      if (!row.removed) continue; // в работе или завершена — не трогаем
       try {
         await kv('DEL', 'deal:' + id);
         await kv('DEL', 'deal:' + id + ':log');

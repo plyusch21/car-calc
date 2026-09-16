@@ -80,6 +80,8 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .stage .mark{ flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:1px solid var(--border); background:var(--panel-2); color:var(--muted); font-size:13px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
 .stage .mark.done{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
 .stage .mark.skip{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
+.stage .mark.wip{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+.chip.wip{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
 .stage .body{flex:1; min-width:0;}
 .stage .lbl{ font-size:14px; font-weight:500; }
 .stage .meta{ font-size:11.5px; color:var(--muted); margin-top:2px; }
@@ -187,32 +189,23 @@ const LEVEL_LABELS = { none:'Нет доступа', own:'Только свои 
 function stagesOf(type){ return STAGE_TEMPLATES[type] || STAGE_TEMPLATES.import; }
 
 /* Статус сделки нигде не хранится и руками не ставится — он всегда
-   вычисляется как последний пройденный этап. Так статус не может разойтись
-   с отметками: единственный источник правды — сами отметки. */
+   вычисляется как самый дальний отмеченный этап. Так статус не может
+   разойтись с отметками: единственный источник правды — сами отметки.
+   Этап "в процессе" (wip) считается наравне с пройденным: сделка уже
+   дошла до него, просто он ещё не закрыт. */
 function currentStage(deal){
   const list = stagesOf(deal.type);
   let last = null;
-  list.forEach(st=>{ if(deal.stages && deal.stages[st.key] && deal.stages[st.key].state === 'done') last = st; });
+  list.forEach(st=>{
+    const s = deal.stages && deal.stages[st.key] && deal.stages[st.key].state;
+    if(s === 'done' || s === 'wip') last = st;
+  });
   return last;
 }
+function stageState(deal, key){ return (deal.stages && deal.stages[key] && deal.stages[key].state) || ''; }
 function isArchived(deal){
   const fin = stagesOf(deal.type).find(s=>s.final);
   return !!(fin && deal.stages && deal.stages[fin.key] && deal.stages[fin.key].state === 'done');
-}
-// Мягкое удаление (см. api/deals.js action 'removeDeal') — сделка в архиве,
-// но НЕ потому что дошла до последнего этапа. Отдельная (красная) пометка,
-// чтобы не путать с настоящим завершением сделки.
-function isRemoved(deal){ return !!deal.removed; }
-// Дилер, у которого ВСЕ когда-либо заведённые сделки удалены (свайпом),
-// не предлагается при заведении нового физика — фактически неактивен.
-// Дилер без единой сделки (только что создан) остаётся доступен, как и
-// дилер хотя бы с одной сделкой в работе или уже завершённой (завершённые
-// из выбора не убираем — сам дилер никуда не делся).
-function isDealerActive(dealerId){
-  const physikIds = new Set(state.parties.filter(p=>p.dealerId===dealerId).map(p=>p.id));
-  const dealerDeals = state.deals.filter(d=> physikIds.has(d.partyId));
-  if(!dealerDeals.length) return true;
-  return dealerDeals.some(d=> !isRemoved(d));
 }
 /* "Движение" — это отметка этапа. Заметку поправили — сделка не сдвинулась,
    поэтому счётчик простоя считаем по последней отметке, а до первой — от
@@ -291,6 +284,12 @@ function formatDateDdMmYyyy(raw){
   if(d.length>2) out += '.'+d.slice(2,4);
   if(d.length>4) out += '.'+d.slice(4,8);
   return out;
+}
+// Деньги — как в калькуляторе: цифры группами по три, разделитель —
+// пробел, чтобы миллион читался как "1 000 000", а не "1000000".
+function formatMoney(raw){
+  const d = onlyDigits(raw, 12);
+  return d.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 function tsToDdMmYyyy(ts){
   const dt = new Date(ts);
@@ -389,8 +388,8 @@ function bindDealSwipe(card){
 function openDeleteDealConfirm(id, name){
   openSheet(`
     <h3>Удалить сделку?</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 18px;">${esc(name||'Без названия')} — сделка не сотрётся, а уйдёт в архив с пометкой «не завершена». Отменить возврат из архива нельзя, но сама запись не теряется.</p>
-    <button class="btn danger" id="delConfirm">Да, удалить</button>
+    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 18px;">${esc(name||'Без названия')} — сделка удалится безвозвратно и целиком: этапы, привязанные расчёты, история изменений. В архив она не попадёт, туда идут только завершённые. Если это была единственная сделка физика, его карточка тоже удалится.</p>
+    <button class="btn danger" id="delConfirm">Да, удалить навсегда</button>
     <button class="btn secondary" id="delCancel" style="margin-top:8px;">Отмена</button>
   `);
   document.getElementById('delCancel').onclick = closeSheet;
@@ -400,7 +399,7 @@ function openDeleteDealConfirm(id, name){
       await reloadIndexes();
       closeSheet();
       renderList();
-      toast('Сделка перенесена в архив');
+      toast('Сделка удалена');
     }catch(e){ toast('Не удалось: ' + e.message); }
   };
 }
@@ -414,9 +413,10 @@ function dealRowsHtml(rows, opts){
   }
   return rows.map(d=>{
     const days = idleDays(d.stageAt || d.createdAt);
-    const cls = d.archived ? (isRemoved(d)?'bad':'good') : (days >= 14 ? 'bad' : (days >= 7 ? 'warn' : ''));
-    const idleLabel = d.archived ? (isRemoved(d) ? 'не завершена (удалена)' : 'завершена') : 'без движения ' + pluralDays(days);
+    const cls = d.archived ? 'good' : (days >= 14 ? 'bad' : (days >= 7 ? 'warn' : ''));
+    const idleLabel = d.archived ? 'завершена' : 'без движения ' + pluralDays(days);
     const stage = d.stageKey ? (stagesOf(d.type).find(s=>s.key===d.stageKey) || {}).label : null;
+    const wip = d.stageState === 'wip';
     const party = state.parties.find(p=>p.id===d.partyId);
     const dealer = (party && party.dealerId) ? state.parties.find(p=>p.id===party.dealerId) : null;
     return `<div class="dealrow-wrap">
@@ -430,7 +430,7 @@ function dealRowsHtml(rows, opts){
         <div class="car">${esc(d.car || 'машина не указана')}${d.route ? ' · ' + (ROUTE_FLAGS[d.route]||'') + ' ' + (ROUTE_LABELS[d.route]||'') : ''}</div>
         <div class="foot">
           <span>
-            <span class="chip ${stage?'stage':''}">${esc(stage || 'этапов нет')}</span>
+            <span class="chip ${stage?(wip?'wip':'stage'):''}">${esc(stage || 'этапов нет')}${stage&&wip?' · в процессе':''}</span>
             ${d.problem ? '<span class="chip problem">проблема</span>' : ''}
             ${d.type==='paperwork' ? '<span class="chip">оформление</span>' : ''}
           </span>
@@ -507,7 +507,7 @@ function renderArchiveList(c){
   const rows = state.deals.filter(d=>d.archived)
     .sort((a,b)=> (b.stageAt||b.createdAt||0) - (a.stageAt||a.createdAt||0));
   document.getElementById('subtitle').textContent = rows.length ? rows.length + ' в архиве' : 'Пока пусто';
-  c.innerHTML = dealRowsHtml(rows, {emptyBig:'Архив пуст', emptySub:'Сюда попадают сделки после отметки «Выдан авто» или после удаления.'}) +
+  c.innerHTML = dealRowsHtml(rows, {emptyBig:'Архив пуст', emptySub:'Сюда попадают сделки после отметки «Выдан авто».'}) +
     `<button class="btn secondary" id="backToWork" style="margin-top:10px;">← К сделкам в работе</button>`;
   bindDealRows(c);
   document.getElementById('backToWork').onclick = ()=>{ state.archive = false; renderList(); };
@@ -645,10 +645,7 @@ function askSamePerson(found, type, attempted){
 function openPartySheet(initial, onSaved, opts){
   const p = initial || {};
   const isDealer = p.kind === 'dealer';
-  // Неактивных (все сделки удалены) дилеров не предлагаем — кроме уже
-  // назначенного этому физику: иначе при открытии на редактирование поле
-  // тихо обнулилось бы, раз текущего значения нет среди опций.
-  const dealers = state.parties.filter(x=> x.kind==='dealer' && (isDealerActive(x.id) || x.id===p.dealerId));
+  const dealers = state.parties.filter(x=> x.kind==='dealer');
   let gender = p.gender || '';
   openSheet(`
     <h3>${p.id ? esc(p.name||'Контрагент') : (isDealer?'Новый дилер':'Новый физик')}</h3>
@@ -811,20 +808,26 @@ function renderDeal(){
   document.getElementById('title').textContent = d.num;
   const stage = currentStage(d);
   document.getElementById('subtitle').textContent =
-    (stage ? stage.label : 'этапов ещё нет') + ' · ' + (DEAL_TYPE_LABELS[d.type] || d.type);
+    (stage ? (stage.label + (stageState(d, stage.key)==='wip' ? ' (в процессе)' : '')) : 'этапов ещё нет')
+    + ' · ' + (DEAL_TYPE_LABELS[d.type] || d.type);
 
   const party = state.parties.find(p=>p.id===d.partyId);
   const endBuyer = state.parties.find(p=>p.id===d.endBuyerId);
 
   const stagesHtml = stagesOf(d.type).map(st=>{
     const mark = (d.stages && d.stages[st.key]) || {};
-    const cls = mark.state === 'done' ? 'done' : (mark.state === 'skip' ? 'skip' : '');
-    const glyph = mark.state === 'done' ? '✓' : (mark.state === 'skip' ? '—' : '');
+    const cls = mark.state === 'done' ? 'done' : (mark.state === 'skip' ? 'skip' : (mark.state === 'wip' ? 'wip' : ''));
+    const glyph = mark.state === 'done' ? '✓' : (mark.state === 'skip' ? '—' : (mark.state === 'wip' ? '•' : ''));
+    // "пройден" без даты — этап, который проставился автоматически, когда
+    // отметили более поздний: даты у него нет и придумывать её не надо.
+    const meta = mark.state==='done' ? ('пройден' + (mark.at ? ' ' + fmtDate(mark.at) : ''))
+      : (mark.state==='wip' ? ('в процессе' + (mark.at ? ' с ' + fmtDate(mark.at) : ''))
+      : (mark.state==='skip' ? 'не требуется' : 'не пройден'));
     return `<div class="stage">
       <div class="mark ${cls}" data-stage="${esc(st.key)}">${glyph}</div>
       <div class="body">
         <div class="lbl">${esc(st.label)}${st.optional?' <span class="chip">необязательный</span>':''}</div>
-        <div class="meta">${mark.state==='done' ? 'пройден ' + fmtDate(mark.at) : (mark.state==='skip' ? 'не требуется' : 'не пройден')}</div>
+        <div class="meta">${meta}</div>
         ${mark.note ? `<div class="note">${esc(mark.note)}</div>` : ''}
       </div>
     </div>`;
@@ -833,7 +836,7 @@ function renderDeal(){
   c.innerHTML = `
     <button class="btn secondary small" id="dBack" style="margin-bottom:12px;">← К списку</button>
     ${d.problem && d.problem.on ? `<div class="notice">Проблема: ${esc(d.problem.reason || 'без описания')}</div>` : ''}
-    ${d.archived ? (isRemoved(d) ? `<div class="notice">Сделка удалена и находится в архиве как незавершённая.</div>` : `<div class="notice warn">Сделка завершена и находится в архиве.</div>`) : ''}
+    ${d.archived ? `<div class="notice warn">Сделка завершена и находится в архиве.</div>` : ''}
 
     <div class="card">
       <h2>Сделка</h2>
@@ -842,7 +845,7 @@ function renderDeal(){
       <div class="kv"><span class="k">Тип</span><span class="v">${esc(DEAL_TYPE_LABELS[d.type]||d.type)}</span></div>
       <div class="kv"><span class="k">Маршрут</span><span class="v">${d.route ? (ROUTE_FLAGS[d.route]||'') + ' ' + esc(ROUTE_LABELS[d.route]||d.route) : '—'}</span></div>
       <div class="kv"><span class="k">Что ищем</span><span class="v">${esc(d.car||'—')}${d.year?' · '+esc(d.year):''}</span></div>
-      <div class="kv"><span class="k">Бюджет</span><span class="v">${esc(d.budget||'—')}</span></div>
+      <div class="kv"><span class="k">Бюджет</span><span class="v">${d.budget ? esc(formatMoney(d.budget))+' ₽' : '—'}</span></div>
       <div class="kv"><span class="k">Город доставки</span><span class="v">${esc(d.deliveryCity||'—')}</span></div>
       <div class="kv"><span class="k">Ответственный</span><span class="v">${esc((d.responsible&&d.responsible.name)||'не назначен')}</span></div>
       <div class="kv"><span class="k">Создана</span><span class="v">${fmtDate(d.createdAt)}</span></div>
@@ -945,6 +948,7 @@ function openStageSheet(key){
       <label>Состояние</label>
       <select id="stState">
         <option value="" ${!mark.state?'selected':''}>Не пройден</option>
+        <option value="wip" ${mark.state==='wip'?'selected':''}>В процессе</option>
         <option value="done" ${mark.state==='done'?'selected':''}>Пройден</option>
         ${st.optional?`<option value="skip" ${mark.state==='skip'?'selected':''}>Не требуется</option>`:''}
       </select>
@@ -966,6 +970,17 @@ function openStageSheet(key){
     else {
       const at = dateStr ? (parseDdMmYyyy(dateStr) || Date.now()) : Date.now();
       stages[key] = { state: val, at, note, label: st.label };
+      // Отметили этап в середине списка — значит всё, что до него, по факту
+      // уже позади. Проставляем такие этапы пройденными без даты и заметки:
+      // дата тут была бы выдумкой, а так видно, что этап закрыт "задним
+      // числом". Уже отмеченное (в т.ч. "не требуется") не трогаем.
+      const list = stagesOf(d.type);
+      const idx = list.findIndex(s=>s.key===key);
+      list.slice(0, Math.max(idx,0)).forEach(prev=>{
+        if(!stages[prev.key] || !stages[prev.key].state){
+          stages[prev.key] = { state:'done', at:0, note:'', label: prev.label };
+        }
+      });
     }
     const patch = { stages };
     // Как только оплачен инвойс — понятно, какая машина реально едет по
@@ -1019,7 +1034,7 @@ function openDealEditSheet(){
     <div class="field"><label>Что ищем — модель</label><input type="text" id="eCar" value="${esc(d.car||'')}"></div>
     <div class="row2">
       <div class="field"><label>Год</label><input type="text" id="eYear" value="${esc(d.year||'')}"></div>
-      <div class="field"><label>Бюджет</label><input type="text" id="eBudget" value="${esc(d.budget||'')}"></div>
+      <div class="field"><label>Бюджет, ₽</label><input type="text" id="eBudget" inputmode="numeric" value="${formatMoney(d.budget||'')}"></div>
     </div>
     <div class="field"><label>Пожелания</label><textarea id="eWishes">${esc(d.wishes||'')}</textarea></div>
     <div class="field"><label>Город доставки</label><input type="text" id="eCity" value="${esc(d.deliveryCity||'')}"></div>
@@ -1050,6 +1065,7 @@ function openDealEditSheet(){
     respSel.onchange = ()=>{ manual.style.display = respSel.value === '__manual__' ? '' : 'none'; };
   }
   bindMask('eDealDate', formatDateDdMmYyyy);
+  bindMask('eBudget', formatMoney);
   document.getElementById('eCancel').onclick = closeSheet;
   document.getElementById('eSave').onclick = ()=>{
     const patch = {
@@ -1088,8 +1104,11 @@ async function saveDeal(next){
   try{
     const stage = currentStage(next);
     next.stageKey = stage ? stage.key : '';
+    // Списку нужно не только "какой этап", но и "пройден он или ещё идёт" —
+    // сам перечень этапов серверу неизвестен, поэтому считаем здесь.
+    next.stageState = stage ? stageState(next, stage.key) : '';
     next.stageAt = lastMovementAt(next);
-    next.archived = isArchived(next) || isRemoved(next);
+    next.archived = isArchived(next);
     const data = await api('saveDeal', {deal: next});
     state.deal = data.deal; state.log = data.log || [];
     await reloadIndexes();
@@ -1193,7 +1212,7 @@ async function openParty(id){
         <h2>Сделки (${data.deals.length})</h2>
         ${data.deals.length ? data.deals.map(d=>`
           <div class="dealrow" data-id="${esc(d.id)}">
-            <div class="top"><span class="num">${esc(d.num)}</span><span class="idle ${d.archived?(d.removed?'bad':'good'):''}">${d.archived?(d.removed?'не завершена':'завершена'):''}</span></div>
+            <div class="top"><span class="num">${esc(d.num)}</span><span class="idle ${d.archived?'good':''}">${d.archived?'завершена':''}</span></div>
             <div class="car">${esc(d.car||'машина не указана')}</div>
           </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Сделок пока нет.</div>'}
       </div>
@@ -1213,98 +1232,6 @@ async function openParty(id){
     c.querySelectorAll('[data-id]').forEach(el=> el.onclick = ()=> openDeal(el.dataset.id));
     c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
   }catch(e){ toast(e.message); }
-}
-
-/* =====================================================================
-   7. Выгрузка
-   JSON — полный слепок (всё, включая этапы и лог), CSV — то же плоской
-   таблицей для Excel и будущей 1С. Отдать файл в Telegram сложнее, чем
-   кажется: в его WebView на Android нет ни Web Share API, ни рабочего
-   скачивания (это выяснилось на живом устройстве владельца), поэтому
-   пробуем по очереди все три способа и в крайнем случае показываем текст.
-===================================================================== */
-function csvCell(v){
-  const s = String(v == null ? '' : v).replace(/"/g, '""');
-  return '"' + s + '"';
-}
-function dealsCsv(deals){
-  const head = ['Номер','№ договора','Дата договора','Тип','Маршрут','Контрагент','Конечный покупатель','Ответственный','Машина','Год','Бюджет','Город доставки','Текущий этап','Дата этапа','Дней без движения','Проблема','Причина','Архив','Удалена','Создана','Заметки'];
-  const rows = deals.map(d=>{
-    const stage = currentStage(d);
-    const moved = lastMovementAt(d);
-    return [
-      d.num, d.dealNum||'', d.dealDate||'', DEAL_TYPE_LABELS[d.type]||d.type, ROUTE_LABELS[d.route]||d.route||'',
-      d.partyName||'', d.endBuyerName||'', (d.responsible&&d.responsible.name)||'',
-      d.car||'', d.year||'', d.budget||'', d.deliveryCity||'',
-      stage?stage.label:'', fmtDate(moved), idleDays(moved),
-      (d.problem&&d.problem.on)?'да':'', (d.problem&&d.problem.reason)||'',
-      d.archived?'да':'', d.removed?'да':'', fmtDate(d.createdAt), d.notes||''
-    ].map(csvCell).join(';');
-  });
-  // BOM — иначе Excel открывает кириллицу кракозябрами.
-  return '﻿' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
-}
-function partiesCsv(parties){
-  const GENDER_LABELS = { m:'Мужской', f:'Женский' };
-  const head = ['Имя','Тип','Телефон','Telegram','Канал связи','Город','Через дилера','Пол','Дата рождения','Серия паспорта','Номер паспорта','Кем выдан','Дата выдачи','Код подразделения','Прописка','ИНН','СНИЛС','Заметки'];
-  const byId = {};
-  parties.forEach(p=>{ byId[p.id] = p.name; });
-  const rows = parties.map(p=>[
-    p.name||'', PARTY_KIND_LABELS[p.kind]||p.kind, p.phone||'', p.telegramUsername||'', p.channel||'', p.city||'',
-    p.dealerId ? (byId[p.dealerId]||'') : '', GENDER_LABELS[p.gender]||'', p.birthDate||'',
-    p.passportSeries||'', p.passportNumber||'', p.passportIssuedBy||'', p.passportIssuedDate||'', p.divisionCode||'',
-    p.registrationAddress||'', p.inn||'', p.snils||'', p.notes||''
-  ].map(csvCell).join(';'));
-  return '﻿' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
-}
-
-async function runExport(){
-  let data;
-  try{ data = await api('export'); }
-  catch(e){ toast('Не удалось выгрузить: ' + e.message); return; }
-
-  const stamp = new Date().toISOString().slice(0,10);
-  const files = [
-    new File([JSON.stringify(data, null, 2)], 'deals-' + stamp + '.json', {type:'application/json'}),
-    new File([dealsCsv(data.deals)], 'deals-' + stamp + '.csv', {type:'text/csv'}),
-    new File([partiesCsv(data.parties)], 'parties-' + stamp + '.csv', {type:'text/csv'})
-  ];
-
-  if(navigator.share && navigator.canShare && navigator.canShare({files})){
-    try{ await navigator.share({files, title:'Выгрузка сделок'}); return; }
-    catch(e){ if(e.name === 'AbortError') return; }
-  }
-
-  let downloaded = 0;
-  files.forEach(f=>{
-    try{
-      const url = URL.createObjectURL(f);
-      const a = document.createElement('a');
-      a.href = url; a.download = f.name;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(()=> URL.revokeObjectURL(url), 20000);
-      downloaded++;
-    }catch(e){ /* ниже покажем текстом */ }
-  });
-  if(downloaded === files.length){
-    toast('Выгружено ' + downloaded + ' файла — проверьте «Загрузки»', 3500);
-    return;
-  }
-
-  // Ни поделиться, ни скачать не вышло — показываем JSON, чтобы можно было
-  // хотя бы скопировать вручную и не остаться ни с чем.
-  openSheet(`
-    <h3>Выгрузка</h3>
-    <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Этот браузер не дал ни поделиться файлом, ни скачать его. Скопируйте данные отсюда.</p>
-    <textarea readonly style="height:300px;font-family:'IBM Plex Mono',monospace;font-size:11px;">${esc(JSON.stringify(data))}</textarea>
-    <button class="btn" id="exCopy" style="margin-top:10px;">Скопировать</button>
-    <button class="btn secondary" id="exClose" style="margin-top:8px;">Закрыть</button>
-  `);
-  document.getElementById('exClose').onclick = closeSheet;
-  document.getElementById('exCopy').onclick = ()=>{
-    navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(data))
-      .then(()=> toast('Скопировано')).catch(()=> toast('Не удалось скопировать'));
-  };
 }
 
 /* =====================================================================

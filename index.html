@@ -2467,7 +2467,7 @@ function openDealsArchiveSheet(){
     ${deals.length ? deals.map(d=>`
       <div class="rline" style="align-items:flex-start;">
         <div class="k">
-          <span class="hint" style="color:${d.removed?'var(--danger)':'var(--good)'};">${d.removed?'не завершена (удалена)':'завершена'}</span><br>
+          <span class="hint" style="color:var(--good);">завершена</span><br>
           ${escapeHtml(d.num)} · ${escapeHtml(d.partyName||'без физика')}<br>
           <span style="font-size:11.5px;color:var(--muted);">${escapeHtml(d.car||'машина не указана')}</span>
         </div>
@@ -2480,11 +2480,11 @@ function csvCellIdx(v){ const s = String(v==null?'':v).replace(/"/g,'""'); retur
 function idleDaysIdx(ts){ return ts ? Math.floor((Date.now()-ts)/86400000) : 0; }
 function dealsCsvIdx(deals){
   const DEAL_TYPE_LABELS = {import:'Импорт', paperwork:'Оформление'};
-  const head = ['Номер','№ договора','Дата договора','Тип','Маршрут','Физик','Ответственный','Машина','Текущий этап (код)','Дней без движения','Проблема','Архив','Удалена','Заметки'];
+  const head = ['Номер','№ договора','Дата договора','Тип','Маршрут','Физик','Ответственный','Машина','Текущий этап (код)','Дней без движения','Проблема','Архив','Заметки'];
   const rows = deals.map(d=>[
     d.num, d.dealNum||'', d.dealDate||'', DEAL_TYPE_LABELS[d.type]||d.type, CONFIG.routes[d.route]?CONFIG.routes[d.route].label:(d.route||''),
     d.partyName||'', (d.responsible&&d.responsible.name)||'', d.car||'', d.stageKey||'', idleDaysIdx(d.stageAt||d.createdAt),
-    d.problem?'да':'', d.archived?'да':'', d.removed?'да':'', d.notes||''
+    d.problem?'да':'', d.archived?'да':'', d.notes||''
   ].map(csvCellIdx).join(';'));
   return '﻿' + [head.map(csvCellIdx).join(';')].concat(rows).join('\r\n');
 }
@@ -2568,15 +2568,20 @@ function routeSettingsBlock(id){
   return `
     <div class="sub-h">${r.label}</div>
     <div class="row3">
-      ${field('Брокер, ₽', `<input type="number" class="rs" data-route="${id}" data-key="brokerFee" value="${r.brokerFee}">`)}
-      ${field('Комиссия, ₽', `<input type="number" class="rs" data-route="${id}" data-key="agentFee" value="${r.agentFee}">`)}
+      ${field('Брокер, ₽', `<input type="text" inputmode="numeric" class="rs money" data-route="${id}" data-key="brokerFee" value="${formatNumInput(r.brokerFee)}">`)}
+      ${field('Комиссия, ₽', `<input type="text" inputmode="numeric" class="rs money" data-route="${id}" data-key="agentFee" value="${formatNumInput(r.agentFee)}">`)}
       ${field('Банк, %', `<input type="number" class="rs" data-route="${id}" data-key="bankCommissionPct" value="${r.bankCommissionPct}" step="0.1">`)}
     </div>
   `;
 }
 function bindRouteSettings(){
   document.querySelectorAll('.rs').forEach(el=>{
-    el.oninput = ()=>{ CONFIG.routes[el.dataset.route][el.dataset.key] = num(el.value); saveConfig(); };
+    el.oninput = ()=>{ CONFIG.routes[el.dataset.route][el.dataset.key] = num(cleanNumInput(el.value)); saveConfig(); };
+    // Денежные поля показываем сгруппированными по тысячам, но перекладываем
+    // разряды не на каждое нажатие, а по уходу из поля: иначе курсор прыгал
+    // бы в конец посреди правки (в самом расчёте для этого есть возня с
+    // позицией курсора, но ради двух полей настроек она того не стоит).
+    if(el.classList.contains('money')) el.onblur = ()=>{ el.value = formatNumInput(el.value); };
   });
 }
 
@@ -2585,14 +2590,17 @@ function deliveryTable(){
   const rows = CONFIG.delivery.cities.map((city,ci)=>`
     <tr>
       <td class="name"><input type="text" class="dcname" data-i="${ci}" value="${city.name}" style="width:100px;"></td>
-      ${city.prices.map((p,pi)=>`<td><input type="number" class="dcprice" data-i="${ci}" data-p="${pi}" value="${p}" style="width:64px;"></td>`).join('')}
+      ${city.prices.map((p,pi)=>`<td><input type="text" inputmode="numeric" class="dcprice" data-i="${ci}" data-p="${pi}" value="${formatNumInput(p)}" style="width:82px;"></td>`).join('')}
       <td><button class="btn secondary small" data-del="${ci}" style="padding:5px 8px;">✕</button></td>
     </tr>`).join('');
   return `<div style="overflow-x:auto;"><table class="tablecfg"><thead><tr><th>Город</th>${heads}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function bindDeliveryTable(){
   document.querySelectorAll('.dcname').forEach(el=> el.oninput = ()=>{ CONFIG.delivery.cities[+el.dataset.i].name = el.value; saveConfig(); });
-  document.querySelectorAll('.dcprice').forEach(el=> el.oninput = ()=>{ CONFIG.delivery.cities[+el.dataset.i].prices[+el.dataset.p] = num(el.value); saveConfig(); });
+  document.querySelectorAll('.dcprice').forEach(el=>{
+    el.oninput = ()=>{ CONFIG.delivery.cities[+el.dataset.i].prices[+el.dataset.p] = num(cleanNumInput(el.value)); saveConfig(); };
+    el.onblur = ()=>{ el.value = formatNumInput(el.value); };
+  });
   document.querySelectorAll('[data-del]').forEach(el=> el.onclick = ()=>{
     CONFIG.delivery.cities.splice(+el.dataset.del,1); saveConfig(); renderSettingsView(document.getElementById('content'));
   });

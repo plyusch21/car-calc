@@ -69,14 +69,17 @@ function dealIndexRow(deal) {
     partyId: deal.partyId || '',
     partyName: deal.partyName || '',
     partyKind: deal.partyKind || '',
+    // Нужен и списку (кого показывать), и удалению сделки: по нему видно,
+    // держит ли ещё кто-то ссылку на физика, прежде чем убирать его запись.
+    endBuyerId: deal.endBuyerId || '',
     car: deal.car || '',
     stageKey: deal.stageKey || '',
+    stageState: deal.stageState || '',
     stageAt: deal.stageAt || 0,
     responsibleUid: (deal.responsible && deal.responsible.uid) || '',
     responsibleName: (deal.responsible && deal.responsible.name) || '',
     problem: !!(deal.problem && deal.problem.on),
     archived: !!deal.archived,
-    removed: !!deal.removed,
     createdAt: deal.createdAt || 0
   };
 }
@@ -225,7 +228,10 @@ module.exports = async (req, res) => {
 
     if (action === 'bootstrap') {
       const [deals, allParties] = await Promise.all([readHash('deals:idx'), readHash('parties:idx')]);
-      const visible = deals.filter(d => canRead(level, d, uid));
+      // d.removed — наследие прежнего «мягкого» удаления: такие записи
+      // считаются удалёнными и не показываются нигде; их дочищает
+      // api/deals-cleanup.js.
+      const visible = deals.filter(d => !d.removed && canRead(level, d, uid));
       const parties = (level === 'own' && !auth.record.isOwner)
         ? allParties.filter(p => visiblePartyIds(visible).has(p.id))
         : allParties;
@@ -296,11 +302,6 @@ module.exports = async (req, res) => {
         wishes: str(incoming.wishes, 2000),
         deliveryCity: str(incoming.deliveryCity, 120),
         notes: str(incoming.notes, 4000),
-        // Мягкое удаление (см. action 'removeDeal' ниже) — сделка не
-        // стирается, а помечается и уходит в архив с другим цветом отметки.
-        // saveDeal тоже может выставить/снять флаг (напр. явная правка),
-        // но основной путь — через removeDeal.
-        removed: !!incoming.removed,
         stages: (incoming.stages && typeof incoming.stages === 'object') ? incoming.stages : (before ? before.stages : {}),
         // Снимок расчёта, а не только его id: история калькулятора общая и
         // ограничена по длине — старые записи из неё выпадают, и одна голая
@@ -334,6 +335,7 @@ module.exports = async (req, res) => {
         // Клиент считает эти три по своему перечню этапов — сервер их только
         // хранит для списка (см. комментарий в шапке файла).
         stageKey: str(incoming.stageKey, 60),
+        stageState: str(incoming.stageState, 10),
         stageAt: Number(incoming.stageAt) || 0,
         archived: !!incoming.archived,
         createdAt: before ? before.createdAt : Date.now(),
@@ -360,24 +362,42 @@ module.exports = async (req, res) => {
       return;
     }
 
-    // Мягкое удаление — по аналогии с удалением расчёта в калькуляторе, но
-    // сделка не стирается: уходит в архив с отдельной (красной) пометкой,
-    // отличной от настоящего завершения по последнему этапу. Права — те же,
-    // что на правку сделки.
+    // Удаление — безвозвратное и полное: сама запись, её лог и строка в
+    // индексе. Архив хранит ТОЛЬКО успешно завершённые сделки (последний
+    // этап отмечен пройденным) — удалённой сделки не остаётся нигде, это
+    // не «скрыть», а «стереть». Права — те же, что на правку сделки.
     if (action === 'removeDeal') {
       const id = str(body.id, 40);
       const raw = await kv('GET', 'deal:' + id);
       if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
       const deal = JSON.parse(raw);
       if (!canWrite(level, deal, uid)) { res.status(400).send(JSON.stringify({ error: 'эту сделку вам удалять нельзя' })); return; }
-      deal.removed = true;
-      deal.removedAt = Date.now();
-      deal.archived = true;
-      deal.updatedAt = Date.now();
-      deal.updatedBy = uid;
-      await kv('SET', 'deal:' + id, JSON.stringify(deal));
-      await kv('HSET', 'deals:idx', id, JSON.stringify(dealIndexRow(deal)));
-      await appendLog(id, auth, 'сделка удалена (перенесена в архив, не завершена)');
+
+      await kv('DEL', 'deal:' + id);
+      await kv('DEL', 'deal:' + id + ':log');
+      await kv('HDEL', 'deals:idx', id);
+
+      // Физик живёт внутри сделки: если удалённая была его последней, его
+      // запись уходит следом. Иначе по тому же телефону при заведении новой
+      // сделки всплывало бы предупреждение о дубле от сделки, которой уже
+      // нет. Дилеров это не касается — они метки и живут сами по себе.
+      const orphanId = str(deal.partyId, 40);
+      if (orphanId) {
+        const left = await readHash('deals:idx');
+        const stillUsed = left.some(d => d.partyId === orphanId || d.endBuyerId === orphanId);
+        if (!stillUsed) {
+          const praw = await kv('GET', 'party:' + orphanId);
+          if (praw) {
+            const party = JSON.parse(praw);
+            if (party.kind === 'person') {
+              const phone = normPhone(party.phone);
+              if (phone) await kv('HDEL', 'parties:phone', phone);
+              await kv('DEL', 'party:' + orphanId);
+              await kv('HDEL', 'parties:idx', orphanId);
+            }
+          }
+        }
+      }
       res.status(200).send(JSON.stringify({ ok: true }));
       return;
     }
