@@ -1088,7 +1088,7 @@ function openDealEditSheet(){
 /* Сохранение всегда идёт через одну дверь: здесь же считаем производные
    поля для списка (текущий этап, дата движения, архив) — сервер их не
    вычисляет, потому что перечня этапов не знает. */
-async function saveDeal(next){
+async function saveDeal(next, doneMsg){
   try{
     const stage = currentStage(next);
     next.stageKey = stage ? stage.key : '';
@@ -1102,7 +1102,7 @@ async function saveDeal(next){
     await reloadIndexes();
     closeSheet();
     renderDeal();
-    toast('Сохранено');
+    toast(doneMsg || 'Сохранено');
   }catch(e){ toast('Не сохранилось: ' + e.message); }
 }
 
@@ -1153,8 +1153,33 @@ async function openCalcPicker(){
       form: (h.form && typeof h.form==='object') ? h.form : null,
       booked: false
     }]);
-    saveDeal(Object.assign({}, state.deal, { calcs }));
+    // Пустые поля сделки добираем из расчёта — маршрут, модель, год и город
+    // уже введены в калькуляторе, второй раз их набирать незачем. Только
+    // пустые: то, что в сделке уже стоит, расчёт не перезаписывает.
+    const fill = calcFillsForDeal(state.deal, h);
+    const filledLabels = Object.keys(fill).map(k=>CALC_FILL_LABELS[k]).join(', ');
+    saveDeal(Object.assign({}, state.deal, { calcs }, fill),
+      filledLabels ? 'Расчёт привязан, из него заполнено: ' + filledLabels : undefined);
   });
+}
+
+const CALC_FILL_LABELS = { route:'маршрут', car:'модель', year:'год', deliveryCity:'город доставки' };
+function calcFillsForDeal(deal, h){
+  const f = (h.form && typeof h.form==='object') ? h.form : {};
+  const out = {};
+  const empty = k => !String(deal[k]||'').trim();
+  if(empty('route') && ROUTE_LABELS[h.route]) out.route = h.route;
+  // В истории модель без названия хранится как «Без названия» — это не модель.
+  const model = String(f.model || (h.model!=='Без названия' ? h.model : '') || '').trim();
+  if(empty('car') && model) out.car = model;
+  if(empty('year') && f.prodYear) out.year = String(f.prodYear);
+  // Как в тексте КП: доставку не считали — значит машина под ключ во
+  // Владивостоке, а город в форме калькулятора просто остался от прошлого
+  // раза и к этому расчёту отношения не имеет.
+  if(empty('deliveryCity') && h.form){
+    out.deliveryCity = (f.deliveryEnabled && f.deliveryCity) ? String(f.deliveryCity) : 'Владивосток';
+  }
+  return out;
 }
 
 /* =====================================================================
