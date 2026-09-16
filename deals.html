@@ -282,6 +282,31 @@ function bindMask(id, formatter){
   if(!el) return;
   el.oninput = ()=>{ el.value = formatter(el.value); };
 }
+// Дата — вводятся только цифры (см. inputmode="numeric" на самих полях —
+// это то, что на телефоне вызывает цифровую клавиатуру, а не текстовую),
+// точки расставляются сами по мере набора.
+function formatDateDdMmYyyy(raw){
+  const d = onlyDigits(raw, 8);
+  let out = d.slice(0,2);
+  if(d.length>2) out += '.'+d.slice(2,4);
+  if(d.length>4) out += '.'+d.slice(4,8);
+  return out;
+}
+function tsToDdMmYyyy(ts){
+  const dt = new Date(ts);
+  return String(dt.getDate()).padStart(2,'0')+'.'+String(dt.getMonth()+1).padStart(2,'0')+'.'+dt.getFullYear();
+}
+// null — дата не введена целиком или невозможна (напр. 31.02) — сохранять
+// как есть нельзя, но и ронять форму молча не надо, вызывающий сам решает
+// запасной вариант (обычно Date.now()).
+function parseDdMmYyyy(s){
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(s||'').trim());
+  if(!m) return null;
+  const dd = +m[1], mm = +m[2], yyyy = +m[3];
+  const dt = new Date(yyyy, mm-1, dd, 12, 0, 0);
+  if(dt.getFullYear()!==yyyy || dt.getMonth()!==mm-1 || dt.getDate()!==dd) return null;
+  return dt.getTime();
+}
 function toast(msg, ms){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), ms||2200); }
 function openSheet(html){ document.getElementById('sheetBody').innerHTML = html; document.getElementById('sheetOverlay').classList.add('open'); }
 function closeSheet(){ document.getElementById('sheetOverlay').classList.remove('open'); }
@@ -662,11 +687,11 @@ function openPartySheet(initial, onSaved, opts){
         <div class="field"><label>Серия паспорта</label><input type="text" id="pPassSeries" inputmode="numeric" placeholder="0000" value="${esc(p.passportSeries||'')}"></div>
         <div class="field"><label>Номер паспорта</label><input type="text" id="pPassNum" inputmode="numeric" placeholder="000000" value="${esc(p.passportNumber||'')}"></div>
       </div>
-      <div class="field"><label>Дата рождения</label><input type="text" id="pBirth" placeholder="ДД.ММ.ГГГГ" value="${esc(p.birthDate||'')}"></div>
+      <div class="field"><label>Дата рождения</label><input type="text" id="pBirth" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${esc(p.birthDate||'')}"></div>
       <div class="field" style="margin-bottom:5px;"><label>Паспорт выдан</label></div>
       <div class="row2">
         <div class="field"><label>Кем выдан</label><input type="text" id="pPassBy" value="${esc(p.passportIssuedBy||'')}"></div>
-        <div class="field"><label>Дата выдачи</label><input type="text" id="pPassDate" placeholder="ДД.ММ.ГГГГ" value="${esc(p.passportIssuedDate||'')}"></div>
+        <div class="field"><label>Дата выдачи</label><input type="text" id="pPassDate" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${esc(p.passportIssuedDate||'')}"></div>
       </div>
       <div class="field"><label>Код подразделения</label><input type="text" id="pDivCode" inputmode="numeric" placeholder="000-000" value="${esc(p.divisionCode||'')}"></div>
       <div class="row2">
@@ -700,6 +725,8 @@ function openPartySheet(initial, onSaved, opts){
     bindMask('pDivCode', formatDivisionCode);
     bindMask('pInn', s=>onlyDigits(s,12));
     bindMask('pSnils', formatSnils);
+    bindMask('pBirth', formatDateDdMmYyyy);
+    bindMask('pPassDate', formatDateDdMmYyyy);
   }
   // Собирает текущие значения формы в объект той же формы, что и p — нужно
   // и для сохранения, и для возврата в эту же форму после вложенного
@@ -823,7 +850,10 @@ function renderDeal(){
       ${d.dealDate ? `<div class="kv"><span class="k">Дата договора</span><span class="v">${esc(d.dealDate)}</span></div>` : ''}
       ${d.wishes ? `<div class="kv"><span class="k">Пожелания</span><span class="v">${esc(d.wishes)}</span></div>` : ''}
       ${d.notes ? `<div class="kv"><span class="k">Заметки</span><span class="v">${esc(d.notes)}</span></div>` : ''}
-      ${state.canWrite ? `<button class="btn secondary small" id="dEdit" style="margin-top:12px;">Редактировать</button>` : ''}
+      <div class="row2" style="margin-top:12px;">
+        ${state.canWrite ? `<button class="btn secondary small" id="dEdit">Редактировать</button>` : '<div></div>'}
+        ${party ? `<button class="btn secondary small" id="dToPartyProfile">Профиль и документы физика</button>` : ''}
+      </div>
     </div>
 
     <div class="card">
@@ -867,6 +897,8 @@ function renderDeal(){
   document.getElementById('dBack').onclick = ()=>{ state.view='list'; renderList(); };
   const tp = document.getElementById('toParty');
   if(tp) tp.onclick = (e)=>{ e.preventDefault(); openParty(d.partyId); };
+  const tpp = document.getElementById('dToPartyProfile');
+  if(tpp) tpp.onclick = ()=> openParty(d.partyId);
   const ed = document.getElementById('dEdit'); if(ed) ed.onclick = openDealEditSheet;
   const pb = document.getElementById('dProblem'); if(pb) pb.onclick = openProblemSheet;
   const lc = document.getElementById('dLinkCalc'); if(lc) lc.onclick = openCalcPicker;
@@ -917,12 +949,13 @@ function openStageSheet(key){
         ${st.optional?`<option value="skip" ${mark.state==='skip'?'selected':''}>Не требуется</option>`:''}
       </select>
     </div>
-    <div class="field"><label>Дата</label><input type="text" id="stDate" value="${mark.at?new Date(mark.at).toISOString().slice(0,10):new Date().toISOString().slice(0,10)}" placeholder="ГГГГ-ММ-ДД"></div>
+    <div class="field"><label>Дата</label><input type="text" id="stDate" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${mark.at?tsToDdMmYyyy(mark.at):tsToDdMmYyyy(Date.now())}"></div>
     <div class="field"><label>Заметка</label><textarea id="stNote">${esc(mark.note||'')}</textarea></div>
     ${st.final?`<div class="notice warn">Отметка «${esc(st.label)}» переводит сделку в архив.</div>`:''}
     <button class="btn" id="stSave">Сохранить</button>
     <button class="btn secondary" id="stCancel" style="margin-top:8px;">Отмена</button>
   `);
+  bindMask('stDate', formatDateDdMmYyyy);
   document.getElementById('stCancel').onclick = closeSheet;
   document.getElementById('stSave').onclick = async ()=>{
     const val = document.getElementById('stState').value;
@@ -931,8 +964,8 @@ function openStageSheet(key){
     const stages = Object.assign({}, d.stages || {});
     if(!val){ delete stages[key]; }
     else {
-      const at = dateStr ? new Date(dateStr + 'T12:00:00').getTime() : Date.now();
-      stages[key] = { state: val, at: isNaN(at) ? Date.now() : at, note, label: st.label };
+      const at = dateStr ? (parseDdMmYyyy(dateStr) || Date.now()) : Date.now();
+      stages[key] = { state: val, at, note, label: st.label };
     }
     const patch = { stages };
     // Как только оплачен инвойс — понятно, какая машина реально едет по
@@ -975,7 +1008,7 @@ function openDealEditSheet(){
     <div class="field"><label>Номер сделки (технический)</label><input type="text" id="eNum" value="${esc(d.num||'')}"></div>
     <div class="row2">
       <div class="field"><label>№ договора</label><input type="text" id="eDealNum" value="${esc(d.dealNum||'')}"></div>
-      <div class="field"><label>Дата договора</label><input type="text" id="eDealDate" placeholder="ДД.ММ.ГГГГ" value="${esc(d.dealDate||'')}"></div>
+      <div class="field"><label>Дата договора</label><input type="text" id="eDealDate" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${esc(d.dealDate||'')}"></div>
     </div>
     <div class="field"><label>Маршрут</label>
       <select id="eRoute">
@@ -1016,6 +1049,7 @@ function openDealEditSheet(){
     // привязать её не к кому, и это честнее, чем приписать кому-то чужое.
     respSel.onchange = ()=>{ manual.style.display = respSel.value === '__manual__' ? '' : 'none'; };
   }
+  bindMask('eDealDate', formatDateDdMmYyyy);
   document.getElementById('eCancel').onclick = closeSheet;
   document.getElementById('eSave').onclick = ()=>{
     const patch = {
