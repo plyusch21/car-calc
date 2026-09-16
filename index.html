@@ -27,6 +27,25 @@
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --tg-top-pad: 0px; /* доп. место под кнопки закрыть/свернуть/⋯ в Telegram Mini App, см. bootGate() */
+  /* Типографика — 7 ступеней, база 16px */
+  --fs-xs:   0.6875rem;  /* 11px  — подписи, хинты, служебные пометки */
+  --fs-sm:   0.75rem;    /* 12px  — метки полей, шапки карточек */
+  --fs-base: 0.875rem;   /* 14px  — основной текст, значения полей */
+  --fs-md:   1rem;       /* 16px  — имена и названия в списках */
+  --fs-lg:   1.125rem;   /* 18px  — заголовки экранов и шитов */
+  --fs-xl:   1.375rem;   /* 22px  — крупные числа */
+  --fs-2xl:  1.75rem;    /* 28px  — итоговая сумма в чеке */
+  /* Отступы — 6 ступеней */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  /* Радиусы */
+  --r-sm:   10px;  /* поля ввода, мелкие кнопки */
+  --r-md:   12px;  /* карточки в списках */
+  --r-pill: 99px;  /* чипы, тумблеры */
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
@@ -57,168 +76,168 @@ body{
   position:sticky; top:0; z-index:20;
 }
 
-.rate-widget{ text-align:center; margin-bottom:14px; cursor:pointer; }
-.rate-widget .rw-date{ font-size:11.5px; color:var(--muted); margin-bottom:6px; }
+.rate-widget{ text-align:center; margin-bottom:var(--sp-4); cursor:pointer; }
+.rate-widget .rw-date{ font-size:var(--fs-xs); color:var(--muted); margin-bottom:var(--sp-2); }
 .rate-widget .rw-row{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; }
-.rate-widget .rw-status{ display:flex; align-items:center; gap:6px; font-size:12.5px; justify-self:start; }
+.rate-widget .rw-status{ display:flex; align-items:center; gap:var(--sp-2); font-size:var(--fs-sm); justify-self:start; }
 .rate-widget .rw-dot{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
-.rate-widget .rw-value{ font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; justify-self:center; }
-.rate-widget .rw-pair{ font-size:12px; color:var(--muted); justify-self:end; }
+.rate-widget .rw-value{ font-family:'IBM Plex Mono',monospace; font-size:var(--fs-md); font-weight:600; font-variant-numeric:tabular-nums; justify-self:center; }
+.rate-widget .rw-pair{ font-size:var(--fs-sm); color:var(--muted); justify-self:end; }
 
-.tabs{ display:flex; gap:6px; padding:6px 16px 14px; overflow-x:auto; scrollbar-width:none; }
+.tabs{ display:flex; gap:var(--sp-2); padding:var(--sp-2) var(--sp-4) var(--sp-4); overflow-x:auto; scrollbar-width:none; }
 .tabs::-webkit-scrollbar{display:none;}
 .tab{
-  flex:0 0 auto; padding:9px 14px; border-radius:10px; background:transparent; border:1px solid var(--border);
-  color:var(--muted); font-size:13.5px; font-weight:500; cursor:pointer;
+  flex:0 0 auto; padding:var(--sp-2) var(--sp-4); border-radius:var(--r-sm); background:transparent; border:1px solid var(--border);
+  color:var(--muted); font-size:var(--fs-base); font-weight:500; cursor:pointer;
 }
 .tab.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--text); }
 
-.content{flex:1; padding:0 16px 24px;}
+.content{flex:1; padding:0 var(--sp-4) var(--sp-5);}
 
-.card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
+.card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:var(--sp-4); margin-bottom:var(--sp-4); }
 .card h2{
   background:#2f7dd122; color:#e6edf1; text-align:center; text-transform:uppercase;
-  font-size:12.5px; font-weight:600; letter-spacing:0.08em; padding:10px 14px;
-  margin:-16px -16px 14px; border-bottom:1px solid rgba(47,125,209,.45);
+  font-size:var(--fs-sm); font-weight:600; letter-spacing:0.08em; padding:var(--sp-3) var(--sp-4);
+  margin:calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4); border-bottom:1px solid rgba(47,125,209,.45);
   border-radius:13px 13px 0 0;
 }
 .receipt-title{
   background:#255aa1; color:#fff; text-align:center; text-transform:uppercase;
-  font-size:12.5px; font-weight:600; letter-spacing:0.08em; padding:10px 14px;
+  font-size:var(--fs-sm); font-weight:600; letter-spacing:0.08em; padding:var(--sp-3) var(--sp-4);
   margin:0; border-bottom:none; border-radius:13px 13px 0 0;
 }
-.field{margin-bottom:12px;}
+.field{margin-bottom:var(--sp-3);}
 .field:last-child{margin-bottom:0;}
-.field label{ display:block; font-size:12.5px; color:var(--muted); margin-bottom:5px; }
-.carried-hint{ font-size:10.5px; color:var(--muted); margin-top:4px; }
-.unfilled-hint{ font-size:10.5px; color:#d9b25f; margin-top:4px; }
+.field label{ display:block; font-size:var(--fs-sm); color:var(--muted); margin-bottom:var(--sp-1); }
+.carried-hint{ font-size:var(--fs-xs); color:var(--muted); margin-top:var(--sp-1); }
+.unfilled-hint{ font-size:var(--fs-xs); color:#d9b25f; margin-top:var(--sp-1); }
 input.unfilled-input, select.unfilled-input{ border-color:#d9b25f; border-style:dashed; }
-.row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-.row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3);}
+.row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:var(--sp-3);}
 input[type=text], input[type=number], select, textarea{
-  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:9px;
-  padding:10px 11px; font-size:14.5px; font-family:'IBM Plex Mono',monospace; outline:none;
+  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:var(--r-sm);
+  padding:var(--sp-3) var(--sp-3); font-size:var(--fs-base); font-family:'IBM Plex Mono',monospace; outline:none;
 }
 select{font-family:'Inter',sans-serif;}
 textarea{font-family:'Inter',sans-serif; resize:vertical;}
 input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .textfield-btn{
-  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:9px;
-  padding:10px 11px; font-size:13.5px; font-family:'Inter',sans-serif; text-align:left; cursor:pointer;
+  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:var(--r-sm);
+  padding:var(--sp-3) var(--sp-3); font-size:var(--fs-base); font-family:'Inter',sans-serif; text-align:left; cursor:pointer;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;
 }
 .textfield-btn .ph{ color:var(--muted); }
 
-.seg{ display:flex; background:var(--panel-2); border-radius:9px; padding:3px; border:1px solid var(--border); }
-.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:8px 4px; border-radius:7px; font-size:12.5px; cursor:pointer; font-family:'Inter',sans-serif; }
+.seg{ display:flex; background:var(--panel-2); border-radius:var(--r-sm); padding:var(--sp-1); border:1px solid var(--border); }
+.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:var(--sp-2) var(--sp-1); border-radius:7px; font-size:var(--fs-sm); cursor:pointer; font-family:'Inter',sans-serif; }
 .seg button.active{background:var(--accent); color:#08131c; font-weight:600;}
 
-.toggle-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
-.advanced-toggle{ display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-size:12.5px; color:var(--muted); padding:6px 0; }
+.toggle-row{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3);}
+.advanced-toggle{ display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-size:var(--fs-sm); color:var(--muted); padding:var(--sp-2) 0; }
 .advanced-chevron{ transition:transform .15s ease; }
 .advanced-chevron.open{ transform:rotate(90deg); }
-#advancedBody{ margin-top:4px; }
-.switch{ width:40px; height:24px; border-radius:99px; background:var(--panel-2); border:1px solid var(--border); position:relative; cursor:pointer; flex:0 0 auto; }
+#advancedBody{ margin-top:var(--sp-1); }
+.switch{ width:40px; height:24px; border-radius:var(--r-pill); background:var(--panel-2); border:1px solid var(--border); position:relative; cursor:pointer; flex:0 0 auto; }
 .switch .knob{ position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--muted); transition:left .15s; }
 .switch.on{background:var(--teal-soft); border-color:var(--teal);}
 .switch.on .knob{left:18px; background:var(--teal);}
 
-.btn{ width:100%; background:var(--accent); color:#08131c; border:none; border-radius:11px; padding:13px; font-size:14.5px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; }
+.btn{ width:100%; background:var(--accent); color:#08131c; border:none; border-radius:var(--r-sm); padding:var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; }
 .btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
-.btn.small{padding:9px; font-size:12.5px;}
-.row3 .btn{ padding:11px 4px; font-size:12.5px; }
+.btn.small{padding:var(--sp-2); font-size:var(--fs-sm);}
+.row3 .btn{ padding:var(--sp-3) var(--sp-1); font-size:var(--fs-sm); }
 .btn-send{
   background:linear-gradient(90deg,#25D366 0%, #2AABEE 52%, #9B7FE0 100%);
   color:#fff; font-weight:700; letter-spacing:.2px;
   box-shadow:0 6px 18px rgba(42,171,238,.22);
 }
 .btn-send:active{ opacity:.88; }
-.send-hint{ font-size:11px; color:var(--muted); text-align:center; margin-top:8px; line-height:1.4; }
+.send-hint{ font-size:var(--fs-xs); color:var(--muted); text-align:center; margin-top:var(--sp-2); line-height:1.4; }
 .linkbtn{
-  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  display:flex; align-items:center; justify-content:space-between; gap:var(--sp-2);
   background:var(--teal-soft); border:1px solid var(--teal); color:var(--teal);
-  border-radius:9px; padding:11px 12px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none;
-  margin-bottom:8px;
+  border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; text-decoration:none;
+  margin-bottom:var(--sp-2);
 }
 .linkbtn:last-child{margin-bottom:0;}
-.linkbtn small{display:block; font-weight:400; color:var(--teal); opacity:0.8; font-size:11px; margin-top:1px;}
+.linkbtn small{display:block; font-weight:400; color:var(--teal); opacity:0.8; font-size:var(--fs-xs); margin-top:1px;}
 
-.smartfill{ background:var(--panel-2); border:1px dashed var(--border); border-radius:12px; padding:12px; }
-.smartfill textarea{ margin-bottom:10px; }
-.smartfill .btn{ margin-bottom:6px; }
+.smartfill{ background:var(--panel-2); border:1px dashed var(--border); border-radius:var(--r-md); padding:var(--sp-3); }
+.smartfill textarea{ margin-bottom:var(--sp-3); }
+.smartfill .btn{ margin-bottom:var(--sp-2); }
 .smartfill .row2 .btn{ margin-bottom:0; }
-.smartfill-status{ font-size:11px; color:var(--muted); min-height:14px; }
-.smartfill-divider{ display:flex; align-items:center; gap:8px; margin:12px 0 10px; color:var(--muted); font-size:11px; }
+.smartfill-status{ font-size:var(--fs-xs); color:var(--muted); min-height:14px; }
+.smartfill-divider{ display:flex; align-items:center; gap:var(--sp-2); margin:var(--sp-3) 0 var(--sp-3); color:var(--muted); font-size:var(--fs-xs); }
 .smartfill-divider::before, .smartfill-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
 .filepick{
   display:flex; align-items:center; justify-content:center; text-align:center;
-  background:var(--panel); border:1px solid var(--border); border-radius:11px;
-  padding:13px 8px; font-size:12.5px; color:var(--muted); cursor:pointer; font-family:'Inter',sans-serif;
+  background:var(--panel); border:1px solid var(--border); border-radius:var(--r-sm);
+  padding:var(--sp-3) var(--sp-2); font-size:var(--fs-sm); color:var(--muted); cursor:pointer; font-family:'Inter',sans-serif;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .filepick.has-file{ color:var(--text); border-color:var(--accent); }
-.smartfill-hint{ font-size:10.5px; color:var(--muted); margin-top:10px; line-height:1.4; }
+.smartfill-hint{ font-size:var(--fs-xs); color:var(--muted); margin-top:var(--sp-3); line-height:1.4; }
 
-.receipt{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:14px; }
-.receipt-head{ padding:16px 16px 12px; border-bottom:1px dashed var(--border); }
-.receipt-head .model{font-family:'Fraunces',serif; font-size:17px; font-weight:600;}
-.receipt-head .meta{color:var(--muted); font-size:12px; margin-top:3px;}
-.receipt-body{padding:6px 16px;}
-.rline{ display:flex; justify-content:space-between; align-items:baseline; padding:9px 0; border-bottom:1px solid var(--panel-2); font-size:13.5px; }
+.receipt{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:var(--sp-4); }
+.receipt-head{ padding:var(--sp-4) var(--sp-4) var(--sp-3); border-bottom:1px dashed var(--border); }
+.receipt-head .model{font-family:'Fraunces',serif; font-size:var(--fs-lg); font-weight:600;}
+.receipt-head .meta{color:var(--muted); font-size:var(--fs-sm); margin-top:var(--sp-1);}
+.receipt-body{padding:var(--sp-2) var(--sp-4);}
+.rline{ display:flex; justify-content:space-between; align-items:baseline; padding:var(--sp-2) 0; border-bottom:1px solid var(--panel-2); font-size:var(--fs-base); }
 .rline:last-child{border-bottom:none;}
 .rline .k{color:var(--muted);}
-.rline .k .hint{display:block; font-size:10.5px; color:#5c6b69; margin-top:1px;}
+.rline .k .hint{display:block; font-size:var(--fs-xs); color:#5c6b69; margin-top:1px;}
 .rline .v{font-family:'IBM Plex Mono',monospace; font-weight:500;}
-.receipt-total{ padding:16px; background:var(--panel-2); display:flex; justify-content:space-between; align-items:center; border-top:1px dashed var(--border); }
-.receipt-total .lbl{font-size:13px; color:var(--muted);}
-.receipt-total .amt{font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; color:var(--good);}
+.receipt-total{ padding:var(--sp-4); background:var(--panel-2); display:flex; justify-content:space-between; align-items:center; border-top:1px dashed var(--border); }
+.receipt-total .lbl{font-size:var(--fs-base); color:var(--muted);}
+.receipt-total .amt{font-family:'IBM Plex Mono',monospace; font-size:var(--fs-xl); font-weight:600; color:var(--good);}
 
 .bottomnav{ position:fixed; bottom:0; left:0; right:0; z-index:30; background:rgba(8,13,18,0.92); backdrop-filter:blur(10px); border-top:1px solid var(--border); padding-bottom:var(--safe-bottom); }
 .bottomnav .inner{ max-width:480px; margin:0 auto; display:flex; }
-.navbtn{ flex:1; background:none; border:none; color:var(--muted); padding:11px 4px 9px; font-size:10.5px; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; font-family:'Inter',sans-serif; }
+.navbtn{ flex:1; background:none; border:none; color:var(--muted); padding:var(--sp-3) var(--sp-1) var(--sp-2); font-size:var(--fs-xs); display:flex; flex-direction:column; align-items:center; gap:var(--sp-1); cursor:pointer; font-family:'Inter',sans-serif; }
 .navbtn.active{color:var(--accent);}
 .navicon{width:20px; height:20px; display:block;}
 
 .sheet-overlay{ position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:40; display:none; align-items:flex-end; justify-content:center; }
 .sheet-overlay.open{display:flex;}
 .sheet{ background:var(--bg); width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border); border-bottom:none; padding:10px 16px calc(24px + var(--safe-bottom)); }
-.sheet-handle{width:36px; height:4px; background:var(--border); border-radius:2px; margin:6px auto 14px;}
-.sheet h3{font-family:'Fraunces',serif; font-size:17px; margin:4px 0 14px;}
-.sub-h{font-size:11.5px; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:18px 0 8px;}
+.sheet-handle{width:36px; height:4px; background:var(--border); border-radius:2px; margin:var(--sp-2) auto var(--sp-4);}
+.sheet h3{font-family:'Fraunces',serif; font-size:var(--fs-lg); margin:var(--sp-1) 0 var(--sp-4);}
+.sub-h{font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:var(--sp-4) 0 var(--sp-2);}
 .sub-h:first-child{margin-top:2px;}
 
-.tablecfg{width:100%; border-collapse:collapse; font-size:11.5px;}
-.tablecfg th{text-align:left; color:var(--muted); font-weight:500; font-size:10px; padding:4px 3px;}
-.tablecfg td{padding:3px 3px;}
-.tablecfg input{padding:6px 6px; font-size:11.5px;}
-.tablecfg td.name{font-size:11.5px; padding-right:6px; white-space:nowrap;}
+.tablecfg{width:100%; border-collapse:collapse; font-size:var(--fs-xs);}
+.tablecfg th{text-align:left; color:var(--muted); font-weight:500; font-size:var(--fs-xs); padding:var(--sp-1) var(--sp-1);}
+.tablecfg td{padding:var(--sp-1) var(--sp-1);}
+.tablecfg input{padding:var(--sp-2) var(--sp-2); font-size:var(--fs-xs);}
+.tablecfg td.name{font-size:var(--fs-xs); padding-right:var(--sp-2); white-space:nowrap;}
 
-.emptystate{ text-align:center; padding:50px 20px; color:var(--muted); }
-.emptystate .big{font-family:'Fraunces',serif; font-size:16px; color:var(--text); margin-bottom:6px;}
+.emptystate{ text-align:center; padding:50px var(--sp-5); color:var(--muted); }
+.emptystate .big{font-family:'Fraunces',serif; font-size:var(--fs-md); color:var(--text); margin-bottom:var(--sp-2);}
 
-.histcard-wrap{ position:relative; border-radius:12px; overflow:hidden; margin-bottom:10px; }
+.histcard-wrap{ position:relative; border-radius:var(--r-md); overflow:hidden; margin-bottom:var(--sp-3); }
 .histcard-wrap .histcard{ margin-bottom:0; }
-.histcard-del{ position:absolute; top:0; right:0; bottom:0; width:88px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; cursor:pointer; }
-.histcard{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; touch-action:pan-y; will-change:transform; }
-.histcard .l .m{font-weight:600; font-size:14px;}
-.histcard .l .d{color:var(--muted); font-size:11.5px; margin-top:2px;}
+.histcard-del{ position:absolute; top:0; right:0; bottom:0; width:88px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:var(--fs-base); font-weight:600; cursor:pointer; }
+.histcard{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-3); display:flex; justify-content:space-between; align-items:center; cursor:pointer; touch-action:pan-y; will-change:transform; }
+.histcard .l .m{font-weight:600; font-size:var(--fs-base);}
+.histcard .l .d{color:var(--muted); font-size:var(--fs-xs); margin-top:2px;}
 .histcard .r{text-align:right;}
 .histcard .r .t{font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent);}
-.histcard .r .c{font-size:10.5px; color:var(--muted);}
+.histcard .r .c{font-size:var(--fs-xs); color:var(--muted);}
 
-.settings-menu{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:14px; }
-.settings-row{ display:flex; justify-content:space-between; align-items:center; padding:15px 16px; cursor:pointer; border-bottom:1px solid var(--panel-2); }
+.settings-menu{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:var(--sp-4); }
+.settings-row{ display:flex; justify-content:space-between; align-items:center; padding:var(--sp-4) var(--sp-4); cursor:pointer; border-bottom:1px solid var(--panel-2); }
 .settings-row:last-child{border-bottom:none;}
-.settings-row .lbl{font-size:14px; font-weight:500;}
-.settings-row .arrow{color:var(--muted); font-size:17px;}
+.settings-row .lbl{font-size:var(--fs-base); font-weight:500;}
+.settings-row .arrow{color:var(--muted); font-size:var(--fs-lg);}
 
-.toast{ position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 16px; border-radius:9px; font-size:13px; z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; }
+.toast{ position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:var(--sp-3) var(--sp-4); border-radius:var(--r-sm); font-size:var(--fs-base); z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; }
 .toast.show{opacity:1;}
 
-.notice{ background:var(--danger-soft); border:1px solid var(--danger); color:var(--danger); border-radius:9px; padding:10px 12px; font-size:12px; margin-bottom:12px; line-height:1.45; }
+.notice{ background:var(--danger-soft); border:1px solid var(--danger); color:var(--danger); border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-3); font-size:var(--fs-sm); margin-bottom:var(--sp-3); line-height:1.45; }
 .notice.info{background:var(--teal-soft); border-color:var(--teal); color:var(--teal);}
 .notice.warn{background:#d9b25f22; border-color:#d9b25f; color:#d9b25f;}
-.src-line{font-size:11px; color:var(--muted); margin-top:8px; line-height:1.5; word-break:break-all;}
+.src-line{font-size:var(--fs-xs); color:var(--muted); margin-top:var(--sp-2); line-height:1.5; word-break:break-all;}
 .src-line b{color:var(--text);}
 
 /* -----------------------------------------------------------------------
@@ -273,6 +292,15 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .kp-pval-model{ font-size:23px; font-weight:800; color:#255aa1; }
 .kp-pval-wrap{ text-align:right; font-weight:600; max-width:640px; line-height:1.5; }
 .kp-footer{ margin-top:36px; background:#255aa1; color:#cfe0f5; font-size:16px; text-align:center; line-height:1.6; padding:26px 48px; }
+
+/* Утилитарные классы — шкала отступов/шрифтов, см. tools/mapgen.sh note in CLAUDE.md */
+.mt-2{margin-top:var(--sp-2);}   .mb-2{margin-bottom:var(--sp-2);}
+.mt-3{margin-top:var(--sp-3);}   .mb-3{margin-bottom:var(--sp-3);}
+.mt-4{margin-top:var(--sp-4);}   .mb-4{margin-bottom:var(--sp-4);}
+.u-hint{font-size:var(--fs-sm); color:var(--muted);}
+.u-note{font-size:var(--fs-base); color:var(--muted); line-height:1.5; margin:0 0 var(--sp-5);}
+.btn.compact{width:auto; padding:var(--sp-1) var(--sp-2);}
+.btn.danger{ background:var(--danger); }
 </style>
 </head>
 <body>
@@ -1055,26 +1083,26 @@ function openRatesSheet(){
   const R = CONFIG.rates;
   openSheet(`
     <h3>Курсы валют</h3>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Автообновляемые курсы подтягиваются через сервер при каждом открытии приложения. Ручная правка всегда в приоритете — нажмите на курс, чтобы поправить.</p>
+    <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-4);">Автообновляемые курсы подтягиваются через сервер при каждом открытии приложения. Ручная правка всегда в приоритете — нажмите на курс, чтобы поправить.</p>
     ${Object.keys(R).map(id=>{
       const r = R[id];
       const stale = r.fetchError;
       return `<div class="card" data-rate="${id}" style="cursor:pointer;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <div style="font-weight:600; font-size:14.5px;">${r.label}</div>
-            <div style="font-size:11.5px; color:${stale?'var(--danger)':'var(--muted)'}; margin-top:2px;">
+            <div style="font-weight:600; font-size:var(--fs-base);">${r.label}</div>
+            <div style="font-size:var(--fs-xs); color:${stale?'var(--danger)':'var(--muted)'}; margin-top:2px;">
               ${stale ? (r.problemReason || 'Не удалось обновить — используется последнее значение') : (r.manualOverride ? 'Указано вручную' : (r.autoAvailable ? 'Автообновление' : 'Только вручную'))}
               ${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : (r.autoAvailable && !r.manualOverride ? ' · ещё не обновлялось' : '')}
             </div>
           </div>
-          <div class="mono" style="font-size:19px; font-weight:600; color:${stale?'var(--danger)':'var(--good)'};">${id==='KRW_USDT' ? groupInt(Math.round(r.value).toString()) : r.value.toFixed(4)}</div>
+          <div class="mono" style="font-size:var(--fs-lg); font-weight:600; color:${stale?'var(--danger)':'var(--good)'};">${id==='KRW_USDT' ? groupInt(Math.round(r.value).toString()) : r.value.toFixed(4)}</div>
         </div>
       </div>`;
     }).join('')}
     <button class="btn secondary" id="refreshRatesBtn2">Обновить сейчас</button>
-    <h3 style="margin-top:22px;">Курсы ЦБ (справочно)</h3>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Только для справки — в расчёте не участвуют.</p>
+    <h3 style="margin-top:var(--sp-5);">Курсы ЦБ (справочно)</h3>
+    <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-3);">Только для справки — в расчёте не участвуют.</p>
     <div class="card" id="cbrRefCard">Загрузка…</div>
   `);
   document.getElementById('refreshRatesBtn2').onclick = async ()=>{ toast('Обновляю…'); await fetchAutoRates(); toast('Готово'); };
@@ -1091,12 +1119,12 @@ function openRatesSheet(){
 function ratesPreviewCardHtml(){
   const R = CONFIG.rates;
   return `<div class="card" id="ratesPreviewCard" style="cursor:pointer;">
-    <h2 style="display:flex; justify-content:space-between; align-items:center; text-align:left;"><span>Курсы валют</span><span style="font-size:15px;">›</span></h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">Обновляется дважды в сутки и при открытии приложения</p>
+    <h2 style="display:flex; justify-content:space-between; align-items:center; text-align:left;"><span>Курсы валют</span><span style="font-size:var(--fs-md);">›</span></h2>
+    <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-2);">Обновляется дважды в сутки и при открытии приложения</p>
     ${Object.keys(R).map(id=>{
       const r = R[id];
       const stale = r.fetchError;
-      return `<div class="rline" style="padding:6px 0;">
+      return `<div class="rline" style="padding:var(--sp-2) 0;">
         <div class="k">${r.label}<span class="hint">${stale ? 'Ошибка обновления — используется последнее значение' : (r.manualOverride ? 'Указано вручную' : (r.autoAvailable ? 'Автообновление' : 'Только вручную'))}${r.updatedAt ? ' · '+new Date(r.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : (r.autoAvailable && !r.manualOverride ? ' · ещё не обновлялось' : '')}</span></div>
         <div class="v mono" style="color:${stale?'var(--danger)':'var(--good)'};">${id==='KRW_USDT' ? groupInt(Math.round(r.value).toString()) : r.value.toFixed(4)}</div>
       </div>`;
@@ -1334,7 +1362,7 @@ function renderCalc(c){
         ${isElectric ? '' : field('Объём двигателя (см³)', `<input type="text" id="f_volumeCm3" class="${unfilledClass(f,'volumeCm3')}" value="${formatNumInput(f.volumeCm3)}" inputmode="numeric">`, unfilledHint(f,'volumeCm3')+carriedHint(f,'volumeCm3'))}
         <div class="field">
           <label>${isElectric?'Мощность электродвигателя':'Мощность двигателя'}</label>
-          <div class="row2" style="gap:6px;">
+          <div class="row2" style="gap:var(--sp-2);">
             <input type="text" id="f_power" class="${unfilledClass(f,'power')}" value="${formatNumInput(f.power)}" inputmode="numeric">
             <div class="seg" id="powerUnitSeg">
               <button data-unit="ls" class="${f.powerUnit==='ls'?'active':''}">л.с.</button>
@@ -1357,15 +1385,15 @@ function renderCalc(c){
       <div id="advancedBody">
         ${route==='eaeu' ? `
         <div class="toggle-row field">
-          <div style="font-size:12.5px;">Считать таможенные платежи как в остальных направлениях</div>
+          <div class="u-hint">Считать таможенные платежи как в остальных направлениях</div>
           <div class="switch ${f.eaeuFullDuty?'on':''}" id="eaeuFullDutyToggle"><div class="knob"></div></div>
         </div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">По умолчанию ЕАЭС — только утильсбор. Включите, если по сделке нужна полная пошлина + утильсбор, как для Японии/Кореи/Китая.</div>` : ''}
-        <div class="toggle-row field" style="margin-top:8px;">
-          <div style="font-size:12.5px;">Указать таможенную стоимость по каталогу</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:calc(var(--sp-2) * -1);">По умолчанию ЕАЭС — только утильсбор. Включите, если по сделке нужна полная пошлина + утильсбор, как для Японии/Кореи/Китая.</div>` : ''}
+        <div class="toggle-row field mt-2">
+          <div class="u-hint">Указать таможенную стоимость по каталогу</div>
           <div class="switch ${f.customsValueOverride?'on':''}" id="customsValueOverrideToggle"><div class="knob"></div></div>
         </div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:-6px;">Актуально для авто младше 3 лет: если фактическая цена ниже каталожной, таможня посчитает пошлину от каталожной стоимости. Включите и укажите её, чтобы расчёт пошлины/утильсбора не разошёлся с реальностью — цена сделки для клиента не меняется.</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:calc(var(--sp-2) * -1);">Актуально для авто младше 3 лет: если фактическая цена ниже каталожной, таможня посчитает пошлину от каталожной стоимости. Включите и укажите её, чтобы расчёт пошлины/утильсбора не разошёлся с реальностью — цена сделки для клиента не меняется.</div>
         ${f.customsValueOverride ? field('Таможенная стоимость авто ('+suf+')', `<input type="text" id="f_customsValueManual" value="${formatNumInput(f.customsValueManual)}" inputmode="decimal">`) : ''}
       </div>
       ` : ''}
@@ -1374,7 +1402,7 @@ function renderCalc(c){
     <div class="card">
       <h2>Доп. данные по авто (для клиента)</h2>
       <div class="toggle-row field">
-        <div style="font-size:12.5px;">Указать данные по авто</div>
+        <div class="u-hint">Указать данные по авто</div>
         <div class="switch ${f.showCarDetails?'on':''}" id="carDetailsToggle"><div class="knob"></div></div>
       </div>
       ${f.showCarDetails ? `
@@ -1384,7 +1412,7 @@ function renderCalc(c){
       </div>
       <div class="field">
         <label>${route==='japan' ? 'Дата первой регистрации' : 'Дата производства'}</label>
-        <div class="row2" style="gap:6px;">
+        <div class="row2" style="gap:var(--sp-2);">
           <input type="number" id="f_prodMonth" value="${f.prodMonth}" placeholder="мес." min="1" max="12" inputmode="numeric">
           <input type="number" id="f_prodYear" class="${unfilledClass(f,'prodYear')}" value="${f.prodYear}" placeholder="год" inputmode="numeric">
         </div>
@@ -1401,19 +1429,19 @@ function renderCalc(c){
 
     <div class="card">
       <h2>Таможенные платежи</h2>
-      <div class="rline" style="padding:6px 0;"><div class="k">Расчёт TKS<span class="hint">пошлина + утильсбор по официальному API TKS.RU — обновляется по кнопке «Рассчитать» внизу</span></div><div class="v">${fmt(num(f.customsAuto),'₽')}</div></div>
-      <div class="toggle-row field" style="margin-top:8px;">
-        <div style="font-size:12.5px;">Указать вручную</div>
+      <div class="rline" style="padding:var(--sp-2) 0;"><div class="k">Расчёт TKS<span class="hint">пошлина + утильсбор по официальному API TKS.RU — обновляется по кнопке «Рассчитать» внизу</span></div><div class="v">${fmt(num(f.customsAuto),'₽')}</div></div>
+      <div class="toggle-row field mt-2">
+        <div class="u-hint">Указать вручную</div>
         <div class="switch ${f.customsOverride?'on':''}" id="customsOverrideToggle"><div class="knob"></div></div>
       </div>
       ${f.customsOverride ? field('Таможенные платежи, ₽ (вручную)', `<input type="text" id="f_customsManual" value="${formatNumInput(f.customsManual)}" inputmode="numeric">`) : ''}
-      <div id="customsStatus" style="font-size:11.5px;color:var(--muted);margin-top:6px;"></div>
+      <div id="customsStatus" style="font-size:var(--fs-xs);color:var(--muted);margin-top:var(--sp-2);"></div>
     </div>
 
     <div class="card">
       <h2>Доставка по РФ</h2>
       <div class="toggle-row field">
-        <div style="font-size:12.5px;">Учитывать доставку по РФ</div>
+        <div class="u-hint">Учитывать доставку по РФ</div>
         <div class="switch ${f.deliveryEnabled?'on':''}" id="deliveryEnabledToggle"><div class="knob"></div></div>
       </div>
       ${!f.deliveryEnabled ? '' : `
@@ -1422,9 +1450,9 @@ function renderCalc(c){
         ${field('Город доставки', `<select id="f_city">${cityOptions(f.deliveryCity)}</select>`)}
         ${field('Тип кузова', `<select id="f_body">${CONFIG.delivery.bodyTypes.map((b,i)=>`<option value="${i}" ${i==f.bodyTypeIdx?'selected':''}>${b}</option>`).join('')}</select>`)}
       </div>
-      <div class="rline" style="padding:6px 0;"><div class="k">Расчётная стоимость доставки</div><div class="v">${fmt(deliveryAuto,'₽')}</div></div>
-      <div class="toggle-row field" style="margin-top:8px;">
-        <div style="font-size:12.5px;">Указать доставку вручную</div>
+      <div class="rline" style="padding:var(--sp-2) 0;"><div class="k">Расчётная стоимость доставки</div><div class="v">${fmt(deliveryAuto,'₽')}</div></div>
+      <div class="toggle-row field mt-2">
+        <div class="u-hint">Указать доставку вручную</div>
         <div class="switch ${f.deliveryOverride?'on':''}" id="delOverrideToggle"><div class="knob"></div></div>
       </div>
       ${f.deliveryOverride ? field('Доставка, ₽ (вручную)', `<input type="text" id="f_deliveryManual" value="${formatNumInput(f.deliveryManual)}" inputmode="numeric">`) : ''}
@@ -1437,7 +1465,7 @@ function renderCalc(c){
         ${field('Брокер', `<input type="text" id="f_brokerFee" value="${formatNumInput(f.brokerFee)}" inputmode="numeric">`)}
         ${field('Наша комиссия', `<input type="text" id="f_agentFee" value="${formatNumInput(f.agentFee)}" inputmode="numeric">`)}
       </div>
-      <div style="font-size:11.5px;color:var(--muted);">Банковская комиссия фиксирована для маршрута (${cfg.bankCommissionPct}%) и учтена в цене ТС — правится в Настройках.</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted);">Банковская комиссия фиксирована для маршрута (${cfg.bankCommissionPct}%) и учтена в цене ТС — правится в Настройках.</div>
     </div>
 
     <button class="btn" id="calcBtn">Рассчитать</button>
@@ -1636,13 +1664,13 @@ function showResult(route, f, opts){
       <div class="receipt-total"><div class="lbl">Итого</div><div class="amt">${fmt(r.total,'₽')}</div></div>
     </div>
     ${RECALC_CTX ? `
-    <div class="field" style="margin:14px 0;">
+    <div class="field" style="margin:var(--sp-4) 0;">
       <button class="btn btn-send" id="recalcSendBtn">Сохранить в сделку ${escapeHtml(RECALC_CTX.dealNum||'')} и отправить</button>
       <div class="send-hint">Обновит расчёт в сделке на свежую сумму и сразу откроет отправку в мессенджер. В общую историю расчётов этот прогон не попадёт.</div>
     </div>
     ` : `
     <button class="btn secondary" id="saveBtn" style="width:100%;">Сохранить в историю</button>
-    <div class="field" style="margin:14px 0;">
+    <div class="field" style="margin:var(--sp-4) 0;">
       <button class="btn btn-send" id="shareBtn">Отправить в мессенджер</button>
       <div class="send-hint">Уйдёт фото расчёта. Текст скопируется в буфер — вставьте его следом.</div>
     </div>
@@ -2054,9 +2082,9 @@ async function shareResult(route, f, r, kpFilePromise){
   reader.onload = ()=>{
     openSheet(`
       <h3>Фото расчёта готово</h3>
-      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;">${textCopied ? 'Текст уже в буфере обмена. ' : ''}Зажмите фото и выберите «Поделиться» или «Сохранить изображение».</p>
-      <img src="${reader.result}" style="width:100%;border-radius:12px;display:block;">
-      <button class="btn secondary" id="closeShareImgSheet" style="margin-top:14px;">Готово</button>
+      <p style="font-size:var(--fs-base);color:var(--muted);margin:0 0 var(--sp-4);line-height:1.5;">${textCopied ? 'Текст уже в буфере обмена. ' : ''}Зажмите фото и выберите «Поделиться» или «Сохранить изображение».</p>
+      <img src="${reader.result}" style="width:100%;border-radius:var(--r-md);display:block;">
+      <button class="btn secondary mt-4" id="closeShareImgSheet">Готово</button>
     `);
     document.getElementById('closeShareImgSheet').onclick = closeSheet;
   };
@@ -2121,8 +2149,8 @@ function openClearHistoryConfirm(filter, c){
   const label = filter==='all' ? 'всю историю' : `историю «${CONFIG.routes[filter].label}»`;
   openSheet(`
     <h3>Точно очистить ${label}?</h3>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;line-height:1.5;">Отменить это будет нельзя.</p>
-    <button class="btn" id="clearHistConfirmBtn" style="background:var(--danger);margin-bottom:8px;">Да, очистить</button>
+    <p class="u-note">Отменить это будет нельзя.</p>
+    <button class="btn danger mb-2" id="clearHistConfirmBtn">Да, очистить</button>
     <button class="btn secondary" id="clearHistCancelBtn">Нет, отмена</button>
   `);
   document.getElementById('clearHistConfirmBtn').onclick = ()=>{
@@ -2139,8 +2167,8 @@ function openOtherRoutePicker(h){
   const otherRoutes = Object.keys(CONFIG.routes).filter(id=>id!==h.route);
   openSheet(`
     <h3>Пересчитать в другом направлении</h3>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.5;">${escapeHtml(h.model||'Авто')} — цена авто и расходы в стране очистятся, остальные данные об авто сохранятся.</p>
-    ${otherRoutes.map(id=>`<button class="btn secondary" data-pick-route="${id}" style="margin-bottom:8px;">${CONFIG.routes[id].label} ${ROUTE_FLAG[id]||''}</button>`).join('')}
+    <p style="font-size:var(--fs-base);color:var(--muted);margin:0 0 var(--sp-4);line-height:1.5;">${escapeHtml(h.model||'Авто')} — цена авто и расходы в стране очистятся, остальные данные об авто сохранятся.</p>
+    ${otherRoutes.map(id=>`<button class="btn secondary mb-2" data-pick-route="${id}">${CONFIG.routes[id].label} ${ROUTE_FLAG[id]||''}</button>`).join('')}
     <button class="btn secondary" id="otherRouteCancel">Отмена</button>
   `);
   document.getElementById('otherRouteCancel').onclick = closeSheet;
@@ -2166,7 +2194,7 @@ function openOtherRoutePicker(h){
 // направление" — сюда просто заглядывают посмотреть, что считали.
 function renderArchiveList(c){
   historySwipeOpen = null;
-  const back = `<button class="btn secondary small" id="archiveBack" style="margin-bottom:14px;">← Назад</button>`;
+  const back = `<button class="btn secondary small mb-4" id="archiveBack">← Назад</button>`;
   const listHtml = state.archive.length ? state.archive.map(h=>{
     const d = new Date(h.date);
     return `<div class="histcard" data-aid="${h.id}">
@@ -2174,7 +2202,7 @@ function renderArchiveList(c){
       <div class="r"><div class="t">${fmt(h.total,'₽')}</div></div>
     </div>`;
   }).join('') : `<div class="emptystate"><div class="big">Пока пусто</div>Сюда попадёт каждый расчёт, доведённый до результата — последние 50</div>`;
-  c.innerHTML = back + `<div style="font-size:12px;color:var(--muted);margin:-6px 0 14px;">Заполняется автоматически при каждом расчёте, дошедшем до результата. Хранит последние 50 — более старые пропадают без предупреждения. Для того, что нужно сохранить надолго, используйте «Сохранить в историю».</div>` + listHtml;
+  c.innerHTML = back + `<div style="font-size:var(--fs-sm);color:var(--muted);margin:calc(var(--sp-2) * -1) 0 var(--sp-4);">Заполняется автоматически при каждом расчёте, дошедшем до результата. Хранит последние 50 — более старые пропадают без предупреждения. Для того, что нужно сохранить надолго, используйте «Сохранить в историю».</div>` + listHtml;
   document.getElementById('archiveBack').onclick = ()=>{ state.historyArchiveOpen=false; renderHistory(c); };
   c.querySelectorAll('[data-aid]').forEach(el=> el.onclick = ()=>{
     const h = state.archive.find(x=>x.id==el.dataset.aid);
@@ -2194,7 +2222,7 @@ function renderHistory(c){
   const filtered = filter==='all' ? state.history : state.history.filter(h=>h.route===filter);
   historySwipeOpen = null;
 
-  const filterHtml = `<div class="tabs" id="histFilterSeg" style="padding:0 0 14px; margin:0;">
+  const filterHtml = `<div class="tabs" id="histFilterSeg" style="padding:0 0 var(--sp-4); margin:0;">
     <button class="tab ${filter==='all'?'active':''}" data-f="all">Общие</button>
     ${Object.keys(CONFIG.routes).map(id=>`<button class="tab ${filter===id?'active':''}" data-f="${id}">${CONFIG.routes[id].label} ${ROUTE_FLAG[id]||''}</button>`).join('')}
   </div>`;
@@ -2203,7 +2231,7 @@ function renderHistory(c){
   const archiveFolderHtml = filter==='all' ? `<div class="histcard-wrap">
     <div class="histcard" id="archiveFolderBtn">
       <div class="l"><div class="m">📁 Архив</div><div class="d">Все расчёты, доведённые до результата · последние 50</div></div>
-      <div class="r"><div style="font-size:19px;color:var(--muted);">›</div></div>
+      <div class="r"><div style="font-size:var(--fs-lg);color:var(--muted);">›</div></div>
     </div>
   </div>` : '';
 
@@ -2216,10 +2244,10 @@ function renderHistory(c){
       <div class="histcard-del" data-del="${h.id}">Удалить</div>
       <div class="histcard" data-id="${h.id}">
         <div class="l"><div class="m">${escapeHtml(h.model)}</div><div class="d">${CONFIG.routes[h.route].label} · ${d.toLocaleDateString('ru-RU')}</div></div>
-        <div class="r"><div class="t">${fmt(h.total,'₽')}</div><button class="btn secondary small" data-otherroute="${h.id}" style="margin-top:5px;padding:4px 9px;">Другое направление</button></div>
+        <div class="r"><div class="t">${fmt(h.total,'₽')}</div><button class="btn secondary small" data-otherroute="${h.id}" style="margin-top:var(--sp-1);padding:var(--sp-1) var(--sp-2);">Другое направление</button></div>
       </div>
     </div>`;
-  }).join('') + `<button class="btn secondary" id="clearHist" style="margin-top:4px;">${filter==='all'?'Очистить всю историю':'Очистить историю «'+CONFIG.routes[filter].label+'»'}</button>`
+  }).join('') + `<button class="btn secondary" id="clearHist" style="margin-top:var(--sp-1);">${filter==='all'?'Очистить всю историю':'Очистить историю «'+CONFIG.routes[filter].label+'»'}</button>`
     : `<div class="emptystate"><div class="big">Пока пусто</div>Сохранённые расчёты появятся здесь</div>`;
 
   c.innerHTML = filterHtml + archiveFolderHtml + listHtml;
@@ -2295,11 +2323,11 @@ function renderSettingsView(c){
     return;
   }
 
-  const back = `<button class="btn secondary small" id="settingsBack" style="margin-bottom:14px;">← Назад</button>`;
+  const back = `<button class="btn secondary small mb-4" id="settingsBack">← Назад</button>`;
   let body = '';
 
   if(section==='admin' && ACCESS && ACCESS.isOwner){
-    body = `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div style="font-size:12px;color:var(--muted);">Загрузка…</div></div>`;
+    body = `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div class="u-hint">Загрузка…</div></div>`;
   } else if(section==='routes'){
     body = `<div class="card">
       <h2>Маршруты — комиссии по умолчанию</h2>
@@ -2308,18 +2336,18 @@ function renderSettingsView(c){
   } else if(section==='customs'){
     body = `<div class="card">
       <h2>Расчёт TKS</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">На вкладке «Расчёт» таможенные платежи считаются автоматически на сервере (<code>api/customs.js</code>) через официальный API TKS.RU «Расчёт авто» (по лицензионному ключу) — сбор за оформление, пошлина и утилизационный сбор по Решению ЕЭК №107 и Постановлению №1291. Форму на tks.ru/auto/calc использовать напрямую нельзя, она защищена антибот-капчей, поэтому это отдельный API. Если TKS вдруг недоступен, автоматически подключается резервный источник alta.ru/auto-vat/ (тот же официальный расчёт, независимо проверен и даёт идентичные цифры). Значение всегда можно поправить вручную тумблером «Указать вручную» в карточке «Таможенные платежи».</p>
+      <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-3);">На вкладке «Расчёт» таможенные платежи считаются автоматически на сервере (<code>api/customs.js</code>) через официальный API TKS.RU «Расчёт авто» (по лицензионному ключу) — сбор за оформление, пошлина и утилизационный сбор по Решению ЕЭК №107 и Постановлению №1291. Форму на tks.ru/auto/calc использовать напрямую нельзя, она защищена антибот-капчей, поэтому это отдельный API. Если TKS вдруг недоступен, автоматически подключается резервный источник alta.ru/auto-vat/ (тот же официальный расчёт, независимо проверен и даёт идентичные цифры). Значение всегда можно поправить вручную тумблером «Указать вручную» в карточке «Таможенные платежи».</p>
       ${CONFIG.customsCalculators.map(x=>`<a class="linkbtn" href="javascript:void(0)" onclick="openExternal('${x.url}')">${x.label} ↗</a>`).join('')}
     </div>`;
   } else if(section==='delivery'){
     body = `<div class="card">
       <h2>Таблица доставки по РФ (₽)</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Отправка из: ${CONFIG.delivery.originLabel}. Можно отредактировать любые значения или добавить город.</p>
+      <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-3);">Отправка из: ${CONFIG.delivery.originLabel}. Можно отредактировать любые значения или добавить город.</p>
       ${deliveryTable()}
-      <button class="btn secondary small" id="addCityBtn" style="margin-top:10px;">+ Добавить город</button>
+      <button class="btn secondary small mt-3" id="addCityBtn">+ Добавить город</button>
     </div>`;
   } else if(section==='dealsExtra'){
-    body = `<div class="card" id="dealsExtraCard"><h2>Сделки — дополнительно</h2><div style="font-size:12px;color:var(--muted);">Загрузка…</div></div>`;
+    body = `<div class="card" id="dealsExtraCard"><h2>Сделки — дополнительно</h2><div class="u-hint">Загрузка…</div></div>`;
   }
 
   c.innerHTML = back + body;
@@ -2340,8 +2368,8 @@ function renderSettingsView(c){
 function openResetConfirm(){
   openSheet(`
     <h3>Сбросить все настройки?</h3>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;line-height:1.5;">Комиссии по маршрутам, таблица доставки и все источники курсов вернутся к значениям по умолчанию. Отменить это будет нельзя.</p>
-    <button class="btn" id="resetConfirmBtn" style="background:var(--danger);margin-bottom:8px;">Да, сбросить всё</button>
+    <p class="u-note">Комиссии по маршрутам, таблица доставки и все источники курсов вернутся к значениям по умолчанию. Отменить это будет нельзя.</p>
+    <button class="btn danger mb-2" id="resetConfirmBtn">Да, сбросить всё</button>
     <button class="btn secondary" id="resetCancelBtn">Отмена</button>
   `);
   document.getElementById('resetConfirmBtn').onclick = ()=>{
@@ -2370,7 +2398,7 @@ const DEALS_LEVEL_LABELS = {
   full: 'Полный'
 };
 function renderAdminUsersList(users){
-  if(!users.length) return `<div style="font-size:12px;color:var(--muted);">Пока никто не заходил.</div>`;
+  if(!users.length) return `<div class="u-hint">Пока никто не заходил.</div>`;
   return users.map(u=>{
     const label = u.name || ('id '+u.id);
     const uname = u.username ? ' · @'+u.username : '';
@@ -2382,14 +2410,14 @@ function renderAdminUsersList(users){
     // Уровень доступа к учёту сделок — отдельно от доступа к самому
     // приложению: человек может считать машины, но не видеть сделок.
     const levels = u.isOwner || u.status!=='approved' ? '' : `
-      <div class="field" style="margin:8px 0 0;">
+      <div class="field" style="margin:var(--sp-2) 0 0;">
         <label>Учёт сделок</label>
         <select class="deals-level" data-uid="${u.id}">
           ${Object.keys(DEALS_LEVEL_LABELS).map(k=>`<option value="${k}" ${u.dealsLevel===k?'selected':''}>${DEALS_LEVEL_LABELS[k]}</option>`).join('')}
         </select>
       </div>`;
     return `<div class="histcard" style="cursor:default;display:block;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--sp-3);">
         <div class="l"><div class="m">${label}${uname}</div><div class="d" style="color:${statusColor};">${statusText}</div></div>
         <div class="r">${btn}</div>
       </div>
@@ -2448,8 +2476,8 @@ async function loadDealsExtraCard(){
     const dealersCount = (data.parties||[]).filter(p=>p.kind==='dealer').length;
     cardEl.innerHTML = `
       <h2>Сделки — дополнительно</h2>
-      <button class="btn secondary small" id="deArchive" style="margin-bottom:8px;">Архив сделок (${archivedCount})</button>
-      ${data.me && data.me.level==='full' ? `<button class="btn secondary small" id="deExport" style="margin-bottom:8px;">Выгрузить сделки и контрагентов</button>` : ''}
+      <button class="btn secondary small mb-2" id="deArchive">Архив сделок (${archivedCount})</button>
+      ${data.me && data.me.level==='full' ? `<button class="btn secondary small mb-2" id="deExport">Выгрузить сделки и контрагентов</button>` : ''}
       ${data.me && data.me.isOwner ? `<button class="btn secondary small" id="deWipeDealers" style="color:var(--danger);">Удалить всех дилеров (${dealersCount})</button>` : ''}
     `;
     document.getElementById('deArchive').onclick = openDealsArchiveSheet;
@@ -2469,10 +2497,10 @@ function openDealsArchiveSheet(){
         <div class="k">
           <span class="hint" style="color:var(--good);">завершена</span><br>
           ${escapeHtml(d.num)} · ${escapeHtml(d.partyName||'без физика')}<br>
-          <span style="font-size:11.5px;color:var(--muted);">${escapeHtml(d.car||'машина не указана')}</span>
+          <span style="font-size:var(--fs-xs);color:var(--muted);">${escapeHtml(d.car||'машина не указана')}</span>
         </div>
-      </div>`).join('') : '<div class="emptystate" style="padding:20px 0;">Архив пуст</div>'}
-    <button class="btn secondary" id="daClose" style="margin-top:10px;">Закрыть</button>
+      </div>`).join('') : '<div class="emptystate" style="padding:var(--sp-5) 0;">Архив пуст</div>'}
+    <button class="btn secondary mt-3" id="daClose">Закрыть</button>
   `);
   document.getElementById('daClose').onclick = closeSheet;
 }
@@ -2533,10 +2561,10 @@ async function runDealsExport(){
   if(downloaded===files.length){ toast('Выгружено '+downloaded+' файла — проверьте «Загрузки»', 3500); return; }
   openSheet(`
     <h3>Выгрузка</h3>
-    <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Этот браузер не дал ни поделиться файлом, ни скачать его. Скопируйте данные отсюда.</p>
-    <textarea readonly style="height:300px;font-family:'IBM Plex Mono',monospace;font-size:11px;width:100%;box-sizing:border-box;">${escapeHtml(JSON.stringify({deals,parties}))}</textarea>
-    <button class="btn" id="deExCopy" style="margin-top:10px;">Скопировать</button>
-    <button class="btn secondary" id="deExClose" style="margin-top:8px;">Закрыть</button>
+    <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-3);">Этот браузер не дал ни поделиться файлом, ни скачать его. Скопируйте данные отсюда.</p>
+    <textarea readonly style="height:300px;font-family:'IBM Plex Mono',monospace;font-size:var(--fs-xs);width:100%;box-sizing:border-box;">${escapeHtml(JSON.stringify({deals,parties}))}</textarea>
+    <button class="btn mt-3" id="deExCopy">Скопировать</button>
+    <button class="btn secondary mt-2" id="deExClose">Закрыть</button>
   `);
   document.getElementById('deExClose').onclick = closeSheet;
   document.getElementById('deExCopy').onclick = ()=>{
@@ -2547,8 +2575,8 @@ function openWipeDealersConfirm(){
   const dealers = (DEALS_EXTRA && DEALS_EXTRA.parties || []).filter(p=>p.kind==='dealer');
   openSheet(`
     <h3>Удалить всех дилеров?</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 18px;">Будет удалено записей: ${dealers.length}. Сделки и физики не удаляются — у физиков просто снимется отметка «через дилера». Отменить нельзя.</p>
-    <button class="btn" id="wdConfirm" style="background:var(--danger);margin-bottom:8px;">Да, удалить всех дилеров</button>
+    <p style="font-size:var(--fs-base);color:var(--muted);line-height:1.5;margin:0 0 var(--sp-4);">Будет удалено записей: ${dealers.length}. Сделки и физики не удаляются — у физиков просто снимется отметка «через дилера». Отменить нельзя.</p>
+    <button class="btn danger mb-2" id="wdConfirm">Да, удалить всех дилеров</button>
     <button class="btn secondary" id="wdCancel">Отмена</button>
   `);
   document.getElementById('wdCancel').onclick = closeSheet;
@@ -2591,7 +2619,7 @@ function deliveryTable(){
     <tr>
       <td class="name"><input type="text" class="dcname" data-i="${ci}" value="${city.name}" style="width:100px;"></td>
       ${city.prices.map((p,pi)=>`<td><input type="text" inputmode="numeric" class="dcprice" data-i="${ci}" data-p="${pi}" value="${formatNumInput(p)}" style="width:82px;"></td>`).join('')}
-      <td><button class="btn secondary small" data-del="${ci}" style="padding:5px 8px;">✕</button></td>
+      <td><button class="btn secondary small" data-del="${ci}" style="padding:var(--sp-1) var(--sp-2);">✕</button></td>
     </tr>`).join('');
   return `<div style="overflow-x:auto;"><table class="tablecfg"><thead><tr><th>Город</th>${heads}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -2619,7 +2647,7 @@ function openTextFieldSheet(f, key, label, onDone){
   openSheet(`
     <h3>${label}</h3>
     <textarea id="sheetTextarea" rows="9" style="width:100%;box-sizing:border-box;">${escapeHtml(f[key]||'')}</textarea>
-    <div class="row2" style="margin-top:14px;">
+    <div class="row2 mt-4">
       <button class="btn secondary" id="sheetCancelBtn">Отмена</button>
       <button class="btn" id="sheetDoneBtn">Готово</button>
     </div>
@@ -2680,7 +2708,7 @@ document.addEventListener('click', (e)=>{ if(e.target.closest && e.target.closes
 // истории одним листом, а не заставляем выбирать).
 async function openRateHistory(ids){
   const labels = ids.map(id => CONFIG.rates[id].label).join(' + ');
-  openSheet(`<h3>История курса</h3><div style="font-size:12px;color:var(--muted);margin:-4px 0 12px;">${labels}</div><div id="rateHistoryBody">Загрузка…</div>`);
+  openSheet(`<h3>История курса</h3><div style="font-size:var(--fs-sm);color:var(--muted);margin:calc(var(--sp-1) * -1) 0 var(--sp-3);">${labels}</div><div id="rateHistoryBody">Загрузка…</div>`);
   try{
     const results = await Promise.all(ids.map(id => fetch('/api/state', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -2689,7 +2717,7 @@ async function openRateHistory(ids){
     const body = document.getElementById('rateHistoryBody');
     const anyHistory = results.some(r => r.history.length);
     if(!anyHistory){ body.innerHTML = '<div class="emptystate"><div class="big">Пока пусто</div>История появится после следующих обновлений курса</div>'; return; }
-    body.innerHTML = results.map(({id, history}) => (ids.length>1 ? `<div style="font-weight:600;font-size:13px;margin:10px 0 4px;">${CONFIG.rates[id].label}</div>` : '') +
+    body.innerHTML = results.map(({id, history}) => (ids.length>1 ? `<div style="font-weight:600;font-size:var(--fs-base);margin:var(--sp-3) 0 var(--sp-1);">${CONFIG.rates[id].label}</div>` : '') +
       history.map(h => `<div class="rline"><div class="k">${new Date(h.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}<span class="hint">${h.source==='auto'?'автообновление':(h.source||'')}</span></div><div class="v mono">${h.value}</div></div>`).join('')
     ).join('');
   }catch(e){
@@ -2704,20 +2732,20 @@ function openRateEditor(id){
     <h3>${r.label}</h3>
     <a class="linkbtn" href="javascript:void(0)" id="openSrc">Открыть источник ↗</a>
     <div class="src-line">${r.sourceNote}</div>
-    ${r.problemFlag ? `<div class="notice" style="margin-top:12px;">Автообновление не применено: ${r.problemReason||'значение не прошло проверку'}${r.rejectedRaw!=null ? '. Получено: '+r.rejectedRaw+', оставлено прежнее: '+r.raw : ''}</div>` : ''}
-    <a class="linkbtn" href="javascript:void(0)" id="openHistory" style="margin-top:8px;">История курса →</a>
+    ${r.problemFlag ? `<div class="notice mt-3">Автообновление не применено: ${r.problemReason||'значение не прошло проверку'}${r.rejectedRaw!=null ? '. Получено: '+r.rejectedRaw+', оставлено прежнее: '+r.raw : ''}</div>` : ''}
+    <a class="linkbtn mt-2" href="javascript:void(0)" id="openHistory">История курса →</a>
     ${r.autoAvailable ? `
-      <div class="field" style="margin-top:14px;"><label>Обновляется дважды в сутки и при открытии приложения</label>
-        <div style="font-size:12.5px; color:var(--muted);">Последнее авто-значение: ${r.autoRaw!=null?r.autoRaw:'—'}${r.autoUpdatedAt ? ' · '+new Date(r.autoUpdatedAt).toLocaleString('ru-RU') : ''}</div>
+      <div class="field mt-4"><label>Обновляется дважды в сутки и при открытии приложения</label>
+        <div style="font-size:var(--fs-sm); color:var(--muted);">Последнее авто-значение: ${r.autoRaw!=null?r.autoRaw:'—'}${r.autoUpdatedAt ? ' · '+new Date(r.autoUpdatedAt).toLocaleString('ru-RU') : ''}</div>
       </div>
-      <div class="toggle-row field" style="margin-top:10px;">
-        <div style="font-size:12.5px;">Ручная корректировка ${r.manualOverride?'(активна — авто-курс игнорируется)':''}</div>
+      <div class="toggle-row field mt-3">
+        <div class="u-hint">Ручная корректировка ${r.manualOverride?'(активна — авто-курс игнорируется)':''}</div>
         <div class="switch ${r.manualOverride?'on':''}" id="manualToggle"><div class="knob"></div></div>
       </div>
-    ` : `<div class="notice warn" style="margin-top:14px;">Автообновление недоступно для этого источника — вводите значение вручную после проверки по ссылке выше.</div>`}
+    ` : `<div class="notice warn mt-4">Автообновление недоступно для этого источника — вводите значение вручную после проверки по ссылке выше.</div>`}
     ${field('Значение (сырое)', `<input type="number" id="r_raw" value="${r.raw}" step="0.0001" ${r.autoAvailable && !r.manualOverride ? 'disabled' : ''}>`)}
-    ${r.adjustment ? `<div style="font-size:12px;color:var(--muted);margin:-4px 0 10px;">Применяется корректировка: <b style="color:var(--text)">${r.adjustmentLabel}</b> → итоговое значение <b id="r_computed" style="color:var(--text)">${(r.raw+r.adjustment).toFixed(4)}</b></div>` : ''}
-    <button class="btn" id="saveRateBtn" style="margin-top:6px;">Сохранить</button>
+    ${r.adjustment ? `<div style="font-size:var(--fs-sm);color:var(--muted);margin:calc(var(--sp-1) * -1) 0 var(--sp-3);">Применяется корректировка: <b style="color:var(--text)">${r.adjustmentLabel}</b> → итоговое значение <b id="r_computed" style="color:var(--text)">${(r.raw+r.adjustment).toFixed(4)}</b></div>` : ''}
+    <button class="btn" id="saveRateBtn" style="margin-top:var(--sp-2);">Сохранить</button>
   `);
   document.getElementById('openSrc').onclick = ()=> openExternal(r.sourceUrl);
   document.getElementById('openHistory').onclick = ()=> openRateHistory([id]);
@@ -2798,10 +2826,10 @@ function renderGate(kind, info){
   if(kind === 'no-telegram'){
     c.innerHTML = `<div class="emptystate"><div class="big">Откройте через Telegram</div>Это приложение работает только внутри Telegram — откройте вашего бота и нажмите кнопку меню (или ссылку на мини-приложение).</div>`;
   } else if(kind === 'pending'){
-    c.innerHTML = `<div class="emptystate"><div class="big">Доступ ожидает подтверждения</div>${info.name?('Здравствуйте, '+info.name+'. '):''}Владелец увидит запрос во вкладке «Настройки» и откроет доступ. Загляните чуть позже.<br><button class="btn secondary" id="recheckBtn" style="margin-top:16px;">Проверить ещё раз</button></div>`;
+    c.innerHTML = `<div class="emptystate"><div class="big">Доступ ожидает подтверждения</div>${info.name?('Здравствуйте, '+info.name+'. '):''}Владелец увидит запрос во вкладке «Настройки» и откроет доступ. Загляните чуть позже.<br><button class="btn secondary mt-4" id="recheckBtn">Проверить ещё раз</button></div>`;
     document.getElementById('recheckBtn').onclick = ()=> location.reload();
   } else {
-    c.innerHTML = `<div class="emptystate"><div class="big">Не удалось проверить доступ</div>${info.error || 'Неизвестная ошибка'}<br><button class="btn secondary" id="recheckBtn" style="margin-top:16px;">Повторить</button></div>`;
+    c.innerHTML = `<div class="emptystate"><div class="big">Не удалось проверить доступ</div>${info.error || 'Неизвестная ошибка'}<br><button class="btn secondary mt-4" id="recheckBtn">Повторить</button></div>`;
     document.getElementById('recheckBtn').onclick = ()=> location.reload();
   }
 }

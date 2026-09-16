@@ -19,6 +19,25 @@
   --warn:#d9b25f; --warn-soft:#d9b25f22; --radius:14px;
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
   --tg-top-pad: 0px;
+  /* Типографика — 7 ступеней, база 16px */
+  --fs-xs:   0.6875rem;  /* 11px  — подписи, хинты, служебные пометки */
+  --fs-sm:   0.75rem;    /* 12px  — метки полей, шапки карточек */
+  --fs-base: 0.875rem;   /* 14px  — основной текст, значения полей */
+  --fs-md:   1rem;       /* 16px  — имена и названия в списках */
+  --fs-lg:   1.125rem;   /* 18px  — заголовки экранов и шитов */
+  --fs-xl:   1.375rem;   /* 22px  — крупные числа */
+  --fs-2xl:  1.75rem;    /* 28px  — итоговая сумма в чеке */
+  /* Отступы — 6 ступеней */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  /* Радиусы */
+  --r-sm:   10px;  /* поля ввода, мелкие кнопки */
+  --r-md:   12px;  /* карточки в списках */
+  --r-pill: 99px;  /* чипы, тумблеры */
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
@@ -26,95 +45,103 @@ body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,san
 .app{ max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(64px + var(--safe-bottom)); }
 .mono{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
 .topbar{ padding:calc(14px + var(--safe-top) + var(--tg-top-pad)) 16px 10px; position:sticky; top:0; z-index:20; background:linear-gradient(180deg, var(--bg) 72%, transparent); }
-.topbar h1{ font-family:'Fraunces',serif; font-weight:600; font-size:21px; margin:0 0 2px; }
-.topbar .sub{color:var(--muted); font-size:12.5px;}
-.content{ padding:0 16px 20px; flex:1; }
+.topbar h1{ font-family:'Fraunces',serif; font-weight:600; font-size:var(--fs-xl); margin:0 0 2px; }
+.topbar .sub{color:var(--muted); font-size:var(--fs-sm);}
+.content{ padding:0 var(--sp-4) var(--sp-5); flex:1; }
 
-.tabs{ display:flex; gap:6px; padding:6px 0 14px; overflow-x:auto; scrollbar-width:none; }
-.tab{ background:var(--panel); border:1px solid var(--border); color:var(--muted); border-radius:99px; padding:8px 14px; font-size:13px; white-space:nowrap; cursor:pointer; font-family:inherit; }
+.tabs{ display:flex; gap:var(--sp-2); padding:var(--sp-2) 0 var(--sp-4); overflow-x:auto; scrollbar-width:none; }
+.tab{ background:var(--panel); border:1px solid var(--border); color:var(--muted); border-radius:var(--r-pill); padding:var(--sp-2) var(--sp-4); font-size:var(--fs-base); white-space:nowrap; cursor:pointer; font-family:inherit; }
 .tab.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--text); }
-.seg{ display:flex; background:var(--panel-2); border-radius:9px; padding:3px; border:1px solid var(--border); }
-.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:8px 4px; border-radius:7px; font-size:12.5px; cursor:pointer; font-family:inherit; }
+.seg{ display:flex; background:var(--panel-2); border-radius:var(--r-sm); padding:var(--sp-1); border:1px solid var(--border); }
+.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:var(--sp-2) var(--sp-1); border-radius:7px; font-size:var(--fs-sm); cursor:pointer; font-family:inherit; }
 .seg button.active{ background:var(--accent); color:#fff; font-weight:600; }
 
-.card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:12px; }
-.card h2{ font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 12px; font-weight:600; }
+.card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:var(--sp-4); margin-bottom:var(--sp-3); }
+.card h2{ font-size:var(--fs-base); text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 var(--sp-3); font-weight:600; }
 
-.btn{ width:100%; background:var(--accent); color:#fff; border:none; border-radius:11px; padding:13px; font-size:14.5px; font-weight:600; cursor:pointer; font-family:inherit; }
+.btn{ width:100%; background:var(--accent); color:#fff; border:none; border-radius:var(--r-sm); padding:var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; font-family:inherit; }
 .btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
-.btn.small{ padding:9px; font-size:12.5px; }
+.btn.small{ padding:var(--sp-2); font-size:var(--fs-sm); }
 .btn.danger{ background:var(--danger); }
-.row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3);}
 
-.field{margin-bottom:12px;}
-.field label{ display:block; font-size:12.5px; color:var(--muted); margin-bottom:5px; }
+.field{margin-bottom:var(--sp-3);}
+.field label{ display:block; font-size:var(--fs-sm); color:var(--muted); margin-bottom:var(--sp-1); }
 input[type=text], input[type=tel], select, textarea{
   width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
-  border-radius:9px; padding:10px 11px; font-size:14.5px; font-family:inherit; outline:none;
+  border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-3); font-size:var(--fs-base); font-family:inherit; outline:none;
 }
 textarea{resize:vertical; min-height:64px;}
 input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
-.dealrow{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 13px; margin-bottom:0; cursor:pointer; touch-action:pan-y; will-change:transform; }
-.dealrow .top{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
-.dealrow .num{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--accent); }
-.dealrow .idle{ font-size:11.5px; color:var(--muted); white-space:nowrap; }
+.dealrow{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-3) var(--sp-3); margin-bottom:0; cursor:pointer; touch-action:pan-y; will-change:transform; }
+.dealrow .top{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--sp-3); }
+.dealrow .num{ font-family:'IBM Plex Mono',monospace; font-size:var(--fs-sm); color:var(--accent); }
+.dealrow .idle{ font-size:var(--fs-xs); color:var(--muted); white-space:nowrap; }
 .dealrow .idle.warn{ color:var(--warn); }
 .dealrow .idle.bad{ color:var(--danger); }
 .dealrow .idle.good{ color:var(--teal); }
-.dealrow .name{ font-weight:600; font-size:14.5px; margin-top:4px; }
-.dealrow .car{ color:var(--muted); font-size:12.5px; margin-top:2px; }
-.dealrow .foot{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px; }
-.dealrow-wrap{ position:relative; border-radius:12px; overflow:hidden; margin-bottom:10px; }
+.dealrow .name{ font-weight:600; font-size:var(--fs-base); margin-top:var(--sp-1); }
+.dealrow .car{ color:var(--muted); font-size:var(--fs-sm); margin-top:2px; }
+.dealrow .foot{ display:flex; justify-content:space-between; align-items:center; gap:var(--sp-2); margin-top:var(--sp-2); }
+.dealrow-wrap{ position:relative; border-radius:var(--r-md); overflow:hidden; margin-bottom:var(--sp-3); }
 .dealrow-wrap .dealrow{ margin-bottom:0; }
-.dealrow-del{ position:absolute; top:0; right:0; bottom:0; width:88px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; cursor:pointer; }
+.dealrow-del{ position:absolute; top:0; right:0; bottom:0; width:88px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:var(--fs-base); font-weight:600; cursor:pointer; }
 .folderrow{ display:flex; justify-content:space-between; align-items:center; }
-.folderrow .arrow{ color:var(--muted); font-size:18px; }
-.chip{ display:inline-block; font-size:11.5px; padding:3px 9px; border-radius:99px; background:var(--panel-2); border:1px solid var(--border); color:var(--muted); }
+.folderrow .arrow{ color:var(--muted); font-size:var(--fs-lg); }
+.chip{ display:inline-block; font-size:var(--fs-xs); padding:var(--sp-1) var(--sp-2); border-radius:var(--r-pill); background:var(--panel-2); border:1px solid var(--border); color:var(--muted); }
 .chip.stage{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
 .chip.problem{ background:var(--danger-soft); border-color:var(--danger); color:var(--danger); }
 .chip.arch{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
 
-.stage{ display:flex; align-items:flex-start; gap:10px; padding:11px 0; border-bottom:1px solid var(--border); }
+.stage{ display:flex; align-items:flex-start; gap:var(--sp-3); padding:var(--sp-3) 0; border-bottom:1px solid var(--border); }
 .stage:last-child{border-bottom:none;}
-.stage .mark{ flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:1px solid var(--border); background:var(--panel-2); color:var(--muted); font-size:13px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.stage .mark{ flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:1px solid var(--border); background:var(--panel-2); color:var(--muted); font-size:var(--fs-base); display:flex; align-items:center; justify-content:center; cursor:pointer; }
 .stage .mark.done{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
 .stage .mark.skip{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
 .stage .mark.wip{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
 .chip.wip{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
 .stage .body{flex:1; min-width:0;}
-.stage .lbl{ font-size:14px; font-weight:500; }
-.stage .meta{ font-size:11.5px; color:var(--muted); margin-top:2px; }
-.stage .note{ font-size:12.5px; color:var(--muted); margin-top:4px; white-space:pre-wrap; }
+.stage .lbl{ font-size:var(--fs-base); font-weight:500; }
+.stage .meta{ font-size:var(--fs-xs); color:var(--muted); margin-top:2px; }
+.stage .note{ font-size:var(--fs-sm); color:var(--muted); margin-top:var(--sp-1); white-space:pre-wrap; }
 
-.kv{ display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
+.kv{ display:flex; justify-content:space-between; gap:var(--sp-3); padding:var(--sp-2) 0; border-bottom:1px solid var(--border); font-size:var(--fs-base); }
 .kv:last-child{border-bottom:none;}
 .kv .k{ color:var(--muted); flex:0 0 auto; }
 .kv .v{ text-align:right; word-break:break-word; }
 
-.logitem{ font-size:12.5px; padding:7px 0; border-bottom:1px solid var(--border); }
+.logitem{ font-size:var(--fs-sm); padding:var(--sp-2) 0; border-bottom:1px solid var(--border); }
 .logitem:last-child{border-bottom:none;}
 .logitem .who{ color:var(--muted); }
 
-.emptystate{ text-align:center; color:var(--muted); font-size:13px; padding:40px 20px; line-height:1.6; }
-.emptystate .big{ font-family:'Fraunces',serif; font-size:16px; color:var(--text); margin-bottom:6px; }
-.notice{ background:var(--danger-soft); border:1px solid var(--danger); color:var(--danger); border-radius:9px; padding:10px 12px; font-size:12.5px; margin-bottom:12px; line-height:1.45; }
+.emptystate{ text-align:center; color:var(--muted); font-size:var(--fs-base); padding:var(--sp-6) var(--sp-5); line-height:1.6; }
+.emptystate .big{ font-family:'Fraunces',serif; font-size:var(--fs-md); color:var(--text); margin-bottom:var(--sp-2); }
+.notice{ background:var(--danger-soft); border:1px solid var(--danger); color:var(--danger); border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-3); font-size:var(--fs-sm); margin-bottom:var(--sp-3); line-height:1.45; }
 .notice.warn{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
 
 .sheet-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; justify-content:center; z-index:50; }
 .sheet-overlay.open{display:flex;}
 .sheet{ background:var(--bg); width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border); padding:14px 16px calc(24px + var(--safe-bottom)); }
-.sheet h3{ font-family:'Fraunces',serif; font-weight:600; font-size:17px; margin:6px 0 12px; }
-.toast{ position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 16px; border-radius:9px; font-size:13px; z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; max-width:88%; text-align:center; }
+.sheet h3{ font-family:'Fraunces',serif; font-weight:600; font-size:var(--fs-lg); margin:var(--sp-2) 0 var(--sp-3); }
+.toast{ position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:var(--sp-3) var(--sp-4); border-radius:var(--r-sm); font-size:var(--fs-base); z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; max-width:88%; text-align:center; }
 .toast.show{opacity:1;}
 
 /* Нижнее меню — один в один как в калькуляторе: человек переходит между
    страницами и не должен замечать, что это разные документы. */
 .bottomnav{ position:fixed; bottom:0; left:0; right:0; z-index:30; background:rgba(8,13,18,0.92); backdrop-filter:blur(10px); border-top:1px solid var(--border); padding-bottom:var(--safe-bottom); }
 .bottomnav .inner{ max-width:480px; margin:0 auto; display:flex; }
-.navbtn{ flex:1; background:none; border:none; color:var(--muted); padding:11px 4px 9px; font-size:10.5px; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; font-family:'Inter',sans-serif; }
+.navbtn{ flex:1; background:none; border:none; color:var(--muted); padding:var(--sp-3) var(--sp-1) var(--sp-2); font-size:var(--fs-xs); display:flex; flex-direction:column; align-items:center; gap:var(--sp-1); cursor:pointer; font-family:'Inter',sans-serif; }
 .navbtn.active{color:var(--accent);}
 .navicon{width:20px; height:20px; display:block;}
+
+/* Утилитарные классы — шкала отступов/шрифтов, см. tools/mapgen.sh note in CLAUDE.md */
+.mt-2{margin-top:var(--sp-2);}   .mb-2{margin-bottom:var(--sp-2);}
+.mt-3{margin-top:var(--sp-3);}   .mb-3{margin-bottom:var(--sp-3);}
+.mt-4{margin-top:var(--sp-4);}   .mb-4{margin-bottom:var(--sp-4);}
+.u-hint{font-size:var(--fs-sm); color:var(--muted);}
+.u-note{font-size:var(--fs-base); color:var(--muted); line-height:1.5; margin:0 0 var(--sp-5);}
+.btn.compact{width:auto; padding:var(--sp-1) var(--sp-2);}
 </style>
 </head>
 <body>
@@ -388,9 +415,9 @@ function bindDealSwipe(card){
 function openDeleteDealConfirm(id, name){
   openSheet(`
     <h3>Удалить сделку?</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 18px;">${esc(name||'Без названия')} — сделка удалится безвозвратно и целиком: этапы, привязанные расчёты, история изменений. В архив она не попадёт, туда идут только завершённые. Если это была единственная сделка физика, его карточка тоже удалится.</p>
+    <p style="font-size:var(--fs-base);color:var(--muted);line-height:1.5;margin:0 0 var(--sp-4);">${esc(name||'Без названия')} — сделка удалится безвозвратно и целиком: этапы, привязанные расчёты, история изменений. В архив она не попадёт, туда идут только завершённые. Если это была единственная сделка физика, его карточка тоже удалится.</p>
     <button class="btn danger" id="delConfirm">Да, удалить навсегда</button>
-    <button class="btn secondary" id="delCancel" style="margin-top:8px;">Отмена</button>
+    <button class="btn secondary mt-2" id="delCancel">Отмена</button>
   `);
   document.getElementById('delCancel').onclick = closeSheet;
   document.getElementById('delConfirm').onclick = async ()=>{
@@ -495,7 +522,7 @@ function renderFlatDeals(c){
       <button class="tab ${state.tab==='paperwork'?'active':''}" data-t="paperwork">Оформление</button>
     </div>`;
 
-  c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` +
+  c.innerHTML = `<button class="btn mb-4" id="newDeal">+ Новая сделка</button>` +
     tabs + dealRowsHtml(rows, {emptySub:'Создайте первую — кнопка выше.'});
 
   c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
@@ -508,7 +535,7 @@ function renderArchiveList(c){
     .sort((a,b)=> (b.stageAt||b.createdAt||0) - (a.stageAt||a.createdAt||0));
   document.getElementById('subtitle').textContent = rows.length ? rows.length + ' в архиве' : 'Пока пусто';
   c.innerHTML = dealRowsHtml(rows, {emptyBig:'Архив пуст', emptySub:'Сюда попадают сделки после отметки «Выдан авто».'}) +
-    `<button class="btn secondary" id="backToWork" style="margin-top:10px;">← К сделкам в работе</button>`;
+    `<button class="btn secondary mt-3" id="backToWork">← К сделкам в работе</button>`;
   bindDealRows(c);
   document.getElementById('backToWork').onclick = ()=>{ state.archive = false; renderList(); };
 }
@@ -539,14 +566,14 @@ function renderDealerFolders(c){
           <div class="name" style="margin-top:0;">${esc(x.dealer.name)}</div>
           <div class="car">${esc(x.dealer.phone||'без телефона')}${x.dealer.telegramUsername?' · @'+esc(x.dealer.telegramUsername):''}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:var(--sp-2);">
           <span class="chip">${x.count} в работе</span>
           <span class="arrow">›</span>
         </div>
       </div>
     </div>`).join('') : `<div class="emptystate"><div class="big">Пока пусто</div>Папка дилера появится здесь, как только у него будет хоть одна сделка в работе.</div>`;
 
-  c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` + tabs + list;
+  c.innerHTML = `<button class="btn mb-4" id="newDeal">+ Новая сделка</button>` + tabs + list;
   c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
   c.querySelectorAll('[data-dealer]').forEach(el=> el.onclick = ()=>{ state.dealerFolder = el.dataset.dealer; renderDealerFolder(c); });
   document.getElementById('newDeal').onclick = openNewDealSheet;
@@ -560,13 +587,13 @@ function renderDealerFolder(c){
     .sort((a,b)=> (a.stageAt||a.createdAt||0) - (b.stageAt||b.createdAt||0));
   document.getElementById('title').textContent = dealer.name;
   document.getElementById('subtitle').textContent = rows.length + ' в работе';
-  c.innerHTML = `<button class="btn secondary small" id="dfBack" style="margin-bottom:12px;">← К дилерам</button>
+  c.innerHTML = `<button class="btn secondary small mb-3" id="dfBack">← К дилерам</button>
     <div class="card">
       <h2>Дилер</h2>
       <div class="kv"><span class="k">Телефон</span><span class="v">${esc(dealer.phone||'—')}</span></div>
       ${dealer.telegramUsername?`<div class="kv"><span class="k">Telegram</span><span class="v">@${esc(dealer.telegramUsername)}</span></div>`:''}
       ${dealer.notes?`<div class="kv"><span class="k">Заметки</span><span class="v">${esc(dealer.notes)}</span></div>`:''}
-      ${(!auth_isRestricted())?`<button class="btn secondary small" id="dfEdit" style="margin-top:12px;">Редактировать</button>`:''}
+      ${(!auth_isRestricted())?`<button class="btn secondary small mt-3" id="dfEdit">Редактировать</button>`:''}
     </div>` +
     dealRowsHtml(rows, {emptyBig:'У этого дилера пока нет сделок в работе'});
   document.getElementById('dfBack').onclick = ()=>{ state.dealerFolder=null; renderDealerFolders(c); };
@@ -601,7 +628,7 @@ function openNewDealSheet(presetDealerId){
       <input type="text" id="ndName" placeholder="Иванов Иван Иванович">
     </div>
     <button class="btn" id="ndNext">Дальше</button>
-    <button class="btn secondary" id="ndCancel" style="margin-top:8px;">Отмена</button>
+    <button class="btn secondary mt-2" id="ndCancel">Отмена</button>
   `);
   document.getElementById('ndCancel').onclick = closeSheet;
   document.getElementById('ndNext').onclick = ()=>{
@@ -623,13 +650,13 @@ function openNewDealSheet(presetDealerId){
 function askSamePerson(found, type, attempted){
   openSheet(`
     <h3>Такой телефон уже есть</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 14px;">
+    <p style="font-size:var(--fs-base);color:var(--muted);line-height:1.5;margin:0 0 var(--sp-4);">
       ${esc(attempted.phone)} — записан как <b>${esc(found.name)}</b>${found.city?' ('+esc(found.city)+')':''}.
       Это тот же человек или новый физик с тем же номером?
     </p>
     <button class="btn" id="sameYes">Тот же — создать сделку для него</button>
-    <button class="btn secondary" id="sameNo" style="margin-top:8px;">Новый физик — исправить телефон</button>
-    <button class="btn secondary" id="sameCancel" style="margin-top:8px;">Отмена</button>
+    <button class="btn secondary mt-2" id="sameNo">Новый физик — исправить телефон</button>
+    <button class="btn secondary mt-2" id="sameCancel">Отмена</button>
   `);
   document.getElementById('sameCancel').onclick = closeSheet;
   document.getElementById('sameYes').onclick = ()=> createDeal(type, found);
@@ -670,8 +697,8 @@ function openPartySheet(initial, onSaved, opts){
         ${dealers.map(d=>`<option value="${esc(d.id)}" ${p.dealerId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
       </select>
     </div>
-    <button class="btn secondary small" id="pNewDealer" style="margin-bottom:10px;">+ Новый дилер</button>
-    <div id="passportToggle" style="cursor:pointer;color:var(--accent);font-size:13px;margin:4px 0 10px;">Данные документов ▴</div>
+    <button class="btn secondary small" id="pNewDealer" style="margin-bottom:var(--sp-3);">+ Новый дилер</button>
+    <div id="passportToggle" style="cursor:pointer;color:var(--accent);font-size:var(--fs-base);margin:var(--sp-1) 0 var(--sp-3);">Данные документов ▴</div>
     <div id="passportFields">
       <div class="field"><label>Телефон</label><input type="tel" id="pPhone" value="${esc(p.phone||'')}" inputmode="tel" placeholder="+7 999 123 45 67"></div>
       <div class="field"><label>Пол</label>
@@ -685,7 +712,7 @@ function openPartySheet(initial, onSaved, opts){
         <div class="field"><label>Номер паспорта</label><input type="text" id="pPassNum" inputmode="numeric" placeholder="000000" value="${esc(p.passportNumber||'')}"></div>
       </div>
       <div class="field"><label>Дата рождения</label><input type="text" id="pBirth" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${esc(p.birthDate||'')}"></div>
-      <div class="field" style="margin-bottom:5px;"><label>Паспорт выдан</label></div>
+      <div class="field" style="margin-bottom:var(--sp-1);"><label>Паспорт выдан</label></div>
       <div class="row2">
         <div class="field"><label>Кем выдан</label><input type="text" id="pPassBy" value="${esc(p.passportIssuedBy||'')}"></div>
         <div class="field"><label>Дата выдачи</label><input type="text" id="pPassDate" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${esc(p.passportIssuedDate||'')}"></div>
@@ -701,7 +728,7 @@ function openPartySheet(initial, onSaved, opts){
 
     <div class="field"><label>Заметки</label><textarea id="pNotes">${esc(p.notes||'')}</textarea></div>
     <button class="btn" id="pSave">Сохранить</button>
-    <button class="btn secondary" id="pCancel" style="margin-top:8px;">Отмена</button>
+    <button class="btn secondary mt-2" id="pCancel">Отмена</button>
   `);
   const passToggle = document.getElementById('passportToggle');
   if(passToggle) passToggle.onclick = ()=>{
@@ -833,7 +860,7 @@ function renderDeal(){
   }).join('');
 
   c.innerHTML = `
-    <button class="btn secondary small" id="dBack" style="margin-bottom:12px;">← К списку</button>
+    <button class="btn secondary small mb-3" id="dBack">← К списку</button>
     ${d.problem && d.problem.on ? `<div class="notice">Проблема: ${esc(d.problem.reason || 'без описания')}</div>` : ''}
     ${d.archived ? `<div class="notice warn">Сделка завершена и находится в архиве.</div>` : ''}
 
@@ -851,7 +878,7 @@ function renderDeal(){
       ${d.dealDate ? `<div class="kv"><span class="k">Дата договора</span><span class="v">${esc(d.dealDate)}</span></div>` : ''}
       ${d.wishes ? `<div class="kv"><span class="k">Пожелания</span><span class="v">${esc(d.wishes)}</span></div>` : ''}
       ${d.notes ? `<div class="kv"><span class="k">Заметки</span><span class="v">${esc(d.notes)}</span></div>` : ''}
-      <div class="row2" style="margin-top:12px;">
+      <div class="row2 mt-3">
         ${state.canWrite ? `<button class="btn secondary small" id="dEdit">Редактировать</button>` : '<div></div>'}
         ${party ? `<button class="btn secondary small" id="dToPartyProfile">Профиль и документы физика</button>` : ''}
       </div>
@@ -860,7 +887,7 @@ function renderDeal(){
     <div class="card">
       <h2>Этапы</h2>
       ${stagesHtml}
-      ${state.canWrite ? `<div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Нажмите на кружок, чтобы отметить этап.</div>` : ''}
+      ${state.canWrite ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:var(--sp-3);">Нажмите на кружок, чтобы отметить этап.</div>` : ''}
     </div>
 
     <div class="card">
@@ -868,18 +895,18 @@ function renderDeal(){
       ${(d.calcs||[]).length ? (d.calcs||[]).map((x,i)=>`
         <div class="kv" style="align-items:flex-start;">
           <span class="k">
-            ${x.booked?'<span class="chip stage" style="margin-bottom:4px;display:inline-block;">забронирован</span><br>':''}
-            ${esc(x.model||'без названия')}${x.route?' · '+(ROUTE_FLAGS[x.route]||''):''}<br><span style="font-size:11.5px;">${fmtDate(x.at)}</span>
+            ${x.booked?'<span class="chip stage" style="margin-bottom:var(--sp-1);display:inline-block;">забронирован</span><br>':''}
+            ${esc(x.model||'без названия')}${x.route?' · '+(ROUTE_FLAGS[x.route]||''):''}<br><span style="font-size:var(--fs-xs);">${fmtDate(x.at)}</span>
           </span>
           <span class="v">
             ${fmtMoney(x.total)} ₽<br>
-            ${state.canWrite ? `<button class="btn secondary small" data-book="${i}" style="width:auto;padding:4px 9px;margin-top:6px;">${x.booked?'снять бронь':'забронировать'}</button>` : ''}
-            ${state.canWrite ? `<button class="btn secondary small" data-unlink="${i}" style="width:auto;padding:4px 9px;margin-top:6px;margin-left:6px;">убрать</button>` : ''}
-            ${state.canWrite && x.booked && x.form ? `<br><button class="btn secondary small" data-recalc="${i}" style="width:auto;padding:4px 9px;margin-top:6px;">пересчитать по курсам</button>` : ''}
+            ${state.canWrite ? `<button class="btn secondary small compact" data-book="${i}" style="margin-top:var(--sp-2);">${x.booked?'снять бронь':'забронировать'}</button>` : ''}
+            ${state.canWrite ? `<button class="btn secondary small compact" data-unlink="${i}" style="margin-top:var(--sp-2);margin-left:var(--sp-2);">убрать</button>` : ''}
+            ${state.canWrite && x.booked && x.form ? `<br><button class="btn secondary small compact" data-recalc="${i}" style="margin-top:var(--sp-2);">пересчитать по курсам</button>` : ''}
           </span>
-        </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Расчёты не привязаны.</div>'}
-      ${state.canWrite ? `<button class="btn secondary small" id="dLinkCalc" style="margin-top:12px;">Привязать расчёт из истории</button>` : ''}
-      ${(d.calcs||[]).length>1 ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">Забронированный расчёт — тот, что едет на импорт по этой сделке. После отметки «Оплата инвойса» пройденной остальные расчёты удалятся сами.</div>` : ''}
+        </div>`).join('') : '<div class="u-hint">Расчёты не привязаны.</div>'}
+      ${state.canWrite ? `<button class="btn secondary small mt-3" id="dLinkCalc">Привязать расчёт из истории</button>` : ''}
+      ${(d.calcs||[]).length>1 ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:var(--sp-2);">Забронированный расчёт — тот, что едет на импорт по этой сделке. После отметки «Оплата инвойса» пройденной остальные расчёты удалятся сами.</div>` : ''}
     </div>
 
     ${state.canWrite ? `<div class="card">
@@ -891,7 +918,7 @@ function renderDeal(){
       <h2>История изменений</h2>
       ${state.log.length ? state.log.slice().reverse().map(l=>`
         <div class="logitem"><div>${esc(l.text)}</div><div class="who">${esc(l.name)} · ${fmtDateTime(l.at)}</div></div>
-      `).join('') : '<div style="font-size:12.5px;color:var(--muted);">Пока пусто.</div>'}
+      `).join('') : '<div class="u-hint">Пока пусто.</div>'}
     </div>
   `;
 
@@ -955,7 +982,7 @@ function openStageSheet(key){
     <div class="field"><label>Заметка</label><textarea id="stNote">${esc(mark.note||'')}</textarea></div>
     ${st.final?`<div class="notice warn">Отметка «${esc(st.label)}» переводит сделку в архив.</div>`:''}
     <button class="btn" id="stSave">Сохранить</button>
-    <button class="btn secondary" id="stCancel" style="margin-top:8px;">Отмена</button>
+    <button class="btn secondary mt-2" id="stCancel">Отмена</button>
   `);
   bindMask('stDate', formatDateDdMmYyyy);
   document.getElementById('stCancel').onclick = closeSheet;
@@ -1003,7 +1030,7 @@ function openProblemSheet(){
     <h3>Проблема или пауза</h3>
     <div class="field"><label>Причина</label><textarea id="prReason" placeholder="Например: ждём документы от продавца"></textarea></div>
     <button class="btn danger" id="prSave">Отметить</button>
-    <button class="btn secondary" id="prCancel" style="margin-top:8px;">Отмена</button>
+    <button class="btn secondary mt-2" id="prCancel">Отмена</button>
   `);
   document.getElementById('prCancel').onclick = closeSheet;
   document.getElementById('prSave').onclick = ()=>{
@@ -1041,11 +1068,11 @@ function openDealEditSheet(){
         ${state.users.map(u=>`<option value="${esc(u.id)}" ${(d.responsible&&d.responsible.uid)===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}
         <option value="__manual__">Вписать имя вручную…</option>
       </select>
-      <input type="text" id="eRespName" placeholder="Имя ответственного" style="margin-top:8px;display:none;">
+      <input type="text" id="eRespName" placeholder="Имя ответственного" style="margin-top:var(--sp-2);display:none;">
     </div>` : ''}
     <div class="field"><label>Заметки</label><textarea id="eNotes">${esc(d.notes||'')}</textarea></div>
     <button class="btn" id="eSave">Сохранить</button>
-    <button class="btn secondary" id="eCancel" style="margin-top:8px;">Отмена</button>
+    <button class="btn secondary mt-2" id="eCancel">Отмена</button>
   `);
   const respSel = document.getElementById('eResp');
   if(respSel){
@@ -1130,7 +1157,7 @@ async function openCalcPicker(){
   const linked = (state.deal.calcs || []).map(c=>c.id);
   openSheet(`
     <h3>Привязать расчёт</h3>
-    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Из истории калькулятора. Сохраняем снимок расчёта — он останется в сделке, даже когда запись выпадет из истории.</p>
+    <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-3);">Из истории калькулятора. Сохраняем снимок расчёта — он останется в сделке, даже когда запись выпадет из истории.</p>
     ${history.slice(0, 60).map(h=>`
       <div class="dealrow" data-calc="${esc(h.id)}" style="${linked.indexOf(String(h.id))>=0?'opacity:.45;':''}">
         <div class="top"><span class="num">${esc(ROUTE_LABELS[h.route]||h.route||'')}</span><span class="idle">${fmtDate(new Date(h.date).getTime())}</span></div>
@@ -1205,7 +1232,7 @@ async function openParty(id){
       ['ИНН', p.inn], ['СНИЛС', p.snils], ['Адрес регистрации', p.registrationAddress]
     ].filter(([,v])=>v) : [];
     c.innerHTML = `
-      <button class="btn secondary small" id="prBack" style="margin-bottom:12px;">← Назад</button>
+      <button class="btn secondary small mb-3" id="prBack">← Назад</button>
       <div class="card">
         <h2>${p.kind==='dealer'?'Дилер':'Физик'}</h2>
         ${p.kind==='dealer' ? `
@@ -1215,7 +1242,7 @@ async function openParty(id){
         <div class="kv"><span class="k">Город</span><span class="v">${esc(p.city||'—')}</span></div>
         ${dealer?`<div class="kv"><span class="k">Через дилера</span><span class="v">${esc(dealer.name)}</span></div>`:''}`}
         ${p.notes?`<div class="kv"><span class="k">Заметки</span><span class="v">${esc(p.notes)}</span></div>`:''}
-        <button class="btn secondary small" id="prEdit" style="margin-top:12px;">Редактировать</button>
+        <button class="btn secondary small mt-3" id="prEdit">Редактировать</button>
       </div>
       ${passportRows.length ? `<div class="card">
         <h2>Данные документов</h2>
@@ -1227,12 +1254,12 @@ async function openParty(id){
           <div class="dealrow" data-id="${esc(d.id)}">
             <div class="top"><span class="num">${esc(d.num)}</span><span class="idle ${d.archived?'good':''}">${d.archived?'завершена':''}</span></div>
             <div class="car">${esc(d.car||'машина не указана')}</div>
-          </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Сделок пока нет.</div>'}
+          </div>`).join('') : '<div class="u-hint">Сделок пока нет.</div>'}
       </div>
       ${p.kind==='dealer' ? `<div class="card">
         <h2>Физики этого дилера (${data.linked.length})</h2>
-        ${data.linked.length ? data.linked.map(x=>`<div class="dealrow" data-pid="${esc(x.id)}"><div class="name">${esc(x.name)}</div><div class="car">${esc(x.phone||'')}</div></div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Пока никого.</div>'}
-        <button class="btn secondary small" id="prAddLinked" style="margin-top:10px;">+ Новая сделка от этого дилера</button>
+        ${data.linked.length ? data.linked.map(x=>`<div class="dealrow" data-pid="${esc(x.id)}"><div class="name">${esc(x.name)}</div><div class="car">${esc(x.phone||'')}</div></div>`).join('') : '<div class="u-hint">Пока никого.</div>'}
+        <button class="btn secondary small mt-3" id="prAddLinked">+ Новая сделка от этого дилера</button>
       </div>` : ''}
     `;
     document.getElementById('prBack').onclick = ()=> renderList();
@@ -1284,7 +1311,7 @@ async function boot(){
   try{
     await reloadIndexes();
   }catch(e){
-    gate(`<div class="emptystate"><div class="big">Нет доступа</div>${esc(e.message)}<br><button class="btn secondary" id="retry" style="margin-top:16px;">Повторить</button></div>`);
+    gate(`<div class="emptystate"><div class="big">Нет доступа</div>${esc(e.message)}<br><button class="btn secondary mt-4" id="retry">Повторить</button></div>`);
     const r = document.getElementById('retry'); if(r) r.onclick = ()=> location.reload();
     return;
   }
