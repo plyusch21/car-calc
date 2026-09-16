@@ -63,6 +63,7 @@ function dealIndexRow(deal) {
   return {
     id: deal.id,
     num: deal.num,
+    dealNum: deal.dealNum || '',
     type: deal.type,
     route: deal.route,
     partyId: deal.partyId || '',
@@ -75,6 +76,7 @@ function dealIndexRow(deal) {
     responsibleName: (deal.responsible && deal.responsible.name) || '',
     problem: !!(deal.problem && deal.problem.on),
     archived: !!deal.archived,
+    removed: !!deal.removed,
     createdAt: deal.createdAt || 0
   };
 }
@@ -86,7 +88,8 @@ function partyIndexRow(party) {
     name: party.name,
     phone: party.phone || '',
     city: party.city || '',
-    dealerId: party.dealerId || ''
+    dealerId: party.dealerId || '',
+    telegramUsername: party.telegramUsername || ''
   };
 }
 
@@ -118,7 +121,8 @@ function describeChanges(before, after) {
   const plain = [
     ['partyName', 'контрагент'], ['endBuyerName', 'конечный покупатель'],
     ['route', 'маршрут'], ['car', 'что ищем'], ['deliveryCity', 'город доставки'],
-    ['notes', 'заметки'], ['budget', 'бюджет'], ['wishes', 'пожелания'], ['year', 'год']
+    ['notes', 'заметки'], ['budget', 'бюджет'], ['wishes', 'пожелания'], ['year', 'год'],
+    ['num', 'номер сделки'], ['dealNum', '№ договора'], ['dealDate', 'дата договора']
   ];
   plain.forEach(([k, label]) => {
     if (str(before[k]) !== str(after[k])) out.push('изменил ' + label);
@@ -266,9 +270,15 @@ module.exports = async (req, res) => {
 
       const deal = {
         id: id || newId(),
-        // Номер выдаётся один раз при создании и дальше неизменен, что бы ни
-        // прислал клиент: по нему сделку ищут в переписке и документах.
-        num: before ? before.num : await nextDealNumber(),
+        // Технический номер выдаётся один раз при создании (BA-год-NNNN,
+        // уникален, используется в CSV/логе) — но владелец может его
+        // поправить руками (например, опечатку), если явно прислал новое
+        // значение; если поле просто отсутствует/пустое, старое сохраняется.
+        num: (incoming.num != null && str(incoming.num, 60).trim()) ? str(incoming.num, 60).trim() : (before ? before.num : await nextDealNumber()),
+        // "№ договора"/"дата договора" — отдельные от технического номера
+        // поля, целиком ручной ввод, владелец сам решает, что туда писать.
+        dealNum: str(incoming.dealNum, 60),
+        dealDate: str(incoming.dealDate, 40),
         type: before ? before.type : type,
         route: oneOf(incoming.route, ROUTES) || '',
         partyId: str(incoming.partyId, 40),
@@ -286,6 +296,11 @@ module.exports = async (req, res) => {
         wishes: str(incoming.wishes, 2000),
         deliveryCity: str(incoming.deliveryCity, 120),
         notes: str(incoming.notes, 4000),
+        // Мягкое удаление (см. action 'removeDeal' ниже) — сделка не
+        // стирается, а помечается и уходит в архив с другим цветом отметки.
+        // saveDeal тоже может выставить/снять флаг (напр. явная правка),
+        // но основной путь — через removeDeal.
+        removed: !!incoming.removed,
         stages: (incoming.stages && typeof incoming.stages === 'object') ? incoming.stages : (before ? before.stages : {}),
         // Снимок расчёта, а не только его id: история калькулятора общая и
         // ограничена по длине — старые записи из неё выпадают, и одна голая
@@ -328,6 +343,27 @@ module.exports = async (req, res) => {
       for (const text of changes.slice(0, 12)) await appendLog(deal.id, auth, text);
 
       res.status(200).send(JSON.stringify({ deal, log: await readLog(deal.id) }));
+      return;
+    }
+
+    // Мягкое удаление — по аналогии с удалением расчёта в калькуляторе, но
+    // сделка не стирается: уходит в архив с отдельной (красной) пометкой,
+    // отличной от настоящего завершения по последнему этапу. Права — те же,
+    // что на правку сделки.
+    if (action === 'removeDeal') {
+      const id = str(body.id, 40);
+      const raw = await kv('GET', 'deal:' + id);
+      if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
+      const deal = JSON.parse(raw);
+      if (!canWrite(level, deal, uid)) { res.status(400).send(JSON.stringify({ error: 'эту сделку вам удалять нельзя' })); return; }
+      deal.removed = true;
+      deal.archived = true;
+      deal.updatedAt = Date.now();
+      deal.updatedBy = uid;
+      await kv('SET', 'deal:' + id, JSON.stringify(deal));
+      await kv('HSET', 'deals:idx', id, JSON.stringify(dealIndexRow(deal)));
+      await appendLog(id, auth, 'сделка удалена (перенесена в архив, не завершена)');
+      res.status(200).send(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -375,12 +411,20 @@ module.exports = async (req, res) => {
         kind,
         name: str(incoming.name, 200),
         phone: str(incoming.phone, 60),
-        channel: str(incoming.channel, 60),
-        city: str(incoming.city, 120),
         notes: str(incoming.notes, 2000),
-        // Только у дилера — условия работы; только у частника — кто его привёл.
-        terms: kind === 'dealer' ? str(incoming.terms, 2000) : '',
+        // Карточка дилера намеренно короткая — имя, телефон, ник в Telegram,
+        // и всё; у частника вместо этого — канал связи/город/кто привёл и
+        // опциональные паспортные данные для договора.
+        telegramUsername: kind === 'dealer' ? str(incoming.telegramUsername, 60).replace(/^@/, '') : '',
+        channel: kind === 'person' ? str(incoming.channel, 60) : '',
+        city: kind === 'person' ? str(incoming.city, 120) : '',
         dealerId: kind === 'person' ? str(incoming.dealerId, 40) : '',
+        birthDate: kind === 'person' ? str(incoming.birthDate, 20) : '',
+        passportNumber: kind === 'person' ? str(incoming.passportNumber, 60) : '',
+        passportIssuedBy: kind === 'person' ? str(incoming.passportIssuedBy, 300) : '',
+        registrationAddress: kind === 'person' ? str(incoming.registrationAddress, 300) : '',
+        inn: kind === 'person' ? str(incoming.inn, 20) : '',
+        snils: kind === 'person' ? str(incoming.snils, 20) : '',
         createdAt: before ? before.createdAt : Date.now(),
         updatedAt: Date.now()
       };

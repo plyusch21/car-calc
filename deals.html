@@ -52,15 +52,21 @@ input[type=text], input[type=tel], select, textarea{
 textarea{resize:vertical; min-height:64px;}
 input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
-.dealrow{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 13px; margin-bottom:10px; cursor:pointer; }
+.dealrow{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 13px; margin-bottom:0; cursor:pointer; touch-action:pan-y; will-change:transform; }
 .dealrow .top{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
 .dealrow .num{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--accent); }
 .dealrow .idle{ font-size:11.5px; color:var(--muted); white-space:nowrap; }
 .dealrow .idle.warn{ color:var(--warn); }
 .dealrow .idle.bad{ color:var(--danger); }
+.dealrow .idle.good{ color:var(--teal); }
 .dealrow .name{ font-weight:600; font-size:14.5px; margin-top:4px; }
 .dealrow .car{ color:var(--muted); font-size:12.5px; margin-top:2px; }
 .dealrow .foot{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px; }
+.dealrow-wrap{ position:relative; border-radius:12px; overflow:hidden; margin-bottom:10px; }
+.dealrow-wrap .dealrow{ margin-bottom:0; }
+.dealrow-del{ position:absolute; top:0; right:0; bottom:0; width:88px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; cursor:pointer; }
+.folderrow{ display:flex; justify-content:space-between; align-items:center; }
+.folderrow .arrow{ color:var(--muted); font-size:18px; }
 .chip{ display:inline-block; font-size:11.5px; padding:3px 9px; border-radius:99px; background:var(--panel-2); border:1px solid var(--border); color:var(--muted); }
 .chip.stage{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
 .chip.problem{ background:var(--danger-soft); border-color:var(--danger); color:var(--danger); }
@@ -174,7 +180,7 @@ const STAGE_TEMPLATES = {
 const DEAL_TYPE_LABELS = { import:'Импорт', paperwork:'Оформление' };
 const ROUTE_LABELS = { japan:'Япония', korea:'Корея', china:'Китай', eaeu:'ЕАЭС' };
 const ROUTE_FLAGS = { japan:'🇯🇵', korea:'🇰🇷', china:'🇨🇳', eaeu:'🌐' };
-const PARTY_KIND_LABELS = { person:'Частное лицо', dealer:'Дилер' };
+const PARTY_KIND_LABELS = { person:'Физик', dealer:'Дилер' };
 const LEVEL_LABELS = { none:'Нет доступа', own:'Только свои сделки', read_all:'Видит все, правит свои', full:'Полный' };
 
 function stagesOf(type){ return STAGE_TEMPLATES[type] || STAGE_TEMPLATES.import; }
@@ -192,6 +198,10 @@ function isArchived(deal){
   const fin = stagesOf(deal.type).find(s=>s.final);
   return !!(fin && deal.stages && deal.stages[fin.key] && deal.stages[fin.key].state === 'done');
 }
+// Мягкое удаление (см. api/deals.js action 'removeDeal') — сделка в архиве,
+// но НЕ потому что дошла до последнего этапа. Отдельная (красная) пометка,
+// чтобы не путать с настоящим завершением сделки.
+function isRemoved(deal){ return !!deal.removed; }
 /* "Движение" — это отметка этапа. Заметку поправили — сделка не сдвинулась,
    поэтому счётчик простоя считаем по последней отметке, а до первой — от
    даты создания. */
@@ -211,7 +221,7 @@ function idleDays(ts){
 /* =====================================================================
    2. Утилиты и состояние
 ===================================================================== */
-const state = { view:'list', tab:'all', archive:false, deals:[], parties:[], users:[], me:null, deal:null, log:[], canWrite:false, party:null };
+const state = { view:'list', tab:'all', archive:false, dealerFolder:null, deals:[], parties:[], users:[], me:null, deal:null, log:[], canWrite:false, party:null };
 const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('ru-RU') : '—';
 const fmtMoney = n => (Math.round(Number(n)||0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -243,76 +253,292 @@ function pluralDays(n){
 
 /* =====================================================================
    3. Экран списка
+   "Все"/"Оформление" — плоский список сделок (каждая всегда на физике;
+   если у физика есть дилер, у строки просто метка "через <дилер>").
+   "Дилеры" — не фильтр этого же списка, а отдельный режим: папки дилеров,
+   у которых есть сделки в работе; провалившись внутрь — тот же список
+   строк сделок, но только физиков этого дилера.
+   "Физики" — справочник контактов (не сделок): все физики, чтобы можно
+   было открыть/завести профиль и вне привязки к конкретной сделке.
 ===================================================================== */
+let dealSwipeOpen = null;
+function bindDealSwipe(card){
+  const REVEAL = 88;
+  card._open = false; card._moved = false;
+  let tracking = false, startX = 0, startY = 0, startTranslate = 0, axis = null;
+  const setX = (px)=>{ card.style.transform = `translateX(${px}px)`; };
+  card.addEventListener('pointerdown', (e)=>{
+    if(e.pointerType==='mouse' && e.button!==0) return;
+    tracking = true; axis = null; card._moved = false;
+    startX = e.clientX; startY = e.clientY;
+    startTranslate = card._open ? -REVEAL : 0;
+    card.style.transition = 'none';
+  });
+  card.addEventListener('pointermove', (e)=>{
+    if(!tracking) return;
+    const dx = e.clientX-startX, dy = e.clientY-startY;
+    if(axis===null){
+      if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+      axis = Math.abs(dx)>Math.abs(dy) ? 'x' : 'y';
+      if(axis==='y'){ tracking=false; return; }
+    }
+    if(axis!=='x') return;
+    card._moved = true;
+    setX(Math.min(0, Math.max(-REVEAL, startTranslate+dx)));
+  });
+  const finish = ()=>{
+    if(!tracking) return;
+    tracking = false;
+    if(axis!=='x') return;
+    card.style.transition = 'transform .2s ease';
+    const m = /translateX\((-?\d+(?:\.\d+)?)/.exec(card.style.transform);
+    const cur = m ? parseFloat(m[1]) : 0;
+    const open = cur < -REVEAL/2;
+    setX(open ? -REVEAL : 0);
+    card._open = open;
+    if(open){
+      if(dealSwipeOpen && dealSwipeOpen!==card){ dealSwipeOpen.style.transition='transform .2s ease'; dealSwipeOpen.style.transform='translateX(0px)'; dealSwipeOpen._open=false; }
+      dealSwipeOpen = card;
+    } else if(dealSwipeOpen===card) dealSwipeOpen = null;
+  };
+  card.addEventListener('pointerup', finish);
+  card.addEventListener('pointercancel', finish);
+}
+
+function openDeleteDealConfirm(id, name){
+  openSheet(`
+    <h3>Удалить сделку?</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 18px;">${esc(name||'Без названия')} — сделка не сотрётся, а уйдёт в архив с пометкой «не завершена». Отменить возврат из архива нельзя, но сама запись не теряется.</p>
+    <button class="btn danger" id="delConfirm">Да, удалить</button>
+    <button class="btn secondary" id="delCancel" style="margin-top:8px;">Отмена</button>
+  `);
+  document.getElementById('delCancel').onclick = closeSheet;
+  document.getElementById('delConfirm').onclick = async ()=>{
+    try{
+      await api('removeDeal', {id});
+      await reloadIndexes();
+      closeSheet();
+      renderList();
+      toast('Сделка перенесена в архив');
+    }catch(e){ toast('Не удалось: ' + e.message); }
+  };
+}
+
+// Одна строка сделки (используется и в "Все"/"Оформление", и внутри папки
+// дилера) — со свайпом-удалением слева направо, как в истории калькулятора.
+function dealRowsHtml(rows, opts){
+  opts = opts || {};
+  if(!rows.length){
+    return `<div class="emptystate"><div class="big">${opts.emptyBig||'Сделок пока нет'}</div>${opts.emptySub||''}</div>`;
+  }
+  return rows.map(d=>{
+    const days = idleDays(d.stageAt || d.createdAt);
+    const cls = d.archived ? (isRemoved(d)?'bad':'good') : (days >= 14 ? 'bad' : (days >= 7 ? 'warn' : ''));
+    const idleLabel = d.archived ? (isRemoved(d) ? 'не завершена (удалена)' : 'завершена') : 'без движения ' + pluralDays(days);
+    const stage = d.stageKey ? (stagesOf(d.type).find(s=>s.key===d.stageKey) || {}).label : null;
+    const party = state.parties.find(p=>p.id===d.partyId);
+    const dealer = (party && party.dealerId) ? state.parties.find(p=>p.id===party.dealerId) : null;
+    return `<div class="dealrow-wrap">
+      <div class="dealrow-del" data-del="${esc(d.id)}" data-delname="${esc(d.partyName)}">Удалить</div>
+      <div class="dealrow" data-id="${esc(d.id)}">
+        <div class="top">
+          <span class="num">${esc(d.num)}</span>
+          <span class="idle ${cls}">${idleLabel}</span>
+        </div>
+        <div class="name">${esc(d.partyName || 'без контрагента')}${dealer ? ` <span class="chip">через ${esc(dealer.name)}</span>` : ''}</div>
+        <div class="car">${esc(d.car || 'машина не указана')}${d.route ? ' · ' + (ROUTE_FLAGS[d.route]||'') + ' ' + (ROUTE_LABELS[d.route]||'') : ''}</div>
+        <div class="foot">
+          <span>
+            <span class="chip ${stage?'stage':''}">${esc(stage || 'этапов нет')}</span>
+            ${d.problem ? '<span class="chip problem">проблема</span>' : ''}
+            ${d.type==='paperwork' ? '<span class="chip">оформление</span>' : ''}
+          </span>
+          <span class="chip">${esc(d.responsibleName || 'без ответственного')}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function bindDealRows(c){
+  dealSwipeOpen = null;
+  c.querySelectorAll('.dealrow').forEach(el=> bindDealSwipe(el));
+  c.querySelectorAll('.dealrow').forEach(el=>{
+    el.onclick = ()=>{
+      if(el._moved){ el._moved=false; return; }
+      if(el._open){ el.style.transition='transform .2s ease'; el.style.transform='translateX(0px)'; el._open=false; dealSwipeOpen=null; return; }
+      openDeal(el.dataset.id);
+    };
+  });
+  c.querySelectorAll('[data-del]').forEach(b=> b.onclick = (e)=>{
+    e.stopPropagation();
+    openDeleteDealConfirm(b.dataset.del, b.dataset.delname);
+  });
+}
+
+function activeDealsOf(list){ return list.filter(d=>!d.archived); }
+
 function renderList(){
   const c = document.getElementById('content');
   document.getElementById('title').textContent = state.archive ? 'Архив сделок' : 'Сделки';
 
-  const rows = state.deals
-    .filter(d => !!d.archived === !!state.archive)
-    .filter(d => {
-      if(state.archive) return true;
-      if(state.tab === 'dealers') return d.partyKind === 'dealer';
-      if(state.tab === 'paperwork') return d.type === 'paperwork';
-      return true;
-    })
-    // По умолчанию сверху те, где движения не было дольше всего — это и есть
-    // рабочий смысл экрана: чем дольше тишина, тем выше в списке.
+  if(state.archive){ state.dealerFolder = null; return renderArchiveList(c); }
+  if(!state.tab) state.tab = 'all';
+  if(state.tab === 'dealers' && state.dealerFolder) return renderDealerFolder(c);
+  if(state.tab === 'dealers') return renderDealerFolders(c);
+  if(state.tab === 'physiks') return renderPhysiksTab(c);
+  return renderFlatDeals(c);
+}
+// Клик по вкладке всегда сбрасывает открытую папку дилера — иначе повторный
+// заход на "Дилеры" из другой вкладки неожиданно вёл бы обратно в папку,
+// которую человек уже покинул.
+function selectTab(t){ state.tab = t; state.dealerFolder = null; renderList(); }
+
+function renderFlatDeals(c){
+  const rows = activeDealsOf(state.deals)
+    .filter(d => state.tab === 'paperwork' ? d.type === 'paperwork' : true)
     .sort((a,b)=> (a.stageAt||a.createdAt||0) - (b.stageAt||b.createdAt||0));
 
-  document.getElementById('subtitle').textContent =
-    rows.length ? (state.archive ? rows.length + ' завершённых' : 'В работе: ' + rows.length) : 'Пока пусто';
+  document.getElementById('subtitle').textContent = rows.length ? 'В работе: ' + rows.length : 'Пока пусто';
 
-  const tabs = state.archive ? '' : `
+  const tabs = `
     <div class="tabs">
       <button class="tab ${state.tab==='all'?'active':''}" data-t="all">Все</button>
       <button class="tab ${state.tab==='dealers'?'active':''}" data-t="dealers">Дилеры</button>
+      <button class="tab ${state.tab==='physiks'?'active':''}" data-t="physiks">Физики</button>
       <button class="tab ${state.tab==='paperwork'?'active':''}" data-t="paperwork">Оформление</button>
     </div>`;
 
-  const list = rows.length ? rows.map(d=>{
-    const days = idleDays(d.stageAt || d.createdAt);
-    const cls = days >= 14 ? 'bad' : (days >= 7 ? 'warn' : '');
-    const stage = d.stageKey ? (stagesOf(d.type).find(s=>s.key===d.stageKey) || {}).label : null;
-    return `<div class="dealrow" data-id="${esc(d.id)}">
-      <div class="top">
-        <span class="num">${esc(d.num)}</span>
-        <span class="idle ${cls}">${d.archived ? 'завершена' : 'без движения ' + pluralDays(days)}</span>
-      </div>
-      <div class="name">${esc(d.partyName || 'без контрагента')}</div>
-      <div class="car">${esc(d.car || 'машина не указана')}${d.route ? ' · ' + (ROUTE_FLAGS[d.route]||'') + ' ' + (ROUTE_LABELS[d.route]||'') : ''}</div>
-      <div class="foot">
-        <span>
-          <span class="chip ${stage?'stage':''}">${esc(stage || 'этапов нет')}</span>
-          ${d.problem ? '<span class="chip problem">проблема</span>' : ''}
-          ${d.type==='paperwork' ? '<span class="chip">оформление</span>' : ''}
-        </span>
-        <span class="chip">${esc(d.responsibleName || 'без ответственного')}</span>
-      </div>
+  c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` +
+    tabs + dealRowsHtml(rows, {emptySub:'Создайте первую — кнопка выше.'}) +
+    `<button class="btn secondary small" id="moreMenu" style="margin-top:14px;">⚙ Ещё</button>`;
+
+  c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
+  bindDealRows(c);
+  document.getElementById('newDeal').onclick = openNewDealSheet;
+  document.getElementById('moreMenu').onclick = openDealsMenu;
+}
+
+function renderArchiveList(c){
+  const rows = state.deals.filter(d=>d.archived)
+    .sort((a,b)=> (b.stageAt||b.createdAt||0) - (a.stageAt||a.createdAt||0));
+  document.getElementById('subtitle').textContent = rows.length ? rows.length + ' в архиве' : 'Пока пусто';
+  c.innerHTML = dealRowsHtml(rows, {emptyBig:'Архив пуст', emptySub:'Сюда попадают сделки после отметки «Выдан авто» или после удаления.'}) +
+    `<button class="btn secondary" id="backToWork" style="margin-top:10px;">← К сделкам в работе</button>`;
+  bindDealRows(c);
+  document.getElementById('backToWork').onclick = ()=>{ state.archive = false; renderList(); };
+}
+
+// Папки дилеров — только те, у кого хоть одна сделка (через их физиков) в
+// работе; пустых дилеров (создан, но ещё ни одной активной сделки) тут не
+// показываем — они не потеряны, просто не создают лишнюю пустую папку.
+function renderDealerFolders(c){
+  const dealers = state.parties.filter(p=>p.kind==='dealer').map(dl=>{
+    const physikIds = new Set(state.parties.filter(p=>p.dealerId===dl.id).map(p=>p.id));
+    const active = activeDealsOf(state.deals).filter(d=> physikIds.has(d.partyId));
+    return { dealer: dl, count: active.length };
+  }).filter(x=>x.count>0).sort((a,b)=> b.count - a.count);
+
+  document.getElementById('subtitle').textContent = dealers.length ? dealers.length + ' в работе' : 'Пока пусто';
+
+  const tabs = `
+    <div class="tabs">
+      <button class="tab" data-t="all">Все</button>
+      <button class="tab active" data-t="dealers">Дилеры</button>
+      <button class="tab" data-t="physiks">Физики</button>
+      <button class="tab" data-t="paperwork">Оформление</button>
     </div>`;
-  }).join('') : `<div class="emptystate"><div class="big">${state.archive?'Архив пуст':'Сделок пока нет'}</div>${state.archive?'Сюда попадают сделки после отметки «Выдан авто».':'Создайте первую — кнопка ниже.'}</div>`;
 
-  c.innerHTML = tabs + list +
-    (state.archive
-      ? `<button class="btn secondary" id="backToWork">← К сделкам в работе</button>`
-      : `<button class="btn" id="newDeal">+ Новая сделка</button>
-         <div class="row2" style="margin-top:10px;">
-           <button class="btn secondary small" id="toParties">Контрагенты</button>
-           <button class="btn secondary small" id="toArchive">Архив</button>
-         </div>
-         ${state.me && state.me.level === 'full' ? `<button class="btn secondary small" id="doExport" style="margin-top:10px;">Выгрузить сделки и контрагентов</button>` : ''}`);
+  const list = dealers.length ? dealers.map(x=>`
+    <div class="dealrow" data-dealer="${esc(x.dealer.id)}">
+      <div class="folderrow">
+        <div>
+          <div class="name" style="margin-top:0;">${esc(x.dealer.name)}</div>
+          <div class="car">${esc(x.dealer.phone||'без телефона')}${x.dealer.telegramUsername?' · @'+esc(x.dealer.telegramUsername):''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="chip">${x.count} в работе</span>
+          <span class="arrow">›</span>
+        </div>
+      </div>
+    </div>`).join('') : `<div class="emptystate"><div class="big">Пока пусто</div>Папка дилера появится здесь, как только у него будет хоть одна сделка в работе.</div>`;
 
-  c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=>{ state.tab = b.dataset.t; renderList(); });
-  c.querySelectorAll('.dealrow').forEach(el=> el.onclick = ()=> openDeal(el.dataset.id));
-  const nd = document.getElementById('newDeal'); if(nd) nd.onclick = openNewDealSheet;
-  const ta = document.getElementById('toArchive'); if(ta) ta.onclick = ()=>{ state.archive = true; renderList(); };
-  const tp = document.getElementById('toParties'); if(tp) tp.onclick = renderParties;
-  const bw = document.getElementById('backToWork'); if(bw) bw.onclick = ()=>{ state.archive = false; renderList(); };
-  const ex = document.getElementById('doExport'); if(ex) ex.onclick = runExport;
+  c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` + tabs + list;
+  c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
+  c.querySelectorAll('[data-dealer]').forEach(el=> el.onclick = ()=>{ state.dealerFolder = el.dataset.dealer; renderDealerFolder(c); });
+  document.getElementById('newDeal').onclick = openNewDealSheet;
+}
+
+function renderDealerFolder(c){
+  const dealer = state.parties.find(p=>p.id===state.dealerFolder);
+  if(!dealer){ state.dealerFolder=null; return renderDealerFolders(c); }
+  const physikIds = new Set(state.parties.filter(p=>p.dealerId===dealer.id).map(p=>p.id));
+  const rows = activeDealsOf(state.deals).filter(d=> physikIds.has(d.partyId))
+    .sort((a,b)=> (a.stageAt||a.createdAt||0) - (b.stageAt||b.createdAt||0));
+  document.getElementById('title').textContent = dealer.name;
+  document.getElementById('subtitle').textContent = rows.length + ' в работе';
+  c.innerHTML = `<button class="btn secondary small" id="dfBack" style="margin-bottom:12px;">← К дилерам</button>
+    <div class="card">
+      <h2>Дилер</h2>
+      <div class="kv"><span class="k">Телефон</span><span class="v">${esc(dealer.phone||'—')}</span></div>
+      ${dealer.telegramUsername?`<div class="kv"><span class="k">Telegram</span><span class="v">@${esc(dealer.telegramUsername)}</span></div>`:''}
+      ${dealer.notes?`<div class="kv"><span class="k">Заметки</span><span class="v">${esc(dealer.notes)}</span></div>`:''}
+      ${(!auth_isRestricted())?`<button class="btn secondary small" id="dfEdit" style="margin-top:12px;">Редактировать</button>`:''}
+    </div>` +
+    dealRowsHtml(rows, {emptyBig:'У этого дилера пока нет сделок в работе'});
+  document.getElementById('dfBack').onclick = ()=>{ state.dealerFolder=null; renderDealerFolders(c); };
+  const de = document.getElementById('dfEdit'); if(de) de.onclick = ()=> openPartySheet(dealer, ()=>{ renderDealerFolder(c); });
+  bindDealRows(c);
+}
+// Правка контрагента разрешена только владельцу/full (см. api/deals.js) —
+// маленький клиентский помощник, чтобы не звать сервер ради одной кнопки.
+function auth_isRestricted(){ return !(state.me && (state.me.isOwner || state.me.level === 'full')); }
+
+// Справочник контактов-физиков — не фильтр сделок, а список самих людей:
+// сюда заходят завести/поправить профиль (паспорт, ИНН и т.п.) и вне
+// привязки к какой-то конкретной сделке.
+function renderPhysiksTab(c){
+  const persons = state.parties.filter(p=>p.kind==='person').sort((a,b)=> a.name.localeCompare(b.name, 'ru'));
+  document.getElementById('subtitle').textContent = persons.length + ' записей';
+  const tabs = `
+    <div class="tabs">
+      <button class="tab" data-t="all">Все</button>
+      <button class="tab" data-t="dealers">Дилеры</button>
+      <button class="tab active" data-t="physiks">Физики</button>
+      <button class="tab" data-t="paperwork">Оформление</button>
+    </div>`;
+  const list = persons.length ? persons.map(p=>{
+    const dealer = p.dealerId ? state.parties.find(x=>x.id===p.dealerId) : null;
+    return `<div class="dealrow" data-pid="${esc(p.id)}">
+      <div class="name" style="margin-top:0;">${esc(p.name)}</div>
+      <div class="car">${esc(p.phone||'без телефона')}${dealer?' · через '+esc(dealer.name):''}</div>
+    </div>`;
+  }).join('') : `<div class="emptystate"><div class="big">Пока никого</div>Физики появляются при создании сделок или их можно добавить здесь.</div>`;
+  c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` + tabs + list +
+    `<button class="btn secondary small" id="newPhysik" style="margin-top:10px;">+ Новый физик</button>`;
+  c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
+  c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
+  document.getElementById('newDeal').onclick = openNewDealSheet;
+  document.getElementById('newPhysik').onclick = ()=> openPartySheet({kind:'person'}, (p)=> openParty(p.id));
+}
+
+// "Ещё" — архив и выгрузка, раньше были прямо на главном экране сделок и
+// путались под ногами; теперь отдельное небольшое меню.
+function openDealsMenu(){
+  openSheet(`
+    <h3>Ещё</h3>
+    <button class="btn secondary" id="mArchive" style="margin-bottom:8px;">Архив сделок</button>
+    ${state.me && state.me.level === 'full' ? `<button class="btn secondary" id="mExport" style="margin-bottom:8px;">Выгрузить сделки и контрагентов</button>` : ''}
+    <button class="btn secondary" id="mClose">Закрыть</button>
+  `);
+  document.getElementById('mClose').onclick = closeSheet;
+  document.getElementById('mArchive').onclick = ()=>{ closeSheet(); state.archive = true; renderList(); };
+  const mx = document.getElementById('mExport'); if(mx) mx.onclick = ()=>{ closeSheet(); runExport(); };
 }
 
 /* =====================================================================
-   4. Создание сделки: контрагент ищется по телефону
+   4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
+   после (сделка всегда на физике; дилер — просто метка на нём, "под
+   папка" для группировки).
 ===================================================================== */
 function openNewDealSheet(){
   openSheet(`
@@ -325,7 +551,7 @@ function openNewDealSheet(){
       </select>
     </div>
     <div class="field">
-      <label>Телефон контрагента</label>
+      <label>Телефон физика (конечного покупателя)</label>
       <input type="tel" id="ndPhone" placeholder="+7 999 123-45-67" inputmode="tel">
     </div>
     <button class="btn" id="ndNext">Дальше</button>
@@ -335,12 +561,16 @@ function openNewDealSheet(){
   document.getElementById('ndNext').onclick = async ()=>{
     const type = document.getElementById('ndType').value;
     const phone = document.getElementById('ndPhone').value.trim();
-    if(!phone){ toast('Укажите телефон — по нему ищем контрагента'); return; }
+    if(!phone){ toast('Укажите телефон — по нему ищем физика'); return; }
     let found = null;
     try{ found = (await api('findPartyByPhone', {phone})).party; }
     catch(e){ toast('Не удалось найти: ' + e.message); return; }
+    if(found && found.kind === 'dealer'){
+      toast('Этот номер — дилер «' + found.name + '». Заведите физика от этого дилера в его карточке.');
+      return;
+    }
     if(found) askSamePerson(found, type, phone);
-    else openPartySheet({ phone, kind:'person' }, (party)=> createDeal(type, party));
+    else openPartySheet({ phone, kind:'person' }, (party)=> pickDealerStep(type, party));
   };
 }
 
@@ -351,80 +581,140 @@ function askSamePerson(found, type, phone){
   openSheet(`
     <h3>Такой телефон уже есть</h3>
     <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 14px;">
-      ${esc(phone)} — записан как <b>${esc(found.name)}</b> (${esc(PARTY_KIND_LABELS[found.kind]||found.kind)}${found.city?', '+esc(found.city):''}).
-      Это тот же человек или новый контрагент с тем же номером?
+      ${esc(phone)} — записан как <b>${esc(found.name)}</b>${found.city?' ('+esc(found.city)+')':''}.
+      Это тот же человек или новый физик с тем же номером?
     </p>
     <button class="btn" id="sameYes">Тот же — создать сделку для него</button>
-    <button class="btn secondary" id="sameNo" style="margin-top:8px;">Новый контрагент</button>
+    <button class="btn secondary" id="sameNo" style="margin-top:8px;">Новый физик</button>
     <button class="btn secondary" id="sameCancel" style="margin-top:8px;">Отмена</button>
   `);
   document.getElementById('sameCancel').onclick = closeSheet;
-  document.getElementById('sameYes').onclick = ()=> createDeal(type, found);
-  document.getElementById('sameNo').onclick = ()=> openPartySheet({ phone:'', kind:'person' }, (party)=> createDeal(type, party));
+  document.getElementById('sameYes').onclick = ()=> pickDealerStep(type, found);
+  document.getElementById('sameNo').onclick = ()=> openPartySheet({ phone:'', kind:'person' }, (party)=> pickDealerStep(type, party));
+}
+
+// Шаг после физика: через какого дилера (если через какого-то вообще) идёт
+// эта сделка — выбрать существующего, завести нового или пропустить.
+function pickDealerStep(type, party){
+  const dealers = state.parties.filter(x=>x.kind==='dealer');
+  openSheet(`
+    <h3>Через дилера?</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 14px;">Если ${esc(party.name)} пришёл через дилера — выберите его или заведите нового. Если сделка напрямую — просто пропустите.</p>
+    <div class="field">
+      <select id="ndDealer">
+        <option value="">— нет, напрямую —</option>
+        ${dealers.map(d=>`<option value="${esc(d.id)}" ${party.dealerId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn secondary" id="ndNewDealer" style="margin-bottom:8px;">+ Новый дилер</button>
+    <button class="btn" id="ndDealerNext">Дальше</button>
+  `);
+  document.getElementById('ndNewDealer').onclick = ()=> openPartySheet({kind:'dealer'}, (dealer)=> finishDealerStep(type, party, dealer.id));
+  document.getElementById('ndDealerNext').onclick = ()=> finishDealerStep(type, party, document.getElementById('ndDealer').value);
+}
+
+async function finishDealerStep(type, party, dealerId){
+  if((party.dealerId||'') !== (dealerId||'')){
+    try{
+      party = (await api('saveParty', {party: Object.assign({}, party, {dealerId: dealerId||''})})).party;
+      await reloadIndexes();
+    }catch(e){ toast('Не удалось сохранить дилера: ' + e.message); return; }
+  }
+  createDeal(type, party);
 }
 
 function openPartySheet(initial, onSaved){
   const p = initial || {};
+  const isDealer = p.kind === 'dealer';
   const dealers = state.parties.filter(x=>x.kind==='dealer');
   openSheet(`
-    <h3>${p.id ? 'Контрагент' : 'Новый контрагент'}</h3>
+    <h3>${p.id ? esc(p.name||'Контрагент') : (isDealer?'Новый дилер':'Новый физик')}</h3>
     <div class="field">
       <label>Тип</label>
       <select id="pKind">
-        <option value="person" ${p.kind!=='dealer'?'selected':''}>Частное лицо</option>
-        <option value="dealer" ${p.kind==='dealer'?'selected':''}>Дилер</option>
+        <option value="person" ${!isDealer?'selected':''}>Физик</option>
+        <option value="dealer" ${isDealer?'selected':''}>Дилер</option>
       </select>
     </div>
-    <div class="field"><label>Имя</label><input type="text" id="pName" value="${esc(p.name||'')}"></div>
+    <div class="field"><label>ФИО / наименование</label><input type="text" id="pName" value="${esc(p.name||'')}"></div>
     <div class="field"><label>Телефон</label><input type="tel" id="pPhone" value="${esc(p.phone||'')}" inputmode="tel"></div>
-    <div class="row2">
-      <div class="field"><label>Канал связи</label>
-        <select id="pChannel">
-          ${['','Telegram','WhatsApp','MAX','Звонок','Email'].map(x=>`<option value="${esc(x)}" ${p.channel===x?'selected':''}>${esc(x||'не указан')}</option>`).join('')}
+
+    <div id="pDealerFields" style="${isDealer?'':'display:none;'}">
+      <div class="field"><label>Ник в Telegram (опционально)</label><input type="text" id="pTgUser" placeholder="без @" value="${esc(p.telegramUsername||'')}"></div>
+    </div>
+
+    <div id="pPersonFields" style="${isDealer?'display:none;':''}">
+      <div class="row2">
+        <div class="field"><label>Канал связи</label>
+          <select id="pChannel">
+            ${['','Telegram','WhatsApp','MAX','Звонок','Email'].map(x=>`<option value="${esc(x)}" ${p.channel===x?'selected':''}>${esc(x||'не указан')}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Город</label><input type="text" id="pCity" value="${esc(p.city||'')}"></div>
+      </div>
+      <div class="field">
+        <label>Привёл дилер</label>
+        <select id="pDealer">
+          <option value="">— нет —</option>
+          ${dealers.map(d=>`<option value="${esc(d.id)}" ${p.dealerId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
         </select>
       </div>
-      <div class="field"><label>Город</label><input type="text" id="pCity" value="${esc(p.city||'')}"></div>
+      <div id="passportToggle" style="cursor:pointer;color:var(--accent);font-size:13px;margin:4px 0 10px;">Паспортные данные (опционально) ▾</div>
+      <div id="passportFields" style="display:none;">
+        <div class="row2">
+          <div class="field"><label>Дата рождения</label><input type="text" id="pBirth" placeholder="ДД.ММ.ГГГГ" value="${esc(p.birthDate||'')}"></div>
+          <div class="field"><label>Паспорт (серия и номер)</label><input type="text" id="pPassNum" value="${esc(p.passportNumber||'')}"></div>
+        </div>
+        <div class="field"><label>Кем и когда выдан</label><input type="text" id="pPassBy" value="${esc(p.passportIssuedBy||'')}"></div>
+        <div class="field"><label>Адрес регистрации (прописка)</label><textarea id="pReg">${esc(p.registrationAddress||'')}</textarea></div>
+        <div class="row2">
+          <div class="field"><label>ИНН</label><input type="text" id="pInn" inputmode="numeric" value="${esc(p.inn||'')}"></div>
+          <div class="field"><label>СНИЛС</label><input type="text" id="pSnils" inputmode="numeric" value="${esc(p.snils||'')}"></div>
+        </div>
+      </div>
     </div>
-    <div class="field" id="pDealerWrap" style="${p.kind==='dealer'?'display:none;':''}">
-      <label>Привёл дилер</label>
-      <select id="pDealer">
-        <option value="">— нет —</option>
-        ${dealers.map(d=>`<option value="${esc(d.id)}" ${p.dealerId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
-      </select>
-    </div>
-    <div class="field" id="pTermsWrap" style="${p.kind==='dealer'?'':'display:none;'}">
-      <label>Условия работы</label><textarea id="pTerms">${esc(p.terms||'')}</textarea>
-    </div>
+
     <div class="field"><label>Заметки</label><textarea id="pNotes">${esc(p.notes||'')}</textarea></div>
     <button class="btn" id="pSave">Сохранить</button>
     <button class="btn secondary" id="pCancel" style="margin-top:8px;">Отмена</button>
   `);
   const kindSel = document.getElementById('pKind');
   kindSel.onchange = ()=>{
-    const isDealer = kindSel.value === 'dealer';
-    document.getElementById('pTermsWrap').style.display = isDealer ? '' : 'none';
-    document.getElementById('pDealerWrap').style.display = isDealer ? 'none' : '';
+    const dealerNow = kindSel.value === 'dealer';
+    document.getElementById('pDealerFields').style.display = dealerNow ? '' : 'none';
+    document.getElementById('pPersonFields').style.display = dealerNow ? 'none' : '';
+  };
+  const passToggle = document.getElementById('passportToggle');
+  if(passToggle) passToggle.onclick = ()=>{
+    const box = document.getElementById('passportFields');
+    const open = box.style.display !== 'none';
+    box.style.display = open ? 'none' : '';
+    passToggle.textContent = 'Паспортные данные (опционально) ' + (open?'▾':'▴');
   };
   document.getElementById('pCancel').onclick = closeSheet;
   document.getElementById('pSave').onclick = async ()=>{
-    const party = {
-      id: p.id || '',
-      kind: kindSel.value,
-      name: document.getElementById('pName').value.trim(),
-      phone: document.getElementById('pPhone').value.trim(),
-      channel: document.getElementById('pChannel').value,
-      city: document.getElementById('pCity').value.trim(),
-      terms: document.getElementById('pTerms').value.trim(),
-      dealerId: document.getElementById('pDealer').value,
-      notes: document.getElementById('pNotes').value.trim()
-    };
-    if(!party.name){ toast('Без имени контрагента не сохранить'); return; }
+    const kind = kindSel.value;
+    const party = { id: p.id || '', kind, name: document.getElementById('pName').value.trim(), phone: document.getElementById('pPhone').value.trim(), notes: document.getElementById('pNotes').value.trim() };
+    if(kind === 'dealer'){
+      party.telegramUsername = document.getElementById('pTgUser').value.trim();
+    } else {
+      party.channel = document.getElementById('pChannel').value;
+      party.city = document.getElementById('pCity').value.trim();
+      party.dealerId = document.getElementById('pDealer').value;
+      party.birthDate = document.getElementById('pBirth').value.trim();
+      party.passportNumber = document.getElementById('pPassNum').value.trim();
+      party.passportIssuedBy = document.getElementById('pPassBy').value.trim();
+      party.registrationAddress = document.getElementById('pReg').value.trim();
+      party.inn = document.getElementById('pInn').value.trim();
+      party.snils = document.getElementById('pSnils').value.trim();
+    }
+    if(!party.name){ toast('Без имени/названия не сохранить'); return; }
     try{
       const saved = (await api('saveParty', {party})).party;
       await reloadIndexes();
       closeSheet();
       if(onSaved) onSaved(saved);
-      else toast('Контрагент сохранён');
+      else toast('Сохранено');
     }catch(e){ toast('Не сохранилось: ' + e.message); }
   };
 }
@@ -484,7 +774,7 @@ function renderDeal(){
   c.innerHTML = `
     <button class="btn secondary small" id="dBack" style="margin-bottom:12px;">← К списку</button>
     ${d.problem && d.problem.on ? `<div class="notice">Проблема: ${esc(d.problem.reason || 'без описания')}</div>` : ''}
-    ${d.archived ? `<div class="notice warn">Сделка завершена и находится в архиве.</div>` : ''}
+    ${d.archived ? (isRemoved(d) ? `<div class="notice">Сделка удалена и находится в архиве как незавершённая.</div>` : `<div class="notice warn">Сделка завершена и находится в архиве.</div>`) : ''}
 
     <div class="card">
       <h2>Сделка</h2>
@@ -497,6 +787,8 @@ function renderDeal(){
       <div class="kv"><span class="k">Город доставки</span><span class="v">${esc(d.deliveryCity||'—')}</span></div>
       <div class="kv"><span class="k">Ответственный</span><span class="v">${esc((d.responsible&&d.responsible.name)||'не назначен')}</span></div>
       <div class="kv"><span class="k">Создана</span><span class="v">${fmtDate(d.createdAt)}</span></div>
+      ${d.dealNum ? `<div class="kv"><span class="k">№ договора</span><span class="v">${esc(d.dealNum)}</span></div>` : ''}
+      ${d.dealDate ? `<div class="kv"><span class="k">Дата договора</span><span class="v">${esc(d.dealDate)}</span></div>` : ''}
       ${d.wishes ? `<div class="kv"><span class="k">Пожелания</span><span class="v">${esc(d.wishes)}</span></div>` : ''}
       ${d.notes ? `<div class="kv"><span class="k">Заметки</span><span class="v">${esc(d.notes)}</span></div>` : ''}
       ${state.canWrite ? `<button class="btn secondary small" id="dEdit" style="margin-top:12px;">Редактировать</button>` : ''}
@@ -607,6 +899,11 @@ function openDealEditSheet(){
   const persons = state.parties.filter(p=>p.kind==='person');
   openSheet(`
     <h3>Сделка ${esc(d.num)}</h3>
+    <div class="field"><label>Номер сделки (технический)</label><input type="text" id="eNum" value="${esc(d.num||'')}"></div>
+    <div class="row2">
+      <div class="field"><label>№ договора</label><input type="text" id="eDealNum" value="${esc(d.dealNum||'')}"></div>
+      <div class="field"><label>Дата договора</label><input type="text" id="eDealDate" placeholder="ДД.ММ.ГГГГ" value="${esc(d.dealDate||'')}"></div>
+    </div>
     <div class="field"><label>Маршрут</label>
       <select id="eRoute">
         <option value="">— не выбран —</option>
@@ -649,6 +946,9 @@ function openDealEditSheet(){
   document.getElementById('eCancel').onclick = closeSheet;
   document.getElementById('eSave').onclick = ()=>{
     const patch = {
+      num: document.getElementById('eNum').value.trim(),
+      dealNum: document.getElementById('eDealNum').value.trim(),
+      dealDate: document.getElementById('eDealDate').value.trim(),
       route: document.getElementById('eRoute').value,
       car: document.getElementById('eCar').value.trim(),
       year: document.getElementById('eYear').value.trim(),
@@ -682,7 +982,7 @@ async function saveDeal(next){
     const stage = currentStage(next);
     next.stageKey = stage ? stage.key : '';
     next.stageAt = lastMovementAt(next);
-    next.archived = isArchived(next);
+    next.archived = isArchived(next) || isRemoved(next);
     const data = await api('saveDeal', {deal: next});
     state.deal = data.deal; state.log = data.log || [];
     await reloadIndexes();
@@ -739,31 +1039,9 @@ async function openCalcPicker(){
 }
 
 /* =====================================================================
-   6. Контрагенты
+   6. Профиль контакта (физик или дилер) — физики доступны через вкладку
+   «Физики» или карточку сделки, дилеры — через вкладку «Дилеры».
 ===================================================================== */
-function renderParties(){
-  state.view = 'parties';
-  const c = document.getElementById('content');
-  document.getElementById('title').textContent = 'Контрагенты';
-  document.getElementById('subtitle').textContent = state.parties.length + ' записей';
-  const dealers = state.parties.filter(p=>p.kind==='dealer');
-  const persons = state.parties.filter(p=>p.kind!=='dealer');
-  const row = p => `<div class="dealrow" data-pid="${esc(p.id)}">
-      <div class="name">${esc(p.name)}</div>
-      <div class="car">${esc(p.phone||'без телефона')}${p.city?' · '+esc(p.city):''}</div>
-    </div>`;
-  c.innerHTML = `
-    <button class="btn secondary small" id="pBack" style="margin-bottom:12px;">← К сделкам</button>
-    ${dealers.length?`<div class="card"><h2>Дилеры</h2>${dealers.map(row).join('')}</div>`:''}
-    ${persons.length?`<div class="card"><h2>Частные лица</h2>${persons.map(row).join('')}</div>`:''}
-    ${state.parties.length?'':'<div class="emptystate"><div class="big">Пока никого</div>Контрагенты появляются при создании сделок.</div>'}
-    <button class="btn" id="pNew">+ Новый контрагент</button>
-  `;
-  document.getElementById('pBack').onclick = ()=>{ state.view='list'; renderList(); };
-  document.getElementById('pNew').onclick = ()=> openPartySheet({kind:'person'}, ()=> renderParties());
-  c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
-}
-
 async function openParty(id){
   if(!id) return;
   try{
@@ -775,38 +1053,44 @@ async function openParty(id){
     document.getElementById('title').textContent = p.name;
     document.getElementById('subtitle').textContent = PARTY_KIND_LABELS[p.kind] || p.kind;
     const dealer = p.dealerId ? state.parties.find(x=>x.id===p.dealerId) : null;
+    const passportRows = p.kind==='person' ? [
+      ['Дата рождения', p.birthDate], ['Паспорт', p.passportNumber], ['Кем и когда выдан', p.passportIssuedBy],
+      ['Прописка', p.registrationAddress], ['ИНН', p.inn], ['СНИЛС', p.snils]
+    ].filter(([,v])=>v) : [];
     c.innerHTML = `
       <button class="btn secondary small" id="prBack" style="margin-bottom:12px;">← Назад</button>
       <div class="card">
-        <h2>Контрагент</h2>
-        <div class="kv"><span class="k">Тип</span><span class="v">${esc(PARTY_KIND_LABELS[p.kind]||p.kind)}</span></div>
+        <h2>${p.kind==='dealer'?'Дилер':'Физик'}</h2>
         <div class="kv"><span class="k">Телефон</span><span class="v">${esc(p.phone||'—')}</span></div>
+        ${p.kind==='dealer' ? (p.telegramUsername?`<div class="kv"><span class="k">Telegram</span><span class="v">@${esc(p.telegramUsername)}</span></div>`:'') : `
         <div class="kv"><span class="k">Канал связи</span><span class="v">${esc(p.channel||'—')}</span></div>
         <div class="kv"><span class="k">Город</span><span class="v">${esc(p.city||'—')}</span></div>
-        ${dealer?`<div class="kv"><span class="k">Привёл дилер</span><span class="v">${esc(dealer.name)}</span></div>`:''}
-        ${p.terms?`<div class="kv"><span class="k">Условия работы</span><span class="v">${esc(p.terms)}</span></div>`:''}
+        ${dealer?`<div class="kv"><span class="k">Через дилера</span><span class="v">${esc(dealer.name)}</span></div>`:''}`}
         ${p.notes?`<div class="kv"><span class="k">Заметки</span><span class="v">${esc(p.notes)}</span></div>`:''}
         <button class="btn secondary small" id="prEdit" style="margin-top:12px;">Редактировать</button>
       </div>
+      ${passportRows.length ? `<div class="card">
+        <h2>Паспортные данные</h2>
+        ${passportRows.map(([k,v])=>`<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')}
+      </div>` : ''}
       <div class="card">
         <h2>Сделки (${data.deals.length})</h2>
         ${data.deals.length ? data.deals.map(d=>`
           <div class="dealrow" data-id="${esc(d.id)}">
-            <div class="top"><span class="num">${esc(d.num)}</span><span class="idle">${d.archived?'завершена':''}</span></div>
+            <div class="top"><span class="num">${esc(d.num)}</span><span class="idle ${d.archived?(d.removed?'bad':'good'):''}">${d.archived?(d.removed?'не завершена':'завершена'):''}</span></div>
             <div class="car">${esc(d.car||'машина не указана')}</div>
           </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Сделок пока нет.</div>'}
       </div>
       ${p.kind==='dealer' ? `<div class="card">
-        <h2>Привёл клиентов (${data.linked.length})</h2>
+        <h2>Физики этого дилера (${data.linked.length})</h2>
         ${data.linked.length ? data.linked.map(x=>`<div class="dealrow" data-pid="${esc(x.id)}"><div class="name">${esc(x.name)}</div><div class="car">${esc(x.phone||'')}</div></div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Пока никого.</div>'}
-        <button class="btn secondary small" id="prAddLinked" style="margin-top:10px;">+ Новый конечный покупатель от этого дилера</button>
+        <button class="btn secondary small" id="prAddLinked" style="margin-top:10px;">+ Новый физик от этого дилера</button>
       </div>` : ''}
     `;
-    document.getElementById('prBack').onclick = ()=> renderParties();
+    document.getElementById('prBack').onclick = ()=> renderList();
     document.getElementById('prEdit').onclick = ()=> openPartySheet(p, ()=> openParty(p.id));
     // Прямой путь с карточки дилера: тип и dealerId уже заполнены, остаётся
-    // только имя/телефон. Раньше этого пути не было вовсе — заводили через
-    // общий «Контрагенты», вручную выбирая дилера из списка.
+    // только имя/телефон.
     const addLinked = document.getElementById('prAddLinked');
     if(addLinked) addLinked.onclick = ()=> openPartySheet({ kind:'person', dealerId:p.id }, ()=> openParty(p.id));
     c.querySelectorAll('[data-id]').forEach(el=> el.onclick = ()=> openDeal(el.dataset.id));
@@ -827,29 +1111,30 @@ function csvCell(v){
   return '"' + s + '"';
 }
 function dealsCsv(deals){
-  const head = ['Номер','Тип','Маршрут','Контрагент','Конечный покупатель','Ответственный','Машина','Год','Бюджет','Город доставки','Текущий этап','Дата этапа','Дней без движения','Проблема','Причина','Архив','Создана','Заметки'];
+  const head = ['Номер','№ договора','Дата договора','Тип','Маршрут','Контрагент','Конечный покупатель','Ответственный','Машина','Год','Бюджет','Город доставки','Текущий этап','Дата этапа','Дней без движения','Проблема','Причина','Архив','Удалена','Создана','Заметки'];
   const rows = deals.map(d=>{
     const stage = currentStage(d);
     const moved = lastMovementAt(d);
     return [
-      d.num, DEAL_TYPE_LABELS[d.type]||d.type, ROUTE_LABELS[d.route]||d.route||'',
+      d.num, d.dealNum||'', d.dealDate||'', DEAL_TYPE_LABELS[d.type]||d.type, ROUTE_LABELS[d.route]||d.route||'',
       d.partyName||'', d.endBuyerName||'', (d.responsible&&d.responsible.name)||'',
       d.car||'', d.year||'', d.budget||'', d.deliveryCity||'',
       stage?stage.label:'', fmtDate(moved), idleDays(moved),
       (d.problem&&d.problem.on)?'да':'', (d.problem&&d.problem.reason)||'',
-      d.archived?'да':'', fmtDate(d.createdAt), d.notes||''
+      d.archived?'да':'', d.removed?'да':'', fmtDate(d.createdAt), d.notes||''
     ].map(csvCell).join(';');
   });
   // BOM — иначе Excel открывает кириллицу кракозябрами.
   return '﻿' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
 }
 function partiesCsv(parties){
-  const head = ['Имя','Тип','Телефон','Канал связи','Город','Привёл дилер','Условия работы','Заметки'];
+  const head = ['Имя','Тип','Телефон','Telegram','Канал связи','Город','Через дилера','Дата рождения','Паспорт','Кем и когда выдан','Прописка','ИНН','СНИЛС','Заметки'];
   const byId = {};
   parties.forEach(p=>{ byId[p.id] = p.name; });
   const rows = parties.map(p=>[
-    p.name||'', PARTY_KIND_LABELS[p.kind]||p.kind, p.phone||'', p.channel||'', p.city||'',
-    p.dealerId ? (byId[p.dealerId]||'') : '', p.terms||'', p.notes||''
+    p.name||'', PARTY_KIND_LABELS[p.kind]||p.kind, p.phone||'', p.telegramUsername||'', p.channel||'', p.city||'',
+    p.dealerId ? (byId[p.dealerId]||'') : '', p.birthDate||'', p.passportNumber||'', p.passportIssuedBy||'',
+    p.registrationAddress||'', p.inn||'', p.snils||'', p.notes||''
   ].map(csvCell).join(';'));
   return '﻿' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
 }
