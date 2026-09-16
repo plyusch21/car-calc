@@ -446,6 +446,10 @@ function selectTab(t){ state.tab = t; state.dealerFolder = null; renderList(); }
 // физиков в одной вкладке: раньше это были две разные вкладки, из-за чего
 // приходилось прыгать между ними, чтобы и посмотреть сделки, и завести/
 // поправить профиль физика вне привязки к конкретной сделке.
+// Физик вне сделки не имеет смысла (см. правку владельца) — сделка всегда
+// заводится на физика, и обратного пути "просто завести контакт" нет. Эта
+// вкладка (бывшая "Все") поэтому — чистый список сделок, без отдельного
+// справочника контактов и без "+ Новый физик" в стороне от заведения сделки.
 function renderFlatDeals(c){
   const rows = activeDealsOf(state.deals)
     .filter(d => state.tab === 'paperwork' ? d.type === 'paperwork' : true)
@@ -460,29 +464,12 @@ function renderFlatDeals(c){
       <button class="tab ${state.tab==='paperwork'?'active':''}" data-t="paperwork">Оформление</button>
     </div>`;
 
-  const persons = state.parties.filter(p=>p.kind==='person').sort((a,b)=> a.name.localeCompare(b.name, 'ru'));
-  const contactsHtml = state.tab==='all' ? `
-    <div style="margin-top:18px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;">Контакты физиков</div>
-    <div style="font-size:11.5px;color:var(--muted);margin:4px 0 10px;">Профиль и документы физика — не обязательно со сделкой в работе.</div>
-    ${persons.length ? persons.map(p=>{
-      const dealer = p.dealerId ? state.parties.find(x=>x.id===p.dealerId) : null;
-      return `<div class="dealrow" data-pid="${esc(p.id)}">
-        <div class="name" style="margin-top:0;">${esc(p.name)}</div>
-        <div class="car">${esc(p.phone||'без телефона')}${dealer?' · через '+esc(dealer.name):''}</div>
-      </div>`;
-    }).join('') : `<div class="emptystate"><div class="big">Пока никого</div>Физики появляются при создании сделок или их можно добавить здесь.</div>`}
-    <button class="btn secondary small" id="newPhysik" style="margin-top:10px;">+ Новый физик</button>
-  ` : '';
-
   c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` +
-    tabs + dealRowsHtml(rows, {emptySub:'Создайте первую — кнопка выше.'}) + contactsHtml;
+    tabs + dealRowsHtml(rows, {emptySub:'Создайте первую — кнопка выше.'});
 
   c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
   bindDealRows(c);
   document.getElementById('newDeal').onclick = openNewDealSheet;
-  const npBtn = document.getElementById('newPhysik');
-  if(npBtn) npBtn.onclick = ()=> openPartySheet({kind:'person'}, (p)=> openParty(p.id));
-  c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
 }
 
 function renderArchiveList(c){
@@ -580,7 +567,11 @@ function openDealsMenu(){
    после (сделка всегда на физике; дилер — просто метка на нём, "под
    папка" для группировки).
 ===================================================================== */
-function openNewDealSheet(){
+// presetDealerId — вход с карточки дилера ("+ Новая сделка от этого
+// дилера"): физик у дилера заводится не сам по себе (см. правку владельца —
+// физик без сделки не имеет смысла), а сразу с новой сделкой, дилер только
+// заранее подставлен в форму физика.
+function openNewDealSheet(presetDealerId){
   openSheet(`
     <h3>Новая сделка</h3>
     <div class="field">
@@ -602,7 +593,7 @@ function openNewDealSheet(){
     const type = document.getElementById('ndType').value;
     const name = document.getElementById('ndName').value.trim();
     if(!name){ toast('Укажите ФИО физика'); return; }
-    openPartySheet({ kind:'person', name }, (party)=> createDeal(type, party), {
+    openPartySheet({ kind:'person', name, dealerId: presetDealerId||'' }, (party)=> createDeal(type, party), {
       checkPhoneDup: true,
       onDup: (found, attempted)=> askSamePerson(found, type, attempted)
     });
@@ -1185,15 +1176,16 @@ async function openParty(id){
       ${p.kind==='dealer' ? `<div class="card">
         <h2>Физики этого дилера (${data.linked.length})</h2>
         ${data.linked.length ? data.linked.map(x=>`<div class="dealrow" data-pid="${esc(x.id)}"><div class="name">${esc(x.name)}</div><div class="car">${esc(x.phone||'')}</div></div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Пока никого.</div>'}
-        <button class="btn secondary small" id="prAddLinked" style="margin-top:10px;">+ Новый физик от этого дилера</button>
+        <button class="btn secondary small" id="prAddLinked" style="margin-top:10px;">+ Новая сделка от этого дилера</button>
       </div>` : ''}
     `;
     document.getElementById('prBack').onclick = ()=> renderList();
     document.getElementById('prEdit').onclick = ()=> openPartySheet(p, ()=> openParty(p.id));
-    // Прямой путь с карточки дилера: тип и dealerId уже заполнены, остаётся
-    // только имя/телефон.
+    // Физик не заводится сам по себе (см. правку владельца) — прямой путь с
+    // карточки дилера сразу открывает "Новая сделка" с этим дилером
+    // подставленным в форму физика, а не создаёт голый контакт.
     const addLinked = document.getElementById('prAddLinked');
-    if(addLinked) addLinked.onclick = ()=> openPartySheet({ kind:'person', dealerId:p.id }, ()=> openParty(p.id));
+    if(addLinked) addLinked.onclick = ()=> openNewDealSheet(p.id);
     c.querySelectorAll('[data-id]').forEach(el=> el.onclick = ()=> openDeal(el.dataset.id));
     c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
   }catch(e){ toast(e.message); }
