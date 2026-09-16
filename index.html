@@ -2268,10 +2268,10 @@ const SETTINGS_SECTIONS = [
   {id:'routes', label:'Маршруты — комиссии по умолчанию'},
   {id:'customs', label:'Расчёт TKS'},
   {id:'delivery', label:'Таблица доставки по РФ'},
-  // Не подраздел этой страницы — сразу уводит на /deals, там же и
-  // выполняется (архив/выгрузка — на данных и авторизации deals.html,
-  // отдельного документа). Раньше жило кнопкой прямо на экране сделок и
-  // мешало под ногами — теперь только здесь, в настройках.
+  // Архив/выгрузка/чистка дилеров сделок — как и остальные пункты, живёт
+  // здесь как обычный подраздел настроек (см. loadDealsExtraCard), а не
+  // уводит на /deals: раньше уводило, и это ощущалось чужеродно рядом с
+  // остальными пунктами, которые никуда не переключают.
   {id:'dealsExtra', label:'Сделки — дополнительно', dealsOnly:true}
 ];
 
@@ -2290,10 +2290,7 @@ function renderSettingsView(c){
       `</div>
       <button class="btn secondary" id="resetCfgBtn">Сбросить настройки к значениям по умолчанию</button>`;
     document.getElementById('ratesPreviewCard').onclick = openRatesSheet;
-    c.querySelectorAll('.settings-row').forEach(el=> el.onclick = ()=>{
-      if(el.dataset.s === 'dealsExtra'){ location.href = '/deals?menu=1'; return; }
-      state.settingsSection = el.dataset.s; renderSettingsView(c);
-    });
+    c.querySelectorAll('.settings-row').forEach(el=> el.onclick = ()=>{ state.settingsSection = el.dataset.s; renderSettingsView(c); });
     document.getElementById('resetCfgBtn').onclick = openResetConfirm;
     return;
   }
@@ -2321,12 +2318,15 @@ function renderSettingsView(c){
       ${deliveryTable()}
       <button class="btn secondary small" id="addCityBtn" style="margin-top:10px;">+ Добавить город</button>
     </div>`;
+  } else if(section==='dealsExtra'){
+    body = `<div class="card" id="dealsExtraCard"><h2>Сделки — дополнительно</h2><div style="font-size:12px;color:var(--muted);">Загрузка…</div></div>`;
   }
 
   c.innerHTML = back + body;
   document.getElementById('settingsBack').onclick = ()=>{ state.settingsSection = null; renderSettingsView(c); };
 
   if(section==='admin' && ACCESS && ACCESS.isOwner) loadAdminCard();
+  if(section==='dealsExtra') loadDealsExtraCard();
   if(section==='routes') bindRouteSettings();
   if(section==='delivery'){
     bindDeliveryTable();
@@ -2417,6 +2417,150 @@ async function loadAdminCard(){
   }catch(e){
     cardEl.innerHTML = `<h2>Доступ к приложению</h2><div class="notice warn">Не удалось загрузить: ${e.message}</div>`;
   }
+}
+
+/* ---------------------------------------------------------------------
+   9b. "Сделки — дополнительно" — архив/выгрузка/чистка дилеров, прямо
+   отсюда, без ухода на /deals (см. правку владельца — эти действия должны
+   вести себя как обычный подраздел настроек). Ходит в /api/deals
+   напрямую; шаблон этапов (STAGE_TEMPLATES) живёт только в deals.html, так
+   что "текущий этап" показываем сырым ключом, а не человекочитаемой
+   меткой — дублировать шаблон сюда означало бы рассинхронизацию при любой
+   правке этапов там (как уже было один раз в этом же чате).
+--------------------------------------------------------------------- */
+let DEALS_EXTRA = null;
+async function fetchDealsApi(action, payload){
+  const res = await fetch('/api/deals', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(Object.assign({initData:getInitData(), action}, payload||{}))
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  return data;
+}
+async function loadDealsExtraCard(){
+  const cardEl = document.getElementById('dealsExtraCard');
+  if(!cardEl) return;
+  try{
+    const data = await fetchDealsApi('bootstrap');
+    DEALS_EXTRA = data;
+    const archivedCount = (data.deals||[]).filter(d=>d.archived).length;
+    const dealersCount = (data.parties||[]).filter(p=>p.kind==='dealer').length;
+    cardEl.innerHTML = `
+      <h2>Сделки — дополнительно</h2>
+      <button class="btn secondary small" id="deArchive" style="margin-bottom:8px;">Архив сделок (${archivedCount})</button>
+      ${data.me && data.me.level==='full' ? `<button class="btn secondary small" id="deExport" style="margin-bottom:8px;">Выгрузить сделки и контрагентов</button>` : ''}
+      ${data.me && data.me.isOwner ? `<button class="btn secondary small" id="deWipeDealers" style="color:var(--danger);">Удалить всех дилеров (${dealersCount})</button>` : ''}
+    `;
+    document.getElementById('deArchive').onclick = openDealsArchiveSheet;
+    const ex = document.getElementById('deExport'); if(ex) ex.onclick = runDealsExport;
+    const wd = document.getElementById('deWipeDealers'); if(wd) wd.onclick = openWipeDealersConfirm;
+  }catch(e){
+    cardEl.innerHTML = `<h2>Сделки — дополнительно</h2><div class="notice warn">Не удалось загрузить: ${escapeHtml(e.message)}</div>`;
+  }
+}
+function openDealsArchiveSheet(){
+  const deals = (DEALS_EXTRA && DEALS_EXTRA.deals || []).filter(d=>d.archived)
+    .sort((a,b)=> (b.stageAt||b.createdAt||0) - (a.stageAt||a.createdAt||0));
+  openSheet(`
+    <h3>Архив сделок</h3>
+    ${deals.length ? deals.map(d=>`
+      <div class="rline" style="align-items:flex-start;">
+        <div class="k">
+          <span class="hint" style="color:${d.removed?'var(--danger)':'var(--good)'};">${d.removed?'не завершена (удалена)':'завершена'}</span><br>
+          ${escapeHtml(d.num)} · ${escapeHtml(d.partyName||'без физика')}<br>
+          <span style="font-size:11.5px;color:var(--muted);">${escapeHtml(d.car||'машина не указана')}</span>
+        </div>
+      </div>`).join('') : '<div class="emptystate" style="padding:20px 0;">Архив пуст</div>'}
+    <button class="btn secondary" id="daClose" style="margin-top:10px;">Закрыть</button>
+  `);
+  document.getElementById('daClose').onclick = closeSheet;
+}
+function csvCellIdx(v){ const s = String(v==null?'':v).replace(/"/g,'""'); return '"'+s+'"'; }
+function idleDaysIdx(ts){ return ts ? Math.floor((Date.now()-ts)/86400000) : 0; }
+function dealsCsvIdx(deals){
+  const DEAL_TYPE_LABELS = {import:'Импорт', paperwork:'Оформление'};
+  const head = ['Номер','№ договора','Дата договора','Тип','Маршрут','Физик','Ответственный','Машина','Текущий этап (код)','Дней без движения','Проблема','Архив','Удалена','Заметки'];
+  const rows = deals.map(d=>[
+    d.num, d.dealNum||'', d.dealDate||'', DEAL_TYPE_LABELS[d.type]||d.type, CONFIG.routes[d.route]?CONFIG.routes[d.route].label:(d.route||''),
+    d.partyName||'', (d.responsible&&d.responsible.name)||'', d.car||'', d.stageKey||'', idleDaysIdx(d.stageAt||d.createdAt),
+    d.problem?'да':'', d.archived?'да':'', d.removed?'да':'', d.notes||''
+  ].map(csvCellIdx).join(';'));
+  return '﻿' + [head.map(csvCellIdx).join(';')].concat(rows).join('\r\n');
+}
+function partiesCsvIdx(parties){
+  const KIND_LABELS = {person:'Физик', dealer:'Дилер'};
+  const GENDER_LABELS = {m:'Мужской', f:'Женский'};
+  const byId = {}; parties.forEach(p=>{ byId[p.id]=p.name; });
+  const head = ['Имя','Тип','Телефон','Telegram','Через дилера','Пол','Дата рождения','ИНН','СНИЛС','Заметки'];
+  const rows = parties.map(p=>[
+    p.name||'', KIND_LABELS[p.kind]||p.kind, p.phone||'', p.telegramUsername||'',
+    p.dealerId?(byId[p.dealerId]||''):'', GENDER_LABELS[p.gender]||'', p.birthDate||'', p.inn||'', p.snils||'', p.notes||''
+  ].map(csvCellIdx).join(';'));
+  return '﻿' + [head.map(csvCellIdx).join(';')].concat(rows).join('\r\n');
+}
+async function runDealsExport(){
+  const btn = document.getElementById('deExport');
+  if(btn) btn.disabled = true;
+  let deals, parties;
+  try{
+    const data = await fetchDealsApi('export');
+    deals = data.deals||[]; parties = data.parties||[];
+  }catch(e){ toast('Не удалось выгрузить: '+e.message); if(btn) btn.disabled=false; return; }
+  const stamp = new Date().toISOString().slice(0,10);
+  const files = [
+    new File([JSON.stringify({deals,parties}, null, 2)], 'deals-'+stamp+'.json', {type:'application/json'}),
+    new File([dealsCsvIdx(deals)], 'deals-'+stamp+'.csv', {type:'text/csv'}),
+    new File([partiesCsvIdx(parties)], 'parties-'+stamp+'.csv', {type:'text/csv'})
+  ];
+  if(btn) btn.disabled = false;
+  // Та же цепочка запасных вариантов, что и в deals.html (runExport) — в
+  // Android-WebView Telegram нет ни Web Share API, ни рабочего скачивания.
+  if(navigator.share && navigator.canShare && navigator.canShare({files})){
+    try{ await navigator.share({files, title:'Выгрузка сделок'}); return; }
+    catch(e){ if(e.name==='AbortError') return; }
+  }
+  let downloaded = 0;
+  files.forEach(f=>{
+    try{
+      const url = URL.createObjectURL(f);
+      const a = document.createElement('a'); a.href=url; a.download=f.name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 20000);
+      downloaded++;
+    }catch(e){ /* ниже покажем текстом */ }
+  });
+  if(downloaded===files.length){ toast('Выгружено '+downloaded+' файла — проверьте «Загрузки»', 3500); return; }
+  openSheet(`
+    <h3>Выгрузка</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Этот браузер не дал ни поделиться файлом, ни скачать его. Скопируйте данные отсюда.</p>
+    <textarea readonly style="height:300px;font-family:'IBM Plex Mono',monospace;font-size:11px;width:100%;box-sizing:border-box;">${escapeHtml(JSON.stringify({deals,parties}))}</textarea>
+    <button class="btn" id="deExCopy" style="margin-top:10px;">Скопировать</button>
+    <button class="btn secondary" id="deExClose" style="margin-top:8px;">Закрыть</button>
+  `);
+  document.getElementById('deExClose').onclick = closeSheet;
+  document.getElementById('deExCopy').onclick = ()=>{
+    navigator.clipboard && navigator.clipboard.writeText(JSON.stringify({deals,parties})).then(()=>toast('Скопировано')).catch(()=>toast('Не удалось скопировать'));
+  };
+}
+function openWipeDealersConfirm(){
+  const dealers = (DEALS_EXTRA && DEALS_EXTRA.parties || []).filter(p=>p.kind==='dealer');
+  openSheet(`
+    <h3>Удалить всех дилеров?</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 18px;">Будет удалено записей: ${dealers.length}. Сделки и физики не удаляются — у физиков просто снимется отметка «через дилера». Отменить нельзя.</p>
+    <button class="btn" id="wdConfirm" style="background:var(--danger);margin-bottom:8px;">Да, удалить всех дилеров</button>
+    <button class="btn secondary" id="wdCancel">Отмена</button>
+  `);
+  document.getElementById('wdCancel').onclick = closeSheet;
+  document.getElementById('wdConfirm').onclick = async ()=>{
+    closeSheet();
+    let ok=0, failed=0;
+    for(const d of dealers){
+      try{ await fetchDealsApi('deleteParty', {id:d.id}); ok++; }catch(e){ failed++; }
+    }
+    toast('Удалено дилеров: '+ok+(failed?(', не удалось: '+failed):''));
+    loadDealsExtraCard();
+  };
 }
 
 function routeSettingsBlock(id){

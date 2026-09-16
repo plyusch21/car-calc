@@ -552,49 +552,6 @@ function renderDealerFolder(c){
 // маленький клиентский помощник, чтобы не звать сервер ради одной кнопки.
 function auth_isRestricted(){ return !(state.me && (state.me.isOwner || state.me.level === 'full')); }
 
-// Архив и выгрузка — раньше были кнопкой прямо на главном экране сделок и
-// путались под ногами; теперь отдельное меню, открывается только из
-// Настроек калькулятора (index.html → «Сделки — дополнительно» →
-// /deals?menu=1, см. boot() ниже), на самой странице сделок этой кнопки нет.
-function openDealsMenu(){
-  openSheet(`
-    <h3>Сделки — дополнительно</h3>
-    <button class="btn secondary" id="mArchive" style="margin-bottom:8px;">Архив сделок</button>
-    ${state.me && state.me.level === 'full' ? `<button class="btn secondary" id="mExport" style="margin-bottom:8px;">Выгрузить сделки и контрагентов</button>` : ''}
-    ${state.me && state.me.isOwner ? `<button class="btn secondary" id="mWipeDealers" style="margin-bottom:8px;color:var(--danger);">Удалить всех дилеров (очистка теста)</button>` : ''}
-    <button class="btn secondary" id="mClose">Закрыть</button>
-  `);
-  document.getElementById('mClose').onclick = closeSheet;
-  document.getElementById('mArchive').onclick = ()=>{ closeSheet(); state.archive = true; renderList(); };
-  const mx = document.getElementById('mExport'); if(mx) mx.onclick = ()=>{ closeSheet(); runExport(); };
-  const mw = document.getElementById('mWipeDealers'); if(mw) mw.onclick = openWipeDealersConfirm;
-}
-
-// Разовая утилита для чистки тестовых дилеров — удаляет ВСЕ записи дилеров
-// (deleteParty уже владелец-only на сервере). У физиков, у которых был
-// dealerId на удалённого дилера, поле просто перестанет на кого-то
-// указывать — как и при обычном удалении одного контрагента, это не
-// физика удаляет, а только метку "через дилера". Сами сделки не трогает.
-function openWipeDealersConfirm(){
-  const dealers = state.parties.filter(p=>p.kind==='dealer');
-  openSheet(`
-    <h3>Удалить всех дилеров?</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 18px;">Будет удалено записей: ${dealers.length}. Сделки и физики не удаляются — у физиков просто снимется отметка "через дилера". Отменить нельзя.</p>
-    <button class="btn danger" id="wdConfirm" style="margin-bottom:8px;">Да, удалить всех дилеров</button>
-    <button class="btn secondary" id="wdCancel">Отмена</button>
-  `);
-  document.getElementById('wdCancel').onclick = closeSheet;
-  document.getElementById('wdConfirm').onclick = async ()=>{
-    closeSheet();
-    let ok = 0, failed = 0;
-    for(const d of dealers){
-      try{ await api('deleteParty', {id:d.id}); ok++; }catch(e){ failed++; }
-    }
-    await reloadIndexes();
-    toast('Удалено дилеров: ' + ok + (failed ? (', не удалось: ' + failed) : ''));
-  };
-}
-
 /* =====================================================================
    4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
    после (сделка всегда на физике; дилер — просто метка на нём, "под
@@ -1358,9 +1315,6 @@ async function boot(){
     return;
   }
   renderList();
-  // Пришли из Настроек калькулятора (/deals?menu=1) — сразу открываем то же
-  // меню архива/выгрузки, а не заставляем искать его на этой странице.
-  if(new URLSearchParams(location.search).get('menu') === '1') openDealsMenu();
 }
 
 boot();
