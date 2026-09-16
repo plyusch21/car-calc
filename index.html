@@ -2228,7 +2228,12 @@ const SETTINGS_SECTIONS = [
   {id:'admin', label:'Доступ к приложению', ownerOnly:true},
   {id:'routes', label:'Маршруты — комиссии по умолчанию'},
   {id:'customs', label:'Расчёт TKS'},
-  {id:'delivery', label:'Таблица доставки по РФ'}
+  {id:'delivery', label:'Таблица доставки по РФ'},
+  // Не подраздел этой страницы — сразу уводит на /deals, там же и
+  // выполняется (архив/выгрузка — на данных и авторизации deals.html,
+  // отдельного документа). Раньше жило кнопкой прямо на экране сделок и
+  // мешало под ногами — теперь только здесь, в настройках.
+  {id:'dealsExtra', label:'Сделки — дополнительно', dealsOnly:true}
 ];
 
 function renderSettingsView(c){
@@ -2236,14 +2241,20 @@ function renderSettingsView(c){
   syncTelegramUI(); // вход/выход из подраздела настроек двигает BackButton (ЗАДАНИЕ.md Блок 10)
 
   if(!section){
-    const items = SETTINGS_SECTIONS.filter(s=> !s.ownerOnly || (ACCESS && ACCESS.isOwner));
+    const items = SETTINGS_SECTIONS.filter(s=>
+      (!s.ownerOnly || (ACCESS && ACCESS.isOwner)) &&
+      (!s.dealsOnly || (ACCESS && ACCESS.dealsLevel && ACCESS.dealsLevel !== 'none'))
+    );
     c.innerHTML = ratesPreviewCardHtml() +
       `<div class="settings-menu">` +
       items.map(s=>`<div class="settings-row" data-s="${s.id}"><div class="lbl">${s.label}</div><div class="arrow">›</div></div>`).join('') +
       `</div>
       <button class="btn secondary" id="resetCfgBtn">Сбросить настройки к значениям по умолчанию</button>`;
     document.getElementById('ratesPreviewCard').onclick = openRatesSheet;
-    c.querySelectorAll('.settings-row').forEach(el=> el.onclick = ()=>{ state.settingsSection = el.dataset.s; renderSettingsView(c); });
+    c.querySelectorAll('.settings-row').forEach(el=> el.onclick = ()=>{
+      if(el.dataset.s === 'dealsExtra'){ location.href = '/deals?menu=1'; return; }
+      state.settingsSection = el.dataset.s; renderSettingsView(c);
+    });
     document.getElementById('resetCfgBtn').onclick = openResetConfirm;
     return;
   }

@@ -409,13 +409,11 @@ function renderFlatDeals(c){
     </div>`;
 
   c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` +
-    tabs + dealRowsHtml(rows, {emptySub:'Создайте первую — кнопка выше.'}) +
-    `<button class="btn secondary small" id="moreMenu" style="margin-top:14px;">⚙ Ещё</button>`;
+    tabs + dealRowsHtml(rows, {emptySub:'Создайте первую — кнопка выше.'});
 
   c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
   bindDealRows(c);
   document.getElementById('newDeal').onclick = openNewDealSheet;
-  document.getElementById('moreMenu').onclick = openDealsMenu;
 }
 
 function renderArchiveList(c){
@@ -521,11 +519,13 @@ function renderPhysiksTab(c){
   document.getElementById('newPhysik').onclick = ()=> openPartySheet({kind:'person'}, (p)=> openParty(p.id));
 }
 
-// "Ещё" — архив и выгрузка, раньше были прямо на главном экране сделок и
-// путались под ногами; теперь отдельное небольшое меню.
+// Архив и выгрузка — раньше были кнопкой прямо на главном экране сделок и
+// путались под ногами; теперь отдельное меню, открывается только из
+// Настроек калькулятора (index.html → «Сделки — дополнительно» →
+// /deals?menu=1, см. boot() ниже), на самой странице сделок этой кнопки нет.
 function openDealsMenu(){
   openSheet(`
-    <h3>Ещё</h3>
+    <h3>Сделки — дополнительно</h3>
     <button class="btn secondary" id="mArchive" style="margin-bottom:8px;">Архив сделок</button>
     ${state.me && state.me.level === 'full' ? `<button class="btn secondary" id="mExport" style="margin-bottom:8px;">Выгрузить сделки и контрагентов</button>` : ''}
     <button class="btn secondary" id="mClose">Закрыть</button>
@@ -1230,6 +1230,9 @@ async function boot(){
     return;
   }
   renderList();
+  // Пришли из Настроек калькулятора (/deals?menu=1) — сразу открываем то же
+  // меню архива/выгрузки, а не заставляем искать его на этой странице.
+  if(new URLSearchParams(location.search).get('menu') === '1') openDealsMenu();
 }
 
 boot();
