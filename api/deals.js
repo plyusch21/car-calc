@@ -122,7 +122,7 @@ function describeChanges(before, after) {
   const out = [];
   if (!before) return ['создал сделку'];
   const plain = [
-    ['partyName', 'контрагент'], ['endBuyerName', 'конечный покупатель'],
+    ['partyName', 'контрагент'],
     ['route', 'маршрут'], ['car', 'что ищем'], ['deliveryCity', 'город доставки'],
     ['notes', 'заметки'], ['budget', 'бюджет'], ['wishes', 'пожелания'], ['year', 'год'],
     ['num', 'номер сделки'], ['dealNum', '№ договора'], ['dealDate', 'дата договора']
@@ -290,8 +290,13 @@ module.exports = async (req, res) => {
         partyId: str(incoming.partyId, 40),
         partyName: str(incoming.partyName, 200),
         partyKind: oneOf(incoming.partyKind, PARTY_KINDS) || '',
-        endBuyerId: str(incoming.endBuyerId, 40),
-        endBuyerName: str(incoming.endBuyerName, 200),
+        // Наследие первой версии раздела, когда сделка заводилась на дилера и
+        // конечного покупателя указывали отдельно. Сейчас сделка всегда на
+        // физике (partyId), интерфейса для этого поля нет; сохраняем то, что
+        // уже лежит в записи, чтобы старые сделки не потеряли данные, а с
+        // клиента не принимаем.
+        endBuyerId: before ? str(before.endBuyerId, 40) : '',
+        endBuyerName: before ? str(before.endBuyerName, 200) : '',
         responsible: {
           uid: str((incoming.responsible || {}).uid, 40),
           name: str((incoming.responsible || {}).name, 200)

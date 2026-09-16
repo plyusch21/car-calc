@@ -812,7 +812,6 @@ function renderDeal(){
     + ' · ' + (DEAL_TYPE_LABELS[d.type] || d.type);
 
   const party = state.parties.find(p=>p.id===d.partyId);
-  const endBuyer = state.parties.find(p=>p.id===d.endBuyerId);
 
   const stagesHtml = stagesOf(d.type).map(st=>{
     const mark = (d.stages && d.stages[st.key]) || {};
@@ -841,7 +840,6 @@ function renderDeal(){
     <div class="card">
       <h2>Сделка</h2>
       <div class="kv"><span class="k">Контрагент</span><span class="v">${party ? `<a href="#" id="toParty" style="color:var(--accent);text-decoration:none;">${esc(d.partyName)}</a>` : esc(d.partyName||'—')}</span></div>
-      ${d.endBuyerName ? `<div class="kv"><span class="k">Конечный покупатель</span><span class="v">${esc(d.endBuyerName)}</span></div>` : ''}
       <div class="kv"><span class="k">Тип</span><span class="v">${esc(DEAL_TYPE_LABELS[d.type]||d.type)}</span></div>
       <div class="kv"><span class="k">Маршрут</span><span class="v">${d.route ? (ROUTE_FLAGS[d.route]||'') + ' ' + esc(ROUTE_LABELS[d.route]||d.route) : '—'}</span></div>
       <div class="kv"><span class="k">Что ищем</span><span class="v">${esc(d.car||'—')}${d.year?' · '+esc(d.year):''}</span></div>
@@ -1017,7 +1015,6 @@ function openProblemSheet(){
 function openDealEditSheet(){
   const d = state.deal;
   const canAssign = state.me && (state.me.isOwner || state.me.level === 'full');
-  const persons = state.parties.filter(p=>p.kind==='person');
   openSheet(`
     <h3>Сделка ${esc(d.num)}</h3>
     <div class="field"><label>Номер сделки (технический)</label><input type="text" id="eNum" value="${esc(d.num||'')}"></div>
@@ -1038,12 +1035,6 @@ function openDealEditSheet(){
     </div>
     <div class="field"><label>Пожелания</label><textarea id="eWishes">${esc(d.wishes||'')}</textarea></div>
     <div class="field"><label>Город доставки</label><input type="text" id="eCity" value="${esc(d.deliveryCity||'')}"></div>
-    <div class="field"><label>Конечный покупатель (если отличается)</label>
-      <select id="eEndBuyer">
-        <option value="">— тот же контрагент —</option>
-        ${persons.map(p=>`<option value="${esc(p.id)}" ${d.endBuyerId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
-      </select>
-    </div>
     ${canAssign ? `<div class="field"><label>Ответственный</label>
       <select id="eResp">
         <option value="">— не назначен —</option>
@@ -1080,9 +1071,6 @@ function openDealEditSheet(){
       deliveryCity: document.getElementById('eCity').value.trim(),
       notes: document.getElementById('eNotes').value.trim()
     };
-    const eb = document.getElementById('eEndBuyer').value;
-    patch.endBuyerId = eb;
-    patch.endBuyerName = eb ? ((state.parties.find(p=>p.id===eb)||{}).name || '') : '';
     if(respSel){
       if(respSel.value === '__manual__'){
         patch.responsible = { uid:'', name: document.getElementById('eRespName').value.trim() };

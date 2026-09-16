@@ -240,9 +240,13 @@ this is the spec's "конечный покупатель"). The only entry poin
 dealer's own party card ("+ Новый конечный покупатель от этого дилера"),
 which opens the party sheet pre-filled with `kind:'person', dealerId`; the
 generic "+ Новый контрагент" flow also allows picking a dealer manually.
-Don't confuse this with a deal's own `endBuyerId` field, which says who the
-car is actually for on one specific deal when it isn't the deal's primary
-`partyId` — different concept, same underlying party record.
+A deal's own `endBuyerId`/`endBuyerName` is a leftover from the first
+version of this section, when a deal was opened on a dealer and the end
+buyer was picked separately. Deals are now always opened on the physik
+(`partyId`), so the field has no UI any more: `saveDeal` keeps whatever an
+existing record already holds and ignores it from the client; reads
+(`visiblePartyIds`, the orphan check in `removeDeal`, `getParty`'s linked
+deals) still honour it so old records behave. Don't resurrect it.
 
 ### Linked calculations are snapshots, not live references
 
