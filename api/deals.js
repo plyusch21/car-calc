@@ -305,14 +305,28 @@ module.exports = async (req, res) => {
         // Снимок расчёта, а не только его id: история калькулятора общая и
         // ограничена по длине — старые записи из неё выпадают, и одна голая
         // ссылка со временем указывала бы в пустоту. Id храним тоже, чтобы
-        // при случае найти живой расчёт в истории.
-        calcs: Array.isArray(incoming.calcs) ? incoming.calcs.slice(0, 50).map(x => ({
-          id: str(x && x.id, 40),
-          model: str(x && x.model, 200),
-          route: str(x && x.route, 20),
-          total: Number(x && x.total) || 0,
-          at: Number(x && x.at) || 0
-        })) : (before ? (before.calcs || []) : []),
+        // при случае найти живой расчёт в истории. form — параметры расчёта
+        // (не только итог), чтобы забронированный расчёт можно было потом
+        // пересчитать по свежим курсам. booked — какой из привязанных
+        // расчётов реально едет на импорт по этой сделке (не больше одного).
+        calcs: Array.isArray(incoming.calcs) ? incoming.calcs.slice(0, 50).map(x => {
+          let form = null;
+          if (x && x.form && typeof x.form === 'object') {
+            try {
+              const s = JSON.stringify(x.form);
+              if (s.length <= 4000) form = JSON.parse(s);
+            } catch (e) { /* битая форма — просто не сохраняем её, остальной расчёт не теряем */ }
+          }
+          return {
+            id: str(x && x.id, 40),
+            model: str(x && x.model, 200),
+            route: str(x && x.route, 20),
+            total: Number(x && x.total) || 0,
+            at: Number(x && x.at) || 0,
+            booked: !!(x && x.booked),
+            form
+          };
+        }) : (before ? (before.calcs || []) : []),
         problem: {
           on: !!(incoming.problem && incoming.problem.on),
           reason: str((incoming.problem || {}).reason, 500)
