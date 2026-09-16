@@ -1327,13 +1327,16 @@ async function openCalcPicker(){
       parts: (h.parts && typeof h.parts==='object') ? h.parts : null,
       booked: false
     }]);
-    // Пустые поля сделки добираем из расчёта — маршрут, модель, год и город
-    // уже введены в калькуляторе, второй раз их набирать незачем. Только
-    // пустые: то, что в сделке уже стоит, расчёт не перезаписывает.
+    // Расчёт побеждает: маршрут, модель, год и город доставки берутся из
+    // него всегда, когда там есть значение, даже поверх уже введённых в
+    // сделке — привязанный расчёт и есть источник правды о параметрах
+    // машины (решение владельца). Пустое поле расчёта (например, без года)
+    // ничего не затирает — калькулятор просто не спрашивал это значение.
     const fill = calcFillsForDeal(state.deal, h);
-    const filledLabels = Object.keys(fill).map(k=>CALC_FILL_LABELS[k]).join(', ');
+    const changedKeys = Object.keys(fill).filter(k => String(fill[k]) !== String(state.deal[k]||''));
+    const filledLabels = changedKeys.map(k=>CALC_FILL_LABELS[k]).join(', ');
     saveDeal(Object.assign({}, state.deal, { calcs }, fill),
-      filledLabels ? 'Расчёт привязан, из него заполнено: ' + filledLabels : undefined);
+      filledLabels ? 'Расчёт привязан, из него взято: ' + filledLabels : undefined);
   });
 }
 
@@ -1341,16 +1344,15 @@ const CALC_FILL_LABELS = { route:'маршрут', car:'модель', year:'г�
 function calcFillsForDeal(deal, h){
   const f = (h.form && typeof h.form==='object') ? h.form : {};
   const out = {};
-  const empty = k => !String(deal[k]||'').trim();
-  if(empty('route') && ROUTE_LABELS[h.route]) out.route = h.route;
+  if(ROUTE_LABELS[h.route]) out.route = h.route;
   // В истории модель без названия хранится как «Без названия» — это не модель.
   const model = String(f.model || (h.model!=='Без названия' ? h.model : '') || '').trim();
-  if(empty('car') && model) out.car = model;
-  if(empty('year') && f.prodYear) out.year = String(f.prodYear);
+  if(model) out.car = model;
+  if(f.prodYear) out.year = String(f.prodYear);
   // Как в тексте КП: доставку не считали — значит машина под ключ во
   // Владивостоке, а город в форме калькулятора просто остался от прошлого
   // раза и к этому расчёту отношения не имеет.
-  if(empty('deliveryCity') && h.form){
+  if(h.form){
     out.deliveryCity = (f.deliveryEnabled && f.deliveryCity) ? String(f.deliveryCity) : 'Владивосток';
   }
   return out;
