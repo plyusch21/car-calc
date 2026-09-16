@@ -5,22 +5,22 @@
 Использование: найти нужный диапазон здесь, прочитать его `sed -n 'START,ENDp' файл`, а не файл целиком.
 
 
-## index.html (2946 строк)
+## index.html (2975 строк)
 
 ### Секции
 
-- L420-647: 1. Default configuration
-- L648-680: 2. State
-- L681-750: 3. Helpers
-- L751-907: 4. Currency rates — fetch via server-side proxy, manual always wins
-- L908-916: 5. Delivery lookup
-- L917-929: 6. Route → RUB conversion chains
-- L930-960: 7. Main calculation
-- L961-2290: 8. Rendering
-- L2291-2636: 9. Settings
-- L2637-2767: 10. Rate editor sheet
-- L2768-2812: 11. Nav + boot
-- L2813-2946: 12. Доступ через Telegram — приложение работает только как Mini App.
+- L420-662: 1. Default configuration
+- L663-695: 2. State
+- L696-765: 3. Helpers
+- L766-922: 4. Currency rates — fetch via server-side proxy, manual always wins
+- L923-931: 5. Delivery lookup
+- L932-944: 6. Route → RUB conversion chains
+- L945-975: 7. Main calculation
+- L976-2309: 8. Rendering
+- L2310-2655: 9. Settings
+- L2656-2787: 10. Rate editor sheet
+- L2788-2832: 11. Nav + boot
+- L2833-2975: 12. Доступ через Telegram — приложение работает только как Mini App.
 
 ### Функции
 
@@ -32,97 +32,99 @@
 - L585-585: `getInitData()`
 - L586-586: `getTg()`
 - L590-598: `tgHaptic()`
-- L607-620: `saveConfig()`
-- L621-626: `saveHistory()`
-- L631-636: `saveArchive()`
-- L637-646: `deepMerge()`
-- L653-668: `defaultForm()`
-- L688-688: `groupInt()`
-- L689-693: `fmt()`
-- L694-694: `num()`
-- L701-706: `invalidateCustomsAuto()`
-- L712-720: `computeAgeFromDate()`
-- L725-728: `applyAgeFromDate()`
-- L732-738: `formatNumInput()`
-- L739-739: `cleanNumInput()`
-- L745-745: `escapeHtml()`
-- L746-749: `openExternal()`
-- L764-769: `logRateHistory()`
-- L771-796: `applyAutoRate()`
-- L798-830: `fetchAutoRates()`
-- L839-888: `fetchCustomsQuote()`
-- L890-898: `setRawValue()`
-- L900-906: `clearManualOverride()`
-- L911-915: `deliveryPrice()`
-- L920-928: `convertToRub()`
-- L933-959: `calcDeal()`
-- L1001-1007: `rateWidgetData()`
-- L1008-1012: `isUpdatedToday()`
-- L1017-1021: `rateWidgetStatus()`
-- L1022-1034: `rateWidgetHtml()`
-- L1037-1044: `bindRateWidget()`
-- L1049-1058: `refreshRatesUI()`
-- L1063-1072: `fetchCbrReference()`
-- L1074-1080: `cbrReferenceHtml()`
-- L1082-1114: `openRatesSheet()`
-- L1119-1133: `ratesPreviewCardHtml()`
-- L1135-1153: `renderTabs()`
-- L1155-1160: `renderContent()`
-- L1162-1162: `field()`
-- L1163-1163: `removeFromArr()`
-- L1168-1170: `carriedHint()`
-- L1174-1178: `unfilledHint()`
-- L1179-1179: `unfilledClass()`
-- L1183-1189: `clearFieldHints()`
-- L1191-1193: `cityOptions()`
-- L1198-1237: `resizeImageToBase64()`
-- L1255-1311: `runListingParse()`
-- L1313-1606: `renderCalc()`
-- L1608-1624: `carDetailLines()`
-- L1629-1633: `pushArchive()`
-- L1634-1761: `showResult()`
-- L1765-1767: `fmtRate()`
-- L1776-1894: `buildKpHtml()`
-- L1899-1930: `renderKpImageBlob()`
-- L1947-2093: `shareResult()`
-- L2104-2146: `bindHistorySwipe()`
-- L2148-2164: `openClearHistoryConfirm()`
-- L2166-2188: `openOtherRoutePicker()`
-- L2195-2217: `renderArchiveList()`
-- L2219-2289: `renderHistory()`
-- L2306-2366: `renderSettingsView()`
-- L2368-2384: `openResetConfirm()`
-- L2386-2389: `fetchAdminUsers()`
-- L2390-2393: `adminAction()`
-- L2400-2427: `renderAdminUsersList()`
-- L2428-2448: `loadAdminCard()`
-- L2460-2468: `fetchDealsApi()`
-- L2469-2489: `loadDealsExtraCard()`
-- L2490-2506: `openDealsArchiveSheet()`
-- L2507-2507: `csvCellIdx()`
-- L2508-2508: `idleDaysIdx()`
-- L2509-2518: `dealsCsvIdx()`
-- L2519-2529: `partiesCsvIdx()`
-- L2530-2573: `runDealsExport()`
-- L2574-2592: `openWipeDealersConfirm()`
-- L2594-2604: `routeSettingsBlock()`
-- L2605-2614: `bindRouteSettings()`
-- L2616-2625: `deliveryTable()`
-- L2626-2635: `bindDeliveryTable()`
-- L2640-2640: `openSheet()`
-- L2641-2641: `closeSheet()`
-- L2646-2663: `openTextFieldSheet()`
-- L2709-2727: `openRateHistory()`
-- L2729-2766: `openRateEditor()`
-- L2792-2792: `toast()`
-- L2802-2809: `syncTelegramUI()`
-- L2810-2810: `renderAll()`
-- L2811-2811: `startApp()`
-- L2821-2835: `renderGate()`
-- L2837-2940: `bootGate()`
+- L604-607: `formHasData()`
+- L608-613: `updateClosingGuard()`
+- L622-635: `saveConfig()`
+- L636-641: `saveHistory()`
+- L646-651: `saveArchive()`
+- L652-661: `deepMerge()`
+- L668-683: `defaultForm()`
+- L703-703: `groupInt()`
+- L704-708: `fmt()`
+- L709-709: `num()`
+- L716-721: `invalidateCustomsAuto()`
+- L727-735: `computeAgeFromDate()`
+- L740-743: `applyAgeFromDate()`
+- L747-753: `formatNumInput()`
+- L754-754: `cleanNumInput()`
+- L760-760: `escapeHtml()`
+- L761-764: `openExternal()`
+- L779-784: `logRateHistory()`
+- L786-811: `applyAutoRate()`
+- L813-845: `fetchAutoRates()`
+- L854-903: `fetchCustomsQuote()`
+- L905-913: `setRawValue()`
+- L915-921: `clearManualOverride()`
+- L926-930: `deliveryPrice()`
+- L935-943: `convertToRub()`
+- L948-974: `calcDeal()`
+- L1016-1022: `rateWidgetData()`
+- L1023-1027: `isUpdatedToday()`
+- L1032-1036: `rateWidgetStatus()`
+- L1037-1049: `rateWidgetHtml()`
+- L1052-1059: `bindRateWidget()`
+- L1064-1073: `refreshRatesUI()`
+- L1078-1087: `fetchCbrReference()`
+- L1089-1095: `cbrReferenceHtml()`
+- L1097-1129: `openRatesSheet()`
+- L1134-1148: `ratesPreviewCardHtml()`
+- L1150-1168: `renderTabs()`
+- L1170-1175: `renderContent()`
+- L1177-1177: `field()`
+- L1178-1178: `removeFromArr()`
+- L1183-1185: `carriedHint()`
+- L1189-1193: `unfilledHint()`
+- L1194-1194: `unfilledClass()`
+- L1198-1204: `clearFieldHints()`
+- L1206-1208: `cityOptions()`
+- L1213-1252: `resizeImageToBase64()`
+- L1270-1326: `runListingParse()`
+- L1328-1624: `renderCalc()`
+- L1626-1642: `carDetailLines()`
+- L1647-1651: `pushArchive()`
+- L1652-1780: `showResult()`
+- L1784-1786: `fmtRate()`
+- L1795-1913: `buildKpHtml()`
+- L1918-1949: `renderKpImageBlob()`
+- L1966-2112: `shareResult()`
+- L2123-2165: `bindHistorySwipe()`
+- L2167-2183: `openClearHistoryConfirm()`
+- L2185-2207: `openOtherRoutePicker()`
+- L2214-2236: `renderArchiveList()`
+- L2238-2308: `renderHistory()`
+- L2325-2385: `renderSettingsView()`
+- L2387-2403: `openResetConfirm()`
+- L2405-2408: `fetchAdminUsers()`
+- L2409-2412: `adminAction()`
+- L2419-2446: `renderAdminUsersList()`
+- L2447-2467: `loadAdminCard()`
+- L2479-2487: `fetchDealsApi()`
+- L2488-2508: `loadDealsExtraCard()`
+- L2509-2525: `openDealsArchiveSheet()`
+- L2526-2526: `csvCellIdx()`
+- L2527-2527: `idleDaysIdx()`
+- L2528-2537: `dealsCsvIdx()`
+- L2538-2548: `partiesCsvIdx()`
+- L2549-2592: `runDealsExport()`
+- L2593-2611: `openWipeDealersConfirm()`
+- L2613-2623: `routeSettingsBlock()`
+- L2624-2633: `bindRouteSettings()`
+- L2635-2644: `deliveryTable()`
+- L2645-2654: `bindDeliveryTable()`
+- L2659-2659: `openSheet()`
+- L2660-2660: `closeSheet()`
+- L2665-2683: `openTextFieldSheet()`
+- L2729-2747: `openRateHistory()`
+- L2749-2786: `openRateEditor()`
+- L2812-2812: `toast()`
+- L2822-2829: `syncTelegramUI()`
+- L2830-2830: `renderAll()`
+- L2831-2831: `startApp()`
+- L2841-2855: `renderGate()`
+- L2857-2969: `bootGate()`
 
 
-## deals.html (1325 строк)
+## deals.html (1334 строк)
 
 ### Секции
 
@@ -132,7 +134,7 @@
 - L607-819: 4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
 - L820-1211: 5. Карточка сделки
 - L1212-1276: 6. Профиль контакта (физик или дилер) — физики доступны через вкладку
-- L1277-1325: 8. Загрузка и гейт
+- L1277-1334: 8. Загрузка и гейт
 
 ### Функции
 
@@ -185,4 +187,4 @@
 - L1216-1275: `openParty()`
 - L1280-1286: `reloadIndexes()`
 - L1294-1297: `gate()`
-- L1299-1319: `boot()`
+- L1299-1328: `boot()`

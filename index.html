@@ -597,6 +597,21 @@ function tgHaptic(kind, style){
   }catch(e){}
 }
 
+// Заполненной считаем форму, в которую человек уже что-то ввёл руками или
+// распознал из объявления. Поля, которые переносятся между расчётами
+// (объём, мощность, тип двигателя, возраст, привод, трансмиссия), сами по
+// себе заполненности не означают — они остаются после каждой отправки.
+function formHasData(f){
+  return ['model','carPrice','extraCosts','mileage','carTrim','listingText','condition','notes']
+    .some(k => String(f[k] || '').trim() !== '');
+}
+function updateClosingGuard(){
+  const tg = getTg();
+  if(!tg || !tg.enableClosingConfirmation) return;
+  if(formHasData(state.form)) tg.enableClosingConfirmation();
+  else tg.disableClosingConfirmation();
+}
+
 let configSyncTimer = null;
 // Версия настроек для оптимистичной блокировки (ЗАДАНИЕ.md Блок 9) — растёт
 // на каждое успешное сохранение на сервере (api/state.js), присылается назад
@@ -1488,6 +1503,7 @@ function renderCalc(c){
         if(CUSTOMS_AFFECTING.includes(k)) invalidateCustomsAuto(f);
         const clean = cleanNumInput(el.value);
         f[k] = clean;
+        updateClosingGuard();
         const digitsBeforeCursor = cleanNumInput(el.value.slice(0, el.selectionStart)).length;
         const formatted = formatNumInput(clean);
         el.value = formatted;
@@ -1499,7 +1515,7 @@ function renderCalc(c){
         el.setSelectionRange(pos, pos);
       };
     } else {
-      el.oninput = ()=>{ clearFieldHints(f, k); f[k]=el.value; };
+      el.oninput = ()=>{ clearFieldHints(f, k); f[k]=el.value; updateClosingGuard(); };
     }
   });
   // Возраст пересчитывается из даты выпуска (ЗАДАНИЕ.md Блок 10) по onchange
@@ -1517,7 +1533,7 @@ function renderCalc(c){
   const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; invalidateCustomsAuto(f); renderCalc(c); };
   const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
-  const listingTa = document.getElementById('f_listingText'); if(listingTa) listingTa.oninput = ()=> f.listingText = listingTa.value;
+  const listingTa = document.getElementById('f_listingText'); if(listingTa) listingTa.oninput = ()=>{ f.listingText = listingTa.value; updateClosingGuard(); };
   const parseBtn = document.getElementById('parseListingBtn');
   if(parseBtn) parseBtn.onclick = async ()=>{
     const text = (f.listingText||'').trim();
@@ -1528,6 +1544,7 @@ function renderCalc(c){
     }
     parseBtn.disabled = true; parseBtn.textContent = 'Распознаю…';
     const {statusText, statusColor} = await runListingParse({text}, f, route);
+    updateClosingGuard();
     renderCalc(c);
     const statusEl = document.getElementById('parseListingStatus');
     if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
@@ -1557,6 +1574,7 @@ function renderCalc(c){
       statusText = 'Ошибка: '+e.message;
       statusColor = 'var(--danger)';
     }
+    updateClosingGuard();
     renderCalc(c);
     const statusEl = document.getElementById('parseListingImageStatus');
     if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
@@ -1709,6 +1727,7 @@ function showResult(route, f, opts){
     nf._carried = carried;
     state.form = nf;
     state.formCache[route] = state.form;
+    updateClosingGuard();
     renderCalc(document.getElementById('content'));
   }
 
@@ -2657,6 +2676,7 @@ function openTextFieldSheet(f, key, label, onDone){
   document.getElementById('sheetDoneBtn').onclick = ()=>{
     clearFieldHints(f, key);
     f[key] = document.getElementById('sheetTextarea').value;
+    updateClosingGuard();
     closeSheet();
     onDone();
   };
@@ -2858,10 +2878,19 @@ async function bootGate(){
   try{
     // Telegram рисует свои кнопки (закрыть/свернуть/⋯) поверх окна мини-приложения,
     // а не в отдельной полосе — если не оставить место, они налезают на контент.
-    // contentSafeAreaInset (Bot API 8.0+) даёт точный отступ; если недоступен — берём
-    // разумный запас по умолчанию.
-    const inset = (tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || (tg.safeAreaInset && tg.safeAreaInset.top) || 0;
-    document.documentElement.style.setProperty('--tg-top-pad', Math.max(inset, 44) + 'px');
+    // С Bot API 8.0 сам Telegram кладёт точный отступ под конкретное устройство
+    // в CSS-переменную --tg-content-safe-area-inset-top — используем её вместо
+    // собственного вычисления. На старых клиентах переменной ещё нет, тогда
+    // считаем как раньше (contentSafeAreaInset/safeAreaInset, а если и их нет —
+    // разумный запас по умолчанию).
+    const probe = getComputedStyle(document.documentElement)
+      .getPropertyValue('--tg-content-safe-area-inset-top').trim();
+    if(probe){
+      document.documentElement.style.setProperty('--tg-top-pad', 'var(--tg-content-safe-area-inset-top)');
+    } else {
+      const inset = (tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || (tg.safeAreaInset && tg.safeAreaInset.top) || 0;
+      document.documentElement.style.setProperty('--tg-top-pad', Math.max(inset, 44) + 'px');
+    }
   }catch(e){ document.documentElement.style.setProperty('--tg-top-pad', '44px'); }
 
   let authRes;
