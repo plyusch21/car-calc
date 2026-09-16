@@ -266,7 +266,7 @@ module.exports = async (req, res) => {
       const raw = await kv('GET', 'deal:' + str(body.id, 40));
       if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
       const deal = JSON.parse(raw);
-      if (!canRead(level, deal, uid)) { res.status(400).send(JSON.stringify({ error: 'нет доступа к этой сделке' })); return; }
+      if (!canRead(level, deal, uid)) { res.status(403).send(JSON.stringify({ error: 'нет доступа к этой сделке' })); return; }
       const log = await readLog(deal.id);
       res.status(200).send(JSON.stringify({ deal, log, canWrite: canWrite(level, deal, uid) }));
       return;
@@ -280,7 +280,7 @@ module.exports = async (req, res) => {
         const raw = await kv('GET', 'deal:' + id);
         if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
         before = JSON.parse(raw);
-        if (!canWrite(level, before, uid)) { res.status(400).send(JSON.stringify({ error: 'эту сделку вам править нельзя' })); return; }
+        if (!canWrite(level, before, uid)) { res.status(403).send(JSON.stringify({ error: 'эту сделку вам править нельзя' })); return; }
       }
 
       const type = oneOf(incoming.type, DEAL_TYPES) || (before && before.type);
@@ -398,7 +398,7 @@ module.exports = async (req, res) => {
       const raw = await kv('GET', 'deal:' + id);
       if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
       const deal = JSON.parse(raw);
-      if (!canWrite(level, deal, uid)) { res.status(400).send(JSON.stringify({ error: 'эту сделку вам удалять нельзя' })); return; }
+      if (!canWrite(level, deal, uid)) { res.status(403).send(JSON.stringify({ error: 'эту сделку вам удалять нельзя' })); return; }
 
       await kv('DEL', 'deal:' + id);
       await kv('DEL', 'deal:' + id + ':log');
@@ -441,7 +441,7 @@ module.exports = async (req, res) => {
       const raw = await kv('GET', 'deal:' + id);
       if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
       const deal = JSON.parse(raw);
-      if (!canWrite(level, deal, uid)) { res.status(400).send(JSON.stringify({ error: 'эту сделку вам править нельзя' })); return; }
+      if (!canWrite(level, deal, uid)) { res.status(403).send(JSON.stringify({ error: 'эту сделку вам править нельзя' })); return; }
       const calcs = Array.isArray(deal.calcs) ? deal.calcs.slice() : [];
       const idx = calcs.findIndex(x => x.id === calcId);
       if (idx === -1) { res.status(400).send(JSON.stringify({ error: 'расчёт не найден в сделке — возможно, его уже отвязали' })); return; }
@@ -478,7 +478,7 @@ module.exports = async (req, res) => {
       // выше); linkedDeals уже отфильтрован по canRead, так что пустой список
       // здесь и значит "не связан ни с одной видимой мне сделкой".
       if (level === 'own' && !auth.record.isOwner && !linkedDeals.length) {
-        res.status(400).send(JSON.stringify({ error: 'нет доступа к этому контрагенту' }));
+        res.status(403).send(JSON.stringify({ error: 'нет доступа к этому контрагенту' }));
         return;
       }
       res.status(200).send(JSON.stringify({
@@ -502,7 +502,7 @@ module.exports = async (req, res) => {
       // Блок 9). Создание нового остаётся открытым любому с доступом к
       // разделу — иначе на "своей" сделке нельзя завести нового клиента.
       if (before && !auth.record.isOwner && level !== 'full') {
-        res.status(400).send(JSON.stringify({ error: 'редактировать существующих контрагентов может только владелец или пользователь с полным доступом' }));
+        res.status(403).send(JSON.stringify({ error: 'редактировать существующих контрагентов может только владелец или пользователь с полным доступом' }));
         return;
       }
       const kind = oneOf(incoming.kind, PARTY_KINDS) || (before && before.kind) || 'person';
@@ -570,7 +570,7 @@ module.exports = async (req, res) => {
     }
 
     if (action === 'deleteParty') {
-      if (!auth.record.isOwner) { res.status(400).send(JSON.stringify({ error: 'удалять контрагентов может только владелец' })); return; }
+      if (!auth.record.isOwner) { res.status(403).send(JSON.stringify({ error: 'удалять контрагентов может только владелец' })); return; }
       const pid = str(body.id, 40);
       const raw = await kv('GET', 'party:' + pid);
       if (raw) {
@@ -587,7 +587,7 @@ module.exports = async (req, res) => {
     // Выгрузка — полные записи со всеми этапами и логом. Файлы собирает
     // клиент (ему же их и отдавать пользователю), сервер отдаёт данные.
     if (action === 'export') {
-      if (level !== 'full') { res.status(400).send(JSON.stringify({ error: 'выгрузка доступна при полном уровне доступа' })); return; }
+      if (level !== 'full') { res.status(403).send(JSON.stringify({ error: 'выгрузка доступна при полном уровне доступа' })); return; }
       const [dealIdx, partyIdx] = await Promise.all([readHash('deals:idx'), readHash('parties:idx')]);
       const deals = [];
       for (const row of dealIdx) {

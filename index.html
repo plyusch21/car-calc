@@ -1042,7 +1042,7 @@ function rateWidgetHtml(route){
     <div class="rw-date">${dateStr}</div>
     <div class="rw-row">
       <div class="rw-status"><span class="rw-dot" style="background:${status.color};"></span><span style="color:${status.color};">${status.word}</span></div>
-      <div class="rw-value">${data.value.toFixed(4)}</div>
+      <div class="rw-value">${data.value.toFixed(4).replace('.', ',')}</div>
       <div class="rw-pair">${data.pair}</div>
     </div>
   </div>`;
@@ -1135,7 +1135,7 @@ function ratesPreviewCardHtml(){
   const R = CONFIG.rates;
   return `<div class="card" id="ratesPreviewCard" style="cursor:pointer;">
     <h2 style="display:flex; justify-content:space-between; align-items:center; text-align:left;"><span>Курсы валют</span><span style="font-size:var(--fs-md);">›</span></h2>
-    <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-2);">Обновляется дважды в сутки и при открытии приложения</p>
+    <p style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--sp-2);">Обновляется раз в сутки и при открытии приложения</p>
     ${Object.keys(R).map(id=>{
       const r = R[id];
       const stale = r.fetchError;
@@ -1531,7 +1531,7 @@ function renderCalc(c){
   const conditionBtn = document.getElementById('f_condition_btn'); if(conditionBtn) conditionBtn.onclick = ()=> openTextFieldSheet(f, 'condition', 'Состояние', ()=>renderCalc(c));
   const notesBtn = document.getElementById('f_notes_btn'); if(notesBtn) notesBtn.onclick = ()=> openTextFieldSheet(f, 'notes', 'Примечания', ()=>renderCalc(c));
   const eaeuFullDutyT = document.getElementById('eaeuFullDutyToggle'); if(eaeuFullDutyT) eaeuFullDutyT.onclick = ()=>{ f.eaeuFullDuty=!f.eaeuFullDuty; invalidateCustomsAuto(f); renderCalc(c); };
-  const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; renderCalc(c); };
+  const customsValT = document.getElementById('customsValueOverrideToggle'); if(customsValT) customsValT.onclick = ()=>{ f.customsValueOverride=!f.customsValueOverride; invalidateCustomsAuto(f); renderCalc(c); };
   const carDetailsT = document.getElementById('carDetailsToggle'); if(carDetailsT) carDetailsT.onclick = ()=>{ f.showCarDetails=!f.showCarDetails; renderCalc(c); };
   const listingTa = document.getElementById('f_listingText'); if(listingTa) listingTa.oninput = ()=>{ f.listingText = listingTa.value; updateClosingGuard(); };
   const parseBtn = document.getElementById('parseListingBtn');
@@ -2758,7 +2758,7 @@ function openRateEditor(id){
     ${r.problemFlag ? `<div class="notice mt-3">Автообновление не применено: ${r.problemReason||'значение не прошло проверку'}${r.rejectedRaw!=null ? '. Получено: '+r.rejectedRaw+', оставлено прежнее: '+r.raw : ''}</div>` : ''}
     <a class="linkbtn mt-2" href="javascript:void(0)" id="openHistory">История курса →</a>
     ${r.autoAvailable ? `
-      <div class="field mt-4"><label>Обновляется дважды в сутки и при открытии приложения</label>
+      <div class="field mt-4"><label>Обновляется раз в сутки и при открытии приложения</label>
         <div style="font-size:var(--fs-sm); color:var(--muted);">Последнее авто-значение: ${r.autoRaw!=null?r.autoRaw:'—'}${r.autoUpdatedAt ? ' · '+new Date(r.autoUpdatedAt).toLocaleString('ru-RU') : ''}</div>
       </div>
       <div class="toggle-row field mt-3">

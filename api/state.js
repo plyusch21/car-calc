@@ -10,9 +10,9 @@
  * to be a single shared "state:history" key, which meant two people saving
  * around the same time would silently clobber each other's history; the
  * legacy key is migrated once per user into their own on first read, then
- * left alone); STRING "state:archive" (JSON array, capped at 50 — still
- * shared/global on purpose, see ЗАДАНИЕ.md Блок 3 — the spec for this block
- * only asked to split "history", not "archive"). Rate history (Блок 8)
+ * left alone); STRING "state:archive:<uid>" (JSON array, capped at 50, ONE
+ * PER USER — same split and same one-time legacy migration as history, see
+ * ТЗ/02-сверка.md п.3). Rate history (Блок 8)
  * lives under its own "rates:hist:<ID>" sorted-set keys — see
  * api/_lib/rateHistory.js — also not inside state:config for the same
  * "don't make one key do two jobs" reason.
@@ -43,10 +43,11 @@ module.exports = async (req, res) => {
 
     const action = body.action;
     const historyKey = 'state:history:' + auth.uid;
+    const archiveKey = 'state:archive:' + auth.uid;
 
     if (action === 'get') {
       const [configRaw, configVerRaw, historyRaw, archiveRaw] = await Promise.all([
-        kv('GET', 'state:config'), kv('GET', 'state:config:v'), kv('GET', historyKey), kv('GET', 'state:archive')
+        kv('GET', 'state:config'), kv('GET', 'state:config:v'), kv('GET', historyKey), kv('GET', archiveKey)
       ]);
       let history = historyRaw ? JSON.parse(historyRaw) : null;
       // Разовая миграция: раньше была одна общая "state:history" на всех —
@@ -59,11 +60,20 @@ module.exports = async (req, res) => {
           await kv('SET', historyKey, legacyRaw);
         }
       }
+      let archive = archiveRaw ? JSON.parse(archiveRaw) : null;
+      // Та же разовая миграция для архива — раньше был один общий "state:archive".
+      if (archive === null && auth.record.isOwner) {
+        const legacyArchiveRaw = await kv('GET', 'state:archive');
+        if (legacyArchiveRaw) {
+          archive = JSON.parse(legacyArchiveRaw);
+          await kv('SET', archiveKey, legacyArchiveRaw);
+        }
+      }
       res.status(200).send(JSON.stringify({
         config: configRaw ? JSON.parse(configRaw) : null,
         configVersion: configVerRaw ? parseInt(configVerRaw, 10) : 0,
         history,
-        archive: archiveRaw ? JSON.parse(archiveRaw) : null
+        archive
       }));
       return;
     }
@@ -108,7 +118,7 @@ module.exports = async (req, res) => {
 
     if (action === 'saveArchive') {
       const archive = Array.isArray(body.archive) ? body.archive.slice(0, 50) : [];
-      await kv('SET', 'state:archive', JSON.stringify(archive));
+      await kv('SET', archiveKey, JSON.stringify(archive));
       res.status(200).send(JSON.stringify({ ok: true }));
       return;
     }

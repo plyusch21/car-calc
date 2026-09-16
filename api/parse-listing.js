@@ -1288,7 +1288,7 @@ module.exports = async (req, res) => {
       // "Не аукционный лист" — это ответ, а не сбой: не имеет смысла
       // перепроверять то же фото через другой ИИ, отдаём как есть.
       if (e.notAuctionSheet) {
-        res.status(200).send(JSON.stringify({ error: e.message }));
+        res.status(422).send(JSON.stringify({ error: e.message }));
         return;
       }
       geminiError = e.message || String(e);

@@ -57,7 +57,12 @@ body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,san
 .seg button.active{ background:var(--accent); color:#fff; font-weight:600; }
 
 .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:var(--sp-4); margin-bottom:var(--sp-3); }
-.card h2{ font-size:var(--fs-base); text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 var(--sp-3); font-weight:600; }
+.card h2{
+  background:#2f7dd122; color:#e6edf1; text-align:center; text-transform:uppercase;
+  font-size:var(--fs-sm); font-weight:600; letter-spacing:0.08em; padding:var(--sp-3) var(--sp-4);
+  margin:calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4); border-bottom:1px solid rgba(47,125,209,.45);
+  border-radius:13px 13px 0 0;
+}
 
 .btn{ width:100%; background:var(--accent); color:#fff; border:none; border-radius:var(--r-sm); padding:var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; font-family:inherit; }
 .btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
