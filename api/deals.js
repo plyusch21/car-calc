@@ -380,22 +380,24 @@ module.exports = async (req, res) => {
       // Физик живёт внутри сделки: если удалённая была его последней, его
       // запись уходит следом. Иначе по тому же телефону при заведении новой
       // сделки всплывало бы предупреждение о дубле от сделки, которой уже
-      // нет. Дилеров это не касается — они метки и живут сами по себе.
-      const orphanId = str(deal.partyId, 40);
-      if (orphanId) {
+      // нет. Проверяем обоих физиков сделки — основного (partyId) и
+      // конечного покупателя (endBuyerId): второй точно так же существует
+      // только через сделку. Дилеров это не касается — они метки и живут
+      // сами по себе.
+      const candidates = [...new Set([str(deal.partyId, 40), str(deal.endBuyerId, 40)].filter(Boolean))];
+      if (candidates.length) {
         const left = await readHash('deals:idx');
-        const stillUsed = left.some(d => d.partyId === orphanId || d.endBuyerId === orphanId);
-        if (!stillUsed) {
+        for (const orphanId of candidates) {
+          const stillUsed = left.some(d => d.partyId === orphanId || d.endBuyerId === orphanId);
+          if (stillUsed) continue;
           const praw = await kv('GET', 'party:' + orphanId);
-          if (praw) {
-            const party = JSON.parse(praw);
-            if (party.kind === 'person') {
-              const phone = normPhone(party.phone);
-              if (phone) await kv('HDEL', 'parties:phone', phone);
-              await kv('DEL', 'party:' + orphanId);
-              await kv('HDEL', 'parties:idx', orphanId);
-            }
-          }
+          if (!praw) continue;
+          const party = JSON.parse(praw);
+          if (party.kind !== 'person') continue;
+          const phone = normPhone(party.phone);
+          if (phone) await kv('HDEL', 'parties:phone', phone);
+          await kv('DEL', 'party:' + orphanId);
+          await kv('HDEL', 'parties:idx', orphanId);
         }
       }
       res.status(200).send(JSON.stringify({ ok: true }));

@@ -193,17 +193,31 @@ picked once at deal creation and never changed after. The server
 (`api/deals.js`) deliberately has no idea what the stages are; a deal record
 only stores marks (`{state, at, note}` keyed by stage key) plus three
 derived fields the client computes and sends along purely for the list
-screen (`stageKey`, `stageAt`, `archived`). This is the same pattern as the
+screen (`stageKey`, `stageState`, `stageAt`, `archived`). This is the same pattern as the
 `DEFAULT_CONFIG` whitelist rule above, for the same reason: if the template
 lived in synced/stored data, it would either fork per-record or need a
 migration every time a stage is renamed. **If you touch the stage list,
 only edit `STAGE_TEMPLATES` in `deals.html`.**
 
 Deal status is never stored or set by hand — `currentStage()` derives it as
-the last stage marked `done`, so it can't drift from the marks themselves.
-The optional `shipping` stage has a third state (`skip`, "не требуется")
-that deliberately doesn't count toward status. Marking the template's
+the furthest stage marked `done` or `wip` ("в процессе" — the deal has
+reached that stage, it just isn't closed yet), so it can't drift from the
+marks themselves. The optional `shipping` stage has one more state (`skip`,
+"не требуется") that deliberately doesn't count toward status. Marking a
+stage in the middle of the list as `wip` or `done` auto-marks every earlier
+*unmarked* stage as `done` with `at: 0` and no note — a date there would be
+invented, and the blank is what shows it was closed retroactively; explicit
+marks (including `skip`) are never overwritten. Marking the template's
 `final` stage (`issued`, "выдан авто") archives the deal automatically.
+
+Deleting a deal is permanent and complete (`removeDeal` in `api/deals.js`):
+record, change log and index row are all wiped, nothing goes to the archive
+— the archive holds only deals finished via the `final` stage. Because a
+physik exists only through a deal, deleting their last one also deletes
+their party record and phone-index entry (checked for both `partyId` and
+`endBuyerId` against the remaining deals); dealers are never touched.
+Legacy `removed: true` rows from the old soft-delete are filtered out of
+`bootstrap` and purged by the `api/deals-cleanup.js` daily cron.
 
 ### Access is a second axis, independent of app access
 
@@ -240,9 +254,13 @@ out — the snapshot is what actually renders in the deal card.
 
 ### Export
 
-Owner/`full`-level only. Three files in one shot: full JSON, plus deals and
-parties as CSV (BOM-prefixed for Excel, quotes/semicolons/newlines in
-fields properly escaped) — see `dealsCsv`/`partiesCsv` in `deals.html`.
+Owner/`full`-level only, and it lives in the calculator's Settings
+("Сделки — дополнительно" in `index.html`), not in `deals.html`. Three
+files in one shot: full JSON, plus deals and parties as CSV (BOM-prefixed
+for Excel, quotes/semicolons/newlines in fields properly escaped) — see
+`dealsCsvIdx`/`partiesCsvIdx` in `index.html`. The CSV shows raw stage keys
+rather than labels on purpose: `STAGE_TEMPLATES` lives only in `deals.html`
+and duplicating it here would be one more copy to go stale.
 Delivery tries `navigator.share` with files, then `<a download>`, then
 falls back to a copyable JSON textarea — same three-tier fallback as the
 sharing code below, for the same reason (Telegram's Android WebView has
