@@ -274,6 +274,11 @@ neither share nor download working).
 
 - Respond to the owner in Russian in normal conversation.
 - Commit and push after every change, without being asked.
+- Once the owner has approved a change (said "да", "делай", or reviewed the
+  result and moved on), merge it into `main` yourself — no PR, no asking.
+  `main` is what Vercel deploys; a session branch alone never reaches the
+  phone, and the owner doesn't want to be asked about branches vs. main.
+  Fast-forward when possible so `main` history stays linear.
 - Commit messages end with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
 - Never type/enter secrets into any field — the owner pastes API keys etc.
   themselves; env vars only, never committed into tracked files.
