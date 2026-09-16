@@ -254,12 +254,11 @@ function idleDays(ts){
    услуги, комиссию агента и доставку по РФ. Инвойс и таможенные платежи
    сюда не входят и входить не будут (решение владельца): это не наши
    деньги, мы их не получаем. Ручного ввода сумм тоже нет — всё берётся из
-   расчёта, привязанного к сделке, и фиксируется отметкой этапа. */
+   расчёта, привязанного к сделке, и фиксируется отметкой этапа. Дилер у
+   физика — только пометка, сделка и деньги всегда на физике, блок виден
+   независимо от неё. */
 function moneyApplies(deal){
-  if(deal.type !== 'import') return false;
-  const party = state.parties.find(p=>p.id===deal.partyId);
-  if(party && party.dealerId) return false;   // физик от дилера — взаиморасчётов с ним нет
-  return true;
+  return deal.type === 'import';
 }
 /* Расчёт-источник — забронированный: именно он «едет» по сделке. Если
    расчёт привязан ровно один, бронь ради денег ставить не надо — он и есть
@@ -606,17 +605,24 @@ function renderArchiveList(c){
   document.getElementById('backToWork').onclick = ()=>{ state.archive = false; renderList(); };
 }
 
-// Папки дилеров — только те, у кого хоть одна сделка (через их физиков) в
-// работе; пустых дилеров (создан, но ещё ни одной активной сделки) тут не
-// показываем — они не потеряны, просто не создают лишнюю пустую папку.
+function pluralDealers(n){
+  const a = Math.abs(n) % 100, b = n % 10;
+  if(a > 10 && a < 20) return n + ' дилеров';
+  if(b === 1) return n + ' дилер';
+  if(b >= 2 && b <= 4) return n + ' дилера';
+  return n + ' дилеров';
+}
+
+// Папки дилеров — показываются все, даже без единой сделки в работе:
+// пустая папка это нормально, сделки лягут в неё, когда появятся.
 function renderDealerFolders(c){
   const dealers = state.parties.filter(p=>p.kind==='dealer').map(dl=>{
     const physikIds = new Set(state.parties.filter(p=>p.dealerId===dl.id).map(p=>p.id));
     const active = activeDealsOf(state.deals).filter(d=> physikIds.has(d.partyId));
     return { dealer: dl, count: active.length };
-  }).filter(x=>x.count>0).sort((a,b)=> b.count - a.count);
+  }).sort((a,b)=> b.count - a.count || a.dealer.name.localeCompare(b.dealer.name,'ru'));
 
-  document.getElementById('subtitle').textContent = dealers.length ? dealers.length + ' в работе' : 'Пока пусто';
+  document.getElementById('subtitle').textContent = dealers.length ? pluralDealers(dealers.length) : 'Пока пусто';
 
   const tabs = `
     <div class="tabs">
@@ -633,11 +639,11 @@ function renderDealerFolders(c){
           <div class="car">${esc(x.dealer.phone||'без телефона')}${x.dealer.telegramUsername?' · @'+esc(x.dealer.telegramUsername):''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:var(--sp-2);">
-          <span class="chip">${x.count} в работе</span>
+          <span class="chip">${x.count ? x.count + ' в работе' : 'без сделок'}</span>
           <span class="arrow">›</span>
         </div>
       </div>
-    </div>`).join('') : `<div class="emptystate"><div class="big">Пока пусто</div>Папка дилера появится здесь, как только у него будет хоть одна сделка в работе.</div>`;
+    </div>`).join('') : `<div class="emptystate"><div class="big">Дилеров пока нет</div>Дилер появляется, когда его указали в карточке физика при создании сделки.</div>`;
 
   c.innerHTML = `<button class="btn mb-4" id="newDeal">+ Новая сделка</button>` + tabs + list;
   c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
