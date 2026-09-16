@@ -382,6 +382,37 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // Пересчёт забронированного расчёта по свежим курсам — вызывается из
+    // index.html (не из deals.html), поэтому патчит только сам calcs[i],
+    // а не весь объект сделки: у калькулятора нет остальных полей сделки
+    // под рукой, а обычный saveDeal затёр бы их пустыми значениями.
+    if (action === 'recalcDealCalc') {
+      const id = str(body.dealId, 40);
+      const calcId = str(body.calcId, 40);
+      const raw = await kv('GET', 'deal:' + id);
+      if (!raw) { res.status(400).send(JSON.stringify({ error: 'сделка не найдена' })); return; }
+      const deal = JSON.parse(raw);
+      if (!canWrite(level, deal, uid)) { res.status(400).send(JSON.stringify({ error: 'эту сделку вам править нельзя' })); return; }
+      const calcs = Array.isArray(deal.calcs) ? deal.calcs.slice() : [];
+      const idx = calcs.findIndex(x => x.id === calcId);
+      if (idx === -1) { res.status(400).send(JSON.stringify({ error: 'расчёт не найден в сделке — возможно, его уже отвязали' })); return; }
+      const total = Number(body.total);
+      if (!isFinite(total)) { res.status(400).send(JSON.stringify({ error: 'некорректная сумма пересчёта' })); return; }
+      let form = calcs[idx].form;
+      if (body.form && typeof body.form === 'object') {
+        try { const s = JSON.stringify(body.form); if (s.length <= 4000) form = JSON.parse(s); } catch (e) { /* оставляем прежнюю форму */ }
+      }
+      calcs[idx] = Object.assign({}, calcs[idx], { total, form, at: Date.now() });
+      deal.calcs = calcs;
+      deal.updatedAt = Date.now();
+      deal.updatedBy = uid;
+      await kv('SET', 'deal:' + id, JSON.stringify(deal));
+      await kv('HSET', 'deals:idx', id, JSON.stringify(dealIndexRow(deal)));
+      await appendLog(id, auth, 'пересчитал расчёт «' + str(calcs[idx].model || 'без названия', 60) + '» по свежим курсам: ' + Math.round(total) + ' ₽');
+      res.status(200).send(JSON.stringify({ ok: true, total }));
+      return;
+    }
+
     if (action === 'getParty') {
       const pid = str(body.id, 40);
       const raw = await kv('GET', 'party:' + pid);

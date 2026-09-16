@@ -549,6 +549,11 @@ let CONFIG = applyStoredConfig(Store.get('cfg_v2', null));
 // см. bootGate() в конце файла и api/auth.js, api/state.js, api/admin.js.
 // ACCESS = null, пока проверка не завершилась; иначе {status, isOwner, name}.
 let ACCESS = null;
+// Заполняется в bootGate() при переходе из карточки сделки "пересчитать по
+// курсам" — пока не null, showResult() предлагает один объединённый пункт
+// "сохранить в сделку и отправить" вместо обычных "сохранить в
+// историю"/"отправить в мессенджер". См. api/deals.js action recalcDealCalc.
+let RECALC_CTX = null;
 function getInitData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
 function getTg(){ return window.Telegram && window.Telegram.WebApp; }
 // Нативная обратная связь (ЗАДАНИЕ.md Блок 10) — тонкая обёртка, т.к. вне
@@ -1630,11 +1635,18 @@ function showResult(route, f, opts){
       </div>
       <div class="receipt-total"><div class="lbl">Итого</div><div class="amt">${fmt(r.total,'₽')}</div></div>
     </div>
+    ${RECALC_CTX ? `
+    <div class="field" style="margin:14px 0;">
+      <button class="btn btn-send" id="recalcSendBtn">Сохранить в сделку ${escapeHtml(RECALC_CTX.dealNum||'')} и отправить</button>
+      <div class="send-hint">Обновит расчёт в сделке на свежую сумму и сразу откроет отправку в мессенджер. В общую историю расчётов этот прогон не попадёт.</div>
+    </div>
+    ` : `
     <button class="btn secondary" id="saveBtn" style="width:100%;">Сохранить в историю</button>
     <div class="field" style="margin:14px 0;">
       <button class="btn btn-send" id="shareBtn">Отправить в мессенджер</button>
       <div class="send-hint">Уйдёт фото расчёта. Текст скопируется в буфер — вставьте его следом.</div>
     </div>
+    `}
   `;
   tgHaptic('notification', 'success'); // готовый расчёт — см. ЗАДАНИЕ.md Блок 10
   // При обычном "Рассчитать" прокручиваем к чеку — это и есть результат,
@@ -1672,14 +1684,16 @@ function showResult(route, f, opts){
     renderCalc(document.getElementById('content'));
   }
 
-  document.getElementById('saveBtn').onclick = ()=>{
+  const saveBtn = document.getElementById('saveBtn');
+  if(saveBtn) saveBtn.onclick = ()=>{
     state.history.unshift({ id:Date.now(), route, model:f.model||'Без названия', total:r.total, date:new Date().toISOString(), form:{...f} });
     if(state.history.length>300) state.history.length = 300;
     saveHistory();
     toast('Сохранено в историю');
     resetAfterDone();
   };
-  document.getElementById('shareBtn').onclick = async ()=>{
+  const shareBtn = document.getElementById('shareBtn');
+  if(shareBtn) shareBtn.onclick = async ()=>{
     const btn = document.getElementById('shareBtn');
     btn.disabled = true;
     // Форма очищается ТОЛЬКО если отправка действительно состоялась. Раньше
@@ -1688,6 +1702,31 @@ function showResult(route, f, opts){
     const sent = await shareResult(route, f, r, kpFilePromise);
     btn.disabled = false;
     if(sent) resetAfterDone();
+  };
+  // Пересчёт по курсам, вызван из сделки (RECALC_CTX): сохранение в сделку
+  // и отправка объединены в одну кнопку — жмут один раз и получают и
+  // обновлённую сумму в сделке, и картинку клиенту. В общую историю
+  // расчётов (state.history) этот прогон сознательно не попадает — это не
+  // новый расчёт, а актуализация уже забронированного.
+  const recalcBtn = document.getElementById('recalcSendBtn');
+  if(recalcBtn) recalcBtn.onclick = async ()=>{
+    const ctx = RECALC_CTX;
+    recalcBtn.disabled = true;
+    try{
+      const res = await fetch('/api/deals', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ initData:getInitData(), action:'recalcDealCalc', dealId:ctx.dealId, calcId:ctx.calcId, total:r.total, form:f })
+      });
+      const data = await res.json();
+      if(data.error) throw new Error(data.error);
+    }catch(e){
+      recalcBtn.disabled = false;
+      toast('Не удалось сохранить в сделку: ' + e.message);
+      return;
+    }
+    const sent = await shareResult(route, f, r, kpFilePromise);
+    recalcBtn.disabled = false;
+    if(sent){ RECALC_CTX = null; resetAfterDone(); }
   };
 
   return r;
@@ -2556,6 +2595,10 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     // же мини-апп и тот же initData, поэтому гейт там срабатывает так же.
     if(btn.dataset.page){ location.href = btn.dataset.page; return; }
     document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+    // Ушли с расчёта, не закончив пересчёт по курсам из сделки — контекст
+    // не тащим за собой на случайный следующий расчёт, иначе кнопка
+    // "сохранить в сделку X" могла бы всплыть там, где её не ждут.
+    if(state.view==='calc' && btn.dataset.view!=='calc') RECALC_CTX = null;
     state.view = btn.dataset.view;
     if(state.view==='settings') state.settingsSection = null;
     renderTabs(); renderContent(); syncTelegramUI();
@@ -2692,6 +2735,26 @@ async function bootGate(){
     state.view = hashView;
     document.querySelectorAll('.navbtn').forEach(b=> b.classList.toggle('active', b.dataset.view === hashView));
   }
+
+  // Пересчёт забронированного расчёта сделки по свежим курсам — deals.html
+  // кладёт route/form сюда и переходит на "/" обычной навигацией (тот же
+  // Telegram WebView, та же вкладка). Разовая передача: снимаем ключ сразу,
+  // чтобы обновление страницы не запускало пересчёт повторно молча.
+  try{
+    const raw = localStorage.getItem('bk_recalc_v1');
+    if(raw){
+      localStorage.removeItem('bk_recalc_v1');
+      const payload = JSON.parse(raw);
+      if(payload && payload.dealId && payload.calcId && CONFIG.routes[payload.route]){
+        state.route = payload.route;
+        state.form = Object.assign(defaultForm(payload.route), payload.form || {});
+        state.formCache[payload.route] = state.form;
+        state.view = 'calc';
+        document.querySelectorAll('.navbtn').forEach(b=> b.classList.toggle('active', b.dataset.view === 'calc'));
+        RECALC_CTX = { dealId: payload.dealId, dealNum: payload.dealNum || '', calcId: payload.calcId };
+      }
+    }
+  }catch(e){ /* битый payload — просто открываем калькулятор как обычно */ }
 
   startApp();
 }

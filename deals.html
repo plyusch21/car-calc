@@ -863,6 +863,7 @@ function renderDeal(){
             ${fmtMoney(x.total)} ₽<br>
             ${state.canWrite ? `<button class="btn secondary small" data-book="${i}" style="width:auto;padding:4px 9px;margin-top:6px;">${x.booked?'снять бронь':'забронировать'}</button>` : ''}
             ${state.canWrite ? `<button class="btn secondary small" data-unlink="${i}" style="width:auto;padding:4px 9px;margin-top:6px;margin-left:6px;">убрать</button>` : ''}
+            ${state.canWrite && x.booked && x.form ? `<br><button class="btn secondary small" data-recalc="${i}" style="width:auto;padding:4px 9px;margin-top:6px;">пересчитать по курсам</button>` : ''}
           </span>
         </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Расчёты не привязаны.</div>'}
       ${state.canWrite ? `<button class="btn secondary small" id="dLinkCalc" style="margin-top:12px;">Привязать расчёт из истории</button>` : ''}
@@ -899,6 +900,20 @@ function renderDeal(){
     const idx = Number(b.dataset.book);
     const calcs = (state.deal.calcs||[]).map((x,i)=> Object.assign({}, x, { booked: i===idx ? !x.booked : false }));
     saveDeal(Object.assign({}, state.deal, { calcs }));
+  });
+  // Пересчёт живёт в калькуляторе (там же курсы и формула calcDeal) — сюда
+  // передаём только route/form через localStorage (тот же tab, тот же
+  // Telegram WebView, обычная навигация), калькулятор сам досчитает и
+  // сохранит результат обратно в эту же сделку одной кнопкой.
+  c.querySelectorAll('[data-recalc]').forEach(b=> b.onclick = ()=>{
+    const x = state.deal.calcs[Number(b.dataset.recalc)];
+    if(!x || !x.form) return;
+    try{
+      localStorage.setItem('bk_recalc_v1', JSON.stringify({
+        dealId: state.deal.id, dealNum: state.deal.num, calcId: x.id, route: x.route, form: x.form
+      }));
+    }catch(e){ toast('Не удалось передать расчёт в калькулятор: ' + e.message); return; }
+    location.href = '/';
   });
   if(state.canWrite){
     c.querySelectorAll('.mark').forEach(el=> el.onclick = ()=> openStageSheet(el.dataset.stage));
