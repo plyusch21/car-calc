@@ -49,18 +49,13 @@ body{
 .mono{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
 .serif{font-family:'Fraunces',serif;}
 
+/* Пустой отступ под кнопки закрыть/свернуть/⋯ Telegram и чёлку устройства —
+   раньше тут был текст "BAIKAL AUTO" + направление, убраны как дублирующие
+   вкладки направлений/истории, которые и так показывают то же самое. */
 .topbar{
-  padding:calc(14px + var(--safe-top) + var(--tg-top-pad)) 16px 10px;
+  padding-top:calc(14px + var(--safe-top) + var(--tg-top-pad));
   position:sticky; top:0; z-index:20;
-  background:linear-gradient(180deg, var(--bg) 70%, transparent);
 }
-.topbar h1{
-  font-family:'Fraunces',serif; font-weight:600; font-size:21px; margin:0 0 2px; letter-spacing:0.2px;
-}
-.topbar .sub{color:var(--muted); font-size:12.5px;}
-.topbar-row{ display:flex; justify-content:space-between; align-items:center; }
-.topbar-brand{ font-family:'Fraunces',serif; font-weight:600; font-size:17px; letter-spacing:0.3px; }
-.topbar-route{ font-size:13px; color:var(--muted); font-weight:500; }
 
 .rate-widget{ text-align:center; margin-bottom:14px; cursor:pointer; }
 .rate-widget .rw-date{ font-size:11.5px; color:var(--muted); margin-bottom:6px; }
@@ -282,12 +277,7 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 </head>
 <body>
 <div class="app" id="app">
-  <div class="topbar">
-    <div class="topbar-row">
-      <div class="topbar-brand">BAIKAL AUTO</div>
-      <div class="topbar-route" id="topbarRoute">—</div>
-    </div>
-  </div>
+  <div class="topbar"></div>
   <div class="tabs" id="routeTabs"></div>
   <div class="content" id="content"></div>
 </div>
@@ -972,12 +962,6 @@ const RATE_STAT_LABEL = {
 // делает то, для чего написано.
 const LOGO_URL = 'logo.png';
 
-function renderTopbarRoute(){
-  const cfg = CONFIG.routes[state.route];
-  const el = document.getElementById('topbarRoute');
-  if(el) el.textContent = cfg.label + ' ' + (ROUTE_FLAG[state.route]||'');
-}
-
 // Курс, который показываем в новом блоке над «Автозаполнением» на экране
 // расчёта — по направлению. Для Кореи это тот же расчётный курс (USDT/₽ ÷
 // USDT/вона), что участвует в calcDeal, а не отдельное поле CONFIG.rates.
@@ -1116,7 +1100,6 @@ function ratesPreviewCardHtml(){
 }
 
 function renderTabs(){
-  renderTopbarRoute();
   const tabs = document.getElementById('routeTabs');
   // Вкладки направлений нужны только на расчёте — на истории есть свой
   // набор (с «Общие»), на курсах/настройках направление не при чём.
@@ -1330,7 +1313,7 @@ function renderCalc(c){
 
     <div class="card">
       <h2>Параметры авто — ${cfg.label}</h2>
-      ${field('Марка / модель', `<input type="text" id="f_model" class="${unfilledClass(f,'model')}" value="${escapeHtml(f.model)}" placeholder="напр. Toyota Alphard">`, unfilledHint(f,'model'))}
+      ${field('Марка / модель', `<input type="text" id="f_model" class="${unfilledClass(f,'model')}" value="${escapeHtml(f.model)}">`, unfilledHint(f,'model'))}
       <div class="row2">
         ${field('Цена авто ('+suf+')', `<input type="text" id="f_carPrice" class="${unfilledClass(f,'carPrice')}" value="${formatNumInput(f.carPrice)}" inputmode="decimal">`, unfilledHint(f,'carPrice'))}
         ${field('Расходы в стране ('+suf+')', `<input type="text" id="f_extraCosts" value="${formatNumInput(f.extraCosts)}" inputmode="decimal">`)}
@@ -1559,9 +1542,7 @@ function renderCalc(c){
 
   const doCalc = async ()=>{
     const btn = document.getElementById('calcBtn');
-    const tg = getTg();
     btn.disabled = true; btn.textContent = 'Запрашиваю расчёт в TKS…';
-    if(tg && tg.MainButton){ tg.MainButton.setText('Запрашиваю расчёт в TKS…'); tg.MainButton.showProgress(true); }
     let statusText = '', statusColor = 'var(--muted)';
     try{
       const res = await fetchCustomsQuote(route, f);
@@ -1582,7 +1563,6 @@ function renderCalc(c){
       statusColor = 'var(--danger)';
     }
     btn.disabled = false; btn.textContent = 'Рассчитать';
-    if(tg && tg.MainButton){ tg.MainButton.hideProgress(); tg.MainButton.setText('Рассчитать'); }
     renderCalc(c);
     const statusEl = document.getElementById('customsStatus');
     if(statusEl){ statusEl.textContent = statusText; statusEl.style.color = statusColor; }
@@ -1590,10 +1570,6 @@ function renderCalc(c){
     if(shown) pushArchive(route, f, shown);
   };
   document.getElementById('calcBtn').onclick = doCalc;
-  // MainButton — единственная стабильная привязка на весь запуск приложения
-  // (см. bootGate), сюда просто кладём актуальный обработчик с правильными
-  // route/f/c из этого рендера (ЗАДАНИЕ.md Блок 10).
-  window._mainButtonAction = doCalc;
 }
 
 function carDetailLines(f, route){
@@ -2139,7 +2115,7 @@ function openOtherRoutePicker(h){
     state.formCache[newRoute] = state.form;
     state.view = 'calc';
     document.querySelectorAll('.navbtn').forEach(nb=>nb.classList.toggle('active', nb.dataset.view==='calc'));
-    renderTabs(); renderContent();
+    renderTabs(); renderContent(); syncTelegramUI();
     toast('Перенесено в «'+CONFIG.routes[newRoute].label+'», укажите цену');
   });
 }
@@ -2168,7 +2144,7 @@ function renderArchiveList(c){
     state.formCache[h.route] = state.form;
     state.view='calc';
     document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view==='calc'));
-    renderTabs(); renderContent();
+    renderTabs(); renderContent(); syncTelegramUI();
     setTimeout(()=> showResult(h.route, state.form, {scrollTop:true}), 50);
   });
 }
@@ -2225,7 +2201,7 @@ function renderHistory(c){
       state.formCache[h.route] = state.form;
       state.view='calc';
       document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view==='calc'));
-      renderTabs(); renderContent();
+      renderTabs(); renderContent(); syncTelegramUI();
       setTimeout(()=> showResult(h.route, state.form, {scrollTop:true}), 50);
     };
   });
@@ -2474,12 +2450,25 @@ document.addEventListener('click', (e)=>{ if(e.target.closest && e.target.closes
     active.blur();
   }, true);
 
+  // На iOS открытие самой клавиатуры сдвигает window.scrollY на десятки
+  // пикселей (система сама поднимает страницу, чтобы фокусное поле не
+  // перекрывалось клавиатурой) — без этой проверки та же логика принимала
+  // это за "пользователь прокрутил страницу" и тут же снимала фокус, поле
+  // закрывалось сразу после открытия клавиатуры (Android/десктоп не
+  // трогают scrollY при показе клавиатуры, поэтому там бага не было).
+  // Настоящий жест "прокрутить, чтобы убрать клавиатуру" всегда включает
+  // touchmove — простой тап по полю его не порождает.
+  let userDragging = false;
+  document.addEventListener('touchmove', ()=>{ userDragging = true; }, {passive:true, capture:true});
+  document.addEventListener('touchend', ()=>{ userDragging = false; }, {passive:true, capture:true});
+
   let scrollAnchor = null;
   window.addEventListener('focusin', (e)=>{ scrollAnchor = isFormField(e.target) ? window.scrollY : null; });
   window.addEventListener('scroll', ()=>{
     const active = document.activeElement;
     if(!isFormField(active)){ scrollAnchor = null; return; }
     if(scrollAnchor===null){ scrollAnchor = window.scrollY; return; }
+    if(!userDragging){ scrollAnchor = window.scrollY; return; } // не жест пользователя — просто переносим опорную точку
     if(Math.abs(window.scrollY - scrollAnchor) > 25){ active.blur(); scrollAnchor = null; }
   }, {passive:true});
 })();
@@ -2558,7 +2547,7 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
     state.view = btn.dataset.view;
     if(state.view==='settings') state.settingsSection = null;
-    renderTabs(); renderContent();
+    renderTabs(); renderContent(); syncTelegramUI();
     // Страница скроллится сама (напр. до чека расчёта); при переключении
     // вкладки снизу нужно возвращаться к началу новой вкладки, а не
     // оставаться на том же scrollY — иначе на более коротких страницах
@@ -2567,30 +2556,22 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
   };
 });
 function toast(msg, ms){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), ms||1800); }
-// Показ/скрытие нативных BackButton/MainButton (ЗАДАНИЕ.md Блок 10).
-// Вызывается после любого перехода, меняющего "куда сейчас смотрит
-// пользователь" — переключение вкладки, вход/выход из подраздела настроек,
-// открытие/закрытие шита. Дешёвая и идемпотентная, поэтому вызывать на
-// каждый такой переход безопаснее, чем пытаться точечно поймать все места.
+// Показ/скрытие нативного BackButton (ЗАДАНИЕ.md Блок 10). MainButton для
+// "Рассчитать" не прижился — на реальном устройстве Telegram рисует его
+// отдельной плашкой НИЖЕ нашего bottomnav (а не вместо него), и она не
+// пряталась на вкладках "История"/"Настройки" из-за прямых вызовов
+// renderContent() в обходе renderAll(). Кнопка "Рассчитать" вернулась к
+// обычной, в разметке страницы, без нативного дублёра.
+// syncTelegramUI вызывается после любого перехода, меняющего "куда сейчас
+// смотрит пользователь" — переключение вкладки, вход/выход из подраздела
+// настроек, открытие/закрытие шита.
 function syncTelegramUI(){
   const tg = getTg();
-  if(!tg) return;
+  if(!tg || !tg.BackButton) return;
   const overlay = document.getElementById('sheetOverlay');
   const sheetOpen = !!(overlay && overlay.classList.contains('open'));
   const inSettingsSub = state.view==='settings' && !!state.settingsSection;
-  if(tg.BackButton){ if(sheetOpen || inSettingsSub) tg.BackButton.show(); else tg.BackButton.hide(); }
-  if(tg.MainButton){
-    const calcBtn = document.getElementById('calcBtn');
-    if(state.view==='calc' && !sheetOpen){
-      tg.MainButton.setText(calcBtn ? calcBtn.textContent : 'Рассчитать');
-      if(calcBtn && calcBtn.disabled) tg.MainButton.disable(); else tg.MainButton.enable();
-      tg.MainButton.show();
-      if(calcBtn) calcBtn.style.display = 'none';
-    } else {
-      tg.MainButton.hide();
-      if(calcBtn) calcBtn.style.display = '';
-    }
-  }
+  if(sheetOpen || inSettingsSub) tg.BackButton.show(); else tg.BackButton.hide();
 }
 function renderAll(){ renderTabs(); renderContent(); syncTelegramUI(); }
 function startApp(){ renderAll(); fetchAutoRates(); }
@@ -2628,13 +2609,11 @@ async function bootGate(){
   // deals.html; раньше здесь было #121a1b, не совпадавшее с фоном — на
   // телефоне это была видна полоса другого цвета над самим приложением.
   try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#080d12'); tg.setBackgroundColor && tg.setBackgroundColor('#080d12'); tg.disableVerticalSwipes && tg.disableVerticalSwipes(); }catch(e){}
-  // MainButton/BackButton — обработчик регистрируется один раз на весь запуск
-  // приложения (повторный onClick только добавлял бы новый колбэк поверх
-  // старого, а не заменял его); актуальное действие каждый раз берётся из
-  // window._mainButtonAction, которое renderCalc обновляет на каждый рендер
-  // (ЗАДАНИЕ.md Блок 10).
+  // BackButton — обработчик регистрируется один раз на весь запуск приложения
+  // (повторный onClick только добавлял бы новый колбэк поверх старого, а не
+  // заменял его). См. ЗАДАНИЕ.md Блок 10 — MainButton для "Рассчитать" не
+  // прижился (см. комментарий у syncTelegramUI) и был убран.
   try{
-    if(tg.MainButton) tg.MainButton.onClick(()=>{ window._mainButtonAction && window._mainButtonAction(); });
     if(tg.BackButton) tg.BackButton.onClick(()=>{
       const overlay = document.getElementById('sheetOverlay');
       if(overlay && overlay.classList.contains('open')){ closeSheet(); return; }
