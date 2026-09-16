@@ -1733,7 +1733,10 @@ function showResult(route, f, opts){
 
   const saveBtn = document.getElementById('saveBtn');
   if(saveBtn) saveBtn.onclick = ()=>{
-    state.history.unshift({ id:Date.now(), route, model:f.model||'Без названия', total:r.total, date:new Date().toISOString(), form:{...f} });
+    // parts — готовая разбивка наших денег (брокер/агент/доставка по РФ).
+    // В сделках доставку по городу пересчитать нечем (deliveryPrice и конфиг
+    // живут только здесь), поэтому кладём её уже посчитанной.
+    state.history.unshift({ id:Date.now(), route, model:f.model||'Без названия', total:r.total, date:new Date().toISOString(), form:{...f}, parts:{ broker:r.broker, agent:r.agent, delivery:r.delivery } });
     if(state.history.length>300) state.history.length = 300;
     saveHistory();
     toast('Сохранено в историю');
@@ -1762,7 +1765,7 @@ function showResult(route, f, opts){
     try{
       const res = await fetch('/api/deals', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ initData:getInitData(), action:'recalcDealCalc', dealId:ctx.dealId, calcId:ctx.calcId, total:r.total, form:f })
+        body: JSON.stringify({ initData:getInitData(), action:'recalcDealCalc', dealId:ctx.dealId, calcId:ctx.calcId, total:r.total, form:f, parts:{ broker:r.broker, agent:r.agent, delivery:r.delivery } })
       });
       const data = await res.json();
       if(data.error) throw new Error(data.error);

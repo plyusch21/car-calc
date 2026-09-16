@@ -5,7 +5,7 @@
 Использование: найти нужный диапазон здесь, прочитать его `sed -n 'START,ENDp' файл`, а не файл целиком.
 
 
-## index.html (2975 строк)
+## index.html (2978 строк)
 
 ### Секции
 
@@ -16,11 +16,11 @@
 - L923-931: 5. Delivery lookup
 - L932-944: 6. Route → RUB conversion chains
 - L945-975: 7. Main calculation
-- L976-2309: 8. Rendering
-- L2310-2655: 9. Settings
-- L2656-2787: 10. Rate editor sheet
-- L2788-2832: 11. Nav + boot
-- L2833-2975: 12. Доступ через Telegram — приложение работает только как Mini App.
+- L976-2312: 8. Rendering
+- L2313-2658: 9. Settings
+- L2659-2790: 10. Rate editor sheet
+- L2791-2835: 11. Nav + boot
+- L2836-2978: 12. Доступ через Telegram — приложение работает только как Mini App.
 
 ### Функции
 
@@ -82,59 +82,59 @@
 - L1328-1624: `renderCalc()`
 - L1626-1642: `carDetailLines()`
 - L1647-1651: `pushArchive()`
-- L1652-1780: `showResult()`
-- L1784-1786: `fmtRate()`
-- L1795-1913: `buildKpHtml()`
-- L1918-1949: `renderKpImageBlob()`
-- L1966-2112: `shareResult()`
-- L2123-2165: `bindHistorySwipe()`
-- L2167-2183: `openClearHistoryConfirm()`
-- L2185-2207: `openOtherRoutePicker()`
-- L2214-2236: `renderArchiveList()`
-- L2238-2308: `renderHistory()`
-- L2325-2385: `renderSettingsView()`
-- L2387-2403: `openResetConfirm()`
-- L2405-2408: `fetchAdminUsers()`
-- L2409-2412: `adminAction()`
-- L2419-2446: `renderAdminUsersList()`
-- L2447-2467: `loadAdminCard()`
-- L2479-2487: `fetchDealsApi()`
-- L2488-2508: `loadDealsExtraCard()`
-- L2509-2525: `openDealsArchiveSheet()`
-- L2526-2526: `csvCellIdx()`
-- L2527-2527: `idleDaysIdx()`
-- L2528-2537: `dealsCsvIdx()`
-- L2538-2548: `partiesCsvIdx()`
-- L2549-2592: `runDealsExport()`
-- L2593-2611: `openWipeDealersConfirm()`
-- L2613-2623: `routeSettingsBlock()`
-- L2624-2633: `bindRouteSettings()`
-- L2635-2644: `deliveryTable()`
-- L2645-2654: `bindDeliveryTable()`
-- L2659-2659: `openSheet()`
-- L2660-2660: `closeSheet()`
-- L2665-2683: `openTextFieldSheet()`
-- L2729-2747: `openRateHistory()`
-- L2749-2786: `openRateEditor()`
-- L2812-2812: `toast()`
-- L2822-2829: `syncTelegramUI()`
-- L2830-2830: `renderAll()`
-- L2831-2831: `startApp()`
-- L2841-2855: `renderGate()`
-- L2857-2969: `bootGate()`
+- L1652-1783: `showResult()`
+- L1787-1789: `fmtRate()`
+- L1798-1916: `buildKpHtml()`
+- L1921-1952: `renderKpImageBlob()`
+- L1969-2115: `shareResult()`
+- L2126-2168: `bindHistorySwipe()`
+- L2170-2186: `openClearHistoryConfirm()`
+- L2188-2210: `openOtherRoutePicker()`
+- L2217-2239: `renderArchiveList()`
+- L2241-2311: `renderHistory()`
+- L2328-2388: `renderSettingsView()`
+- L2390-2406: `openResetConfirm()`
+- L2408-2411: `fetchAdminUsers()`
+- L2412-2415: `adminAction()`
+- L2422-2449: `renderAdminUsersList()`
+- L2450-2470: `loadAdminCard()`
+- L2482-2490: `fetchDealsApi()`
+- L2491-2511: `loadDealsExtraCard()`
+- L2512-2528: `openDealsArchiveSheet()`
+- L2529-2529: `csvCellIdx()`
+- L2530-2530: `idleDaysIdx()`
+- L2531-2540: `dealsCsvIdx()`
+- L2541-2551: `partiesCsvIdx()`
+- L2552-2595: `runDealsExport()`
+- L2596-2614: `openWipeDealersConfirm()`
+- L2616-2626: `routeSettingsBlock()`
+- L2627-2636: `bindRouteSettings()`
+- L2638-2647: `deliveryTable()`
+- L2648-2657: `bindDeliveryTable()`
+- L2662-2662: `openSheet()`
+- L2663-2663: `closeSheet()`
+- L2668-2686: `openTextFieldSheet()`
+- L2732-2750: `openRateHistory()`
+- L2752-2789: `openRateEditor()`
+- L2815-2815: `toast()`
+- L2825-2832: `syncTelegramUI()`
+- L2833-2833: `renderAll()`
+- L2834-2834: `startApp()`
+- L2844-2858: `renderGate()`
+- L2860-2972: `bootGate()`
 
 
-## deals.html (1334 строк)
+## deals.html (1481 строк)
 
 ### Секции
 
-- L179-252: 1. Этапы — перечень живёт здесь, в коде, и только здесь.
-- L253-360: 2. Утилиты и состояние
-- L361-606: 3. Экран списка
-- L607-819: 4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
-- L820-1211: 5. Карточка сделки
-- L1212-1276: 6. Профиль контакта (физик или дилер) — физики доступны через вкладку
-- L1277-1334: 8. Загрузка и гейт
+- L179-318: 1. Этапы — перечень живёт здесь, в коде, и только здесь.
+- L319-426: 2. Утилиты и состояние
+- L427-672: 3. Экран списка
+- L673-885: 4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
+- L886-1358: 5. Карточка сделки
+- L1359-1423: 6. Профиль контакта (физик или дилер) — физики доступны через вкладку
+- L1424-1481: 8. Загрузка и гейт
 
 ### Функции
 
@@ -144,47 +144,53 @@
 - L233-236: `isArchived()`
 - L240-247: `lastMovementAt()`
 - L248-251: `idleDays()`
-- L268-268: `onlyDigits()`
-- L269-272: `formatDivisionCode()`
-- L273-280: `formatSnils()`
-- L281-297: `formatPhoneRu()`
-- L300-304: `bindMask()`
-- L308-314: `formatDateDdMmYyyy()`
-- L317-320: `formatMoney()`
-- L321-324: `tsToDdMmYyyy()`
-- L328-335: `parseDdMmYyyy()`
-- L336-336: `toast()`
-- L337-337: `openSheet()`
-- L338-338: `closeSheet()`
-- L341-341: `initData()`
-- L343-351: `api()`
-- L353-359: `pluralDays()`
-- L372-413: `bindDealSwipe()`
-- L415-432: `openDeleteDealConfirm()`
-- L436-469: `dealRowsHtml()`
-- L470-484: `bindDealRows()`
-- L486-486: `activeDealsOf()`
-- L488-497: `renderList()`
-- L501-501: `selectTab()`
-- L511-531: `renderFlatDeals()`
-- L533-541: `renderArchiveList()`
-- L546-580: `renderDealerFolders()`
-- L582-602: `renderDealerFolder()`
-- L605-605: `auth_isRestricted()`
-- L616-643: `openNewDealSheet()`
-- L650-667: `askSamePerson()`
-- L672-803: `openPartySheet()`
-- L805-818: `createDeal()`
-- L823-830: `openDeal()`
-- L832-962: `renderDeal()`
-- L966-1023: `openStageSheet()`
-- L1025-1040: `openProblemSheet()`
-- L1042-1113: `openDealEditSheet()`
-- L1118-1134: `saveDeal()`
-- L1139-1149: `loadCalcHistory()`
-- L1151-1191: `openCalcPicker()`
-- L1194-1210: `calcFillsForDeal()`
-- L1216-1275: `openParty()`
-- L1280-1286: `reloadIndexes()`
-- L1294-1297: `gate()`
-- L1299-1328: `boot()`
+- L258-263: `moneyApplies()`
+- L268-271: `moneyCalc()`
+- L275-283: `moneyParts()`
+- L288-295: `moneyDue()`
+- L300-317: `fixMoneyAmounts()`
+- L334-334: `onlyDigits()`
+- L335-338: `formatDivisionCode()`
+- L339-346: `formatSnils()`
+- L347-363: `formatPhoneRu()`
+- L366-370: `bindMask()`
+- L374-380: `formatDateDdMmYyyy()`
+- L383-386: `formatMoney()`
+- L387-390: `tsToDdMmYyyy()`
+- L394-401: `parseDdMmYyyy()`
+- L402-402: `toast()`
+- L403-403: `openSheet()`
+- L404-404: `closeSheet()`
+- L407-407: `initData()`
+- L409-417: `api()`
+- L419-425: `pluralDays()`
+- L438-479: `bindDealSwipe()`
+- L481-498: `openDeleteDealConfirm()`
+- L502-535: `dealRowsHtml()`
+- L536-550: `bindDealRows()`
+- L552-552: `activeDealsOf()`
+- L554-563: `renderList()`
+- L567-567: `selectTab()`
+- L577-597: `renderFlatDeals()`
+- L599-607: `renderArchiveList()`
+- L612-646: `renderDealerFolders()`
+- L648-668: `renderDealerFolder()`
+- L671-671: `auth_isRestricted()`
+- L682-709: `openNewDealSheet()`
+- L716-733: `askSamePerson()`
+- L738-869: `openPartySheet()`
+- L871-884: `createDeal()`
+- L889-896: `openDeal()`
+- L901-955: `moneyCardHtml()`
+- L957-1100: `renderDeal()`
+- L1104-1167: `openStageSheet()`
+- L1169-1184: `openProblemSheet()`
+- L1186-1257: `openDealEditSheet()`
+- L1262-1278: `saveDeal()`
+- L1283-1293: `loadCalcHistory()`
+- L1295-1338: `openCalcPicker()`
+- L1341-1357: `calcFillsForDeal()`
+- L1363-1422: `openParty()`
+- L1427-1433: `reloadIndexes()`
+- L1441-1444: `gate()`
+- L1446-1475: `boot()`

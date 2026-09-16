@@ -140,10 +140,22 @@ function describeChanges(before, after) {
     const b = sBefore[key] || {};
     const a = sAfter[key] || {};
     if (b.state !== a.state) {
-      const word = a.state === 'done' ? 'пройден' : (a.state === 'skip' ? 'не требуется' : 'снят');
-      out.push('этап «' + str(a.label || key, 60) + '» — ' + word);
-    } else if (str(b.note) !== str(a.note)) {
-      out.push('заметка к этапу «' + str(a.label || key, 60) + '»');
+      // У «Брони» состояние skip значит не «не требуется», а «без
+      // предоплаты» — см. skipLabel в STAGE_TEMPLATES (deals.html).
+      const word = a.state === 'done' ? 'пройден'
+        : (a.state === 'skip' ? (key === 'booking' ? 'без предоплаты' : 'не требуется') : 'снят');
+      // Деньги по сделке фиксируются прямо в отметке этапа (amount) — без
+      // этого куска в логе поступление денег нигде не было бы видно.
+      const money = (a.state === 'done' && typeof a.amount === 'number')
+        ? ' — поступило ' + Math.round(a.amount) + ' ₽' : '';
+      out.push('этап «' + str(a.label || key, 60) + '» — ' + word + money);
+    } else {
+      // Сумма могла дофиксироваться позже самой отметки: у сделки с
+      // несколькими расчётами источника нет, пока не поставят бронь.
+      if (a.state === 'done' && typeof a.amount === 'number' && a.amount !== b.amount) {
+        out.push('зафиксирована сумма по этапу «' + str(a.label || key, 60) + '»: ' + Math.round(a.amount) + ' ₽');
+      }
+      if (str(b.note) !== str(a.note)) out.push('заметка к этапу «' + str(a.label || key, 60) + '»');
     }
   });
   Object.keys(sBefore).forEach(key => {
@@ -330,7 +342,17 @@ module.exports = async (req, res) => {
             total: Number(x && x.total) || 0,
             at: Number(x && x.at) || 0,
             booked: !!(x && x.booked),
-            form
+            form,
+            // parts — разбивка наших денег (брокер / агент / доставка по РФ)
+            // в рублях, посчитанная калькулятором. Нужна блоку «Деньги»:
+            // доставку по городу в deals.html пересчитать нечем — конфиг и
+            // deliveryPrice живут только в index.html. У старых снимков
+            // parts нет, там разбивка восстанавливается из формы.
+            parts: (x && x.parts && typeof x.parts === 'object') ? {
+              broker: Number(x.parts.broker) || 0,
+              agent: Number(x.parts.agent) || 0,
+              delivery: Number(x.parts.delivery) || 0
+            } : null
           };
         }) : (before ? (before.calcs || []) : []),
         problem: {
@@ -429,7 +451,12 @@ module.exports = async (req, res) => {
       if (body.form && typeof body.form === 'object') {
         try { const s = JSON.stringify(body.form); if (s.length <= 4000) form = JSON.parse(s); } catch (e) { /* оставляем прежнюю форму */ }
       }
-      calcs[idx] = Object.assign({}, calcs[idx], { total, form, at: Date.now() });
+      const parts = (body.parts && typeof body.parts === 'object') ? {
+        broker: Number(body.parts.broker) || 0,
+        agent: Number(body.parts.agent) || 0,
+        delivery: Number(body.parts.delivery) || 0
+      } : (calcs[idx].parts || null);
+      calcs[idx] = Object.assign({}, calcs[idx], { total, form, parts, at: Date.now() });
       deal.calcs = calcs;
       deal.updatedAt = Date.now();
       deal.updatedBy = uid;
