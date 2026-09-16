@@ -33,6 +33,9 @@ body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,san
 .tabs{ display:flex; gap:6px; padding:6px 0 14px; overflow-x:auto; scrollbar-width:none; }
 .tab{ background:var(--panel); border:1px solid var(--border); color:var(--muted); border-radius:99px; padding:8px 14px; font-size:13px; white-space:nowrap; cursor:pointer; font-family:inherit; }
 .tab.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--text); }
+.seg{ display:flex; background:var(--panel-2); border-radius:9px; padding:3px; border:1px solid var(--border); }
+.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:8px 4px; border-radius:7px; font-size:12.5px; cursor:pointer; font-family:inherit; }
+.seg button.active{ background:var(--accent); color:#fff; font-weight:600; }
 
 .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:12px; }
 .card h2{ font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 12px; font-weight:600; }
@@ -160,8 +163,7 @@ const STAGE_TEMPLATES = {
     {key:'booking',  label:'Бронь'},
     {key:'invoice',  label:'Оплата инвойса'},
     {key:'export',   label:'Экспорт'},
-    {key:'customs',  label:'Таможня'},
-    {key:'lab',      label:'Лаборатория'},
+    {key:'customs',  label:'Таможня / Лаборатория'},
     {key:'yard',     label:'Наша стоянка'},
     {key:'settle',   label:'Расчёт'},
     {key:'shipping', label:'Отправка', optional:true},
@@ -169,8 +171,7 @@ const STAGE_TEMPLATES = {
   ],
   paperwork: [
     {key:'docs',     label:'Документы получены'},
-    {key:'customs',  label:'Таможня'},
-    {key:'lab',      label:'Лаборатория'},
+    {key:'customs',  label:'Таможня / Лаборатория'},
     {key:'yard',     label:'Наша стоянка'},
     {key:'settle',   label:'Расчёт'},
     {key:'shipping', label:'Отправка', optional:true},
@@ -237,6 +238,44 @@ const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
 const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('ru-RU') : '—';
 const fmtMoney = n => (Math.round(Number(n)||0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 const fmtDateTime = ts => ts ? new Date(ts).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+
+// Простые маски ввода для документов физика — форматируют по мере набора,
+// сами расставляют разделители и не дают ввести больше цифр, чем нужно.
+// Курсор не переносится вручную (в отличие от числовых полей в index.html):
+// поля короткие и обычно печатаются подряд слева направо, а лишняя правка
+// позиции курсора на iOS уже один раз ломала фокус в других полях (см.
+// историю правок клавиатуры в index.html) — тут проще без неё.
+function onlyDigits(s, max){ return String(s||'').replace(/\D/g,'').slice(0, max); }
+function formatDivisionCode(raw){
+  const d = onlyDigits(raw, 6);
+  return d.length<=3 ? d : d.slice(0,3)+'-'+d.slice(3);
+}
+function formatSnils(raw){
+  const d = onlyDigits(raw, 11);
+  let out = d.slice(0,3);
+  if(d.length>3) out += '-'+d.slice(3,6);
+  if(d.length>6) out += '-'+d.slice(6,9);
+  if(d.length>9) out += ' '+d.slice(9,11);
+  return out;
+}
+function formatPhoneRu(raw){
+  let d = onlyDigits(raw, 11);
+  if(d.length===11 && (d[0]==='7'||d[0]==='8')) d = d.slice(1); // скопировали номер целиком вместе с кодом страны
+  d = d.slice(0,10);
+  let out = '+7';
+  if(d.length) out += ' '+d.slice(0,3);
+  if(d.length>3) out += ' '+d.slice(3,6);
+  if(d.length>6) out += ' '+d.slice(6,8);
+  if(d.length>8) out += ' '+d.slice(8,10);
+  return out;
+}
+// Применяет форматтер к инпуту на каждый ввод — обёртка, чтобы не повторять
+// одно и то же для каждого поля с маской.
+function bindMask(id, formatter){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.oninput = ()=>{ el.value = formatter(el.value); };
+}
 function toast(msg, ms){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), ms||2200); }
 function openSheet(html){ document.getElementById('sheetBody').innerHTML = html; document.getElementById('sheetOverlay').classList.add('open'); }
 function closeSheet(){ document.getElementById('sheetOverlay').classList.remove('open'); }
@@ -396,7 +435,6 @@ function renderList(){
   if(!state.tab) state.tab = 'all';
   if(state.tab === 'dealers' && state.dealerFolder) return renderDealerFolder(c);
   if(state.tab === 'dealers') return renderDealerFolders(c);
-  if(state.tab === 'physiks') return renderPhysiksTab(c);
   return renderFlatDeals(c);
 }
 // Клик по вкладке всегда сбрасывает открытую папку дилера — иначе повторный
@@ -404,6 +442,10 @@ function renderList(){
 // которую человек уже покинул.
 function selectTab(t){ state.tab = t; state.dealerFolder = null; renderList(); }
 
+// "Физики" (бывшая "Все") — совмещает список сделок и справочник контактов
+// физиков в одной вкладке: раньше это были две разные вкладки, из-за чего
+// приходилось прыгать между ними, чтобы и посмотреть сделки, и завести/
+// поправить профиль физика вне привязки к конкретной сделке.
 function renderFlatDeals(c){
   const rows = activeDealsOf(state.deals)
     .filter(d => state.tab === 'paperwork' ? d.type === 'paperwork' : true)
@@ -413,18 +455,34 @@ function renderFlatDeals(c){
 
   const tabs = `
     <div class="tabs">
-      <button class="tab ${state.tab==='all'?'active':''}" data-t="all">Все</button>
+      <button class="tab ${state.tab==='all'?'active':''}" data-t="all">Физики</button>
       <button class="tab ${state.tab==='dealers'?'active':''}" data-t="dealers">Дилеры</button>
-      <button class="tab ${state.tab==='physiks'?'active':''}" data-t="physiks">Физики</button>
       <button class="tab ${state.tab==='paperwork'?'active':''}" data-t="paperwork">Оформление</button>
     </div>`;
 
+  const persons = state.parties.filter(p=>p.kind==='person').sort((a,b)=> a.name.localeCompare(b.name, 'ru'));
+  const contactsHtml = state.tab==='all' ? `
+    <div style="margin-top:18px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;">Контакты физиков</div>
+    <div style="font-size:11.5px;color:var(--muted);margin:4px 0 10px;">Профиль и документы физика — не обязательно со сделкой в работе.</div>
+    ${persons.length ? persons.map(p=>{
+      const dealer = p.dealerId ? state.parties.find(x=>x.id===p.dealerId) : null;
+      return `<div class="dealrow" data-pid="${esc(p.id)}">
+        <div class="name" style="margin-top:0;">${esc(p.name)}</div>
+        <div class="car">${esc(p.phone||'без телефона')}${dealer?' · через '+esc(dealer.name):''}</div>
+      </div>`;
+    }).join('') : `<div class="emptystate"><div class="big">Пока никого</div>Физики появляются при создании сделок или их можно добавить здесь.</div>`}
+    <button class="btn secondary small" id="newPhysik" style="margin-top:10px;">+ Новый физик</button>
+  ` : '';
+
   c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` +
-    tabs + dealRowsHtml(rows, {emptySub:'Создайте первую — кнопка выше.'});
+    tabs + dealRowsHtml(rows, {emptySub:'Создайте первую — кнопка выше.'}) + contactsHtml;
 
   c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
   bindDealRows(c);
   document.getElementById('newDeal').onclick = openNewDealSheet;
+  const npBtn = document.getElementById('newPhysik');
+  if(npBtn) npBtn.onclick = ()=> openPartySheet({kind:'person'}, (p)=> openParty(p.id));
+  c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
 }
 
 function renderArchiveList(c){
@@ -451,9 +509,8 @@ function renderDealerFolders(c){
 
   const tabs = `
     <div class="tabs">
-      <button class="tab" data-t="all">Все</button>
+      <button class="tab" data-t="all">Физики</button>
       <button class="tab active" data-t="dealers">Дилеры</button>
-      <button class="tab" data-t="physiks">Физики</button>
       <button class="tab" data-t="paperwork">Оформление</button>
     </div>`;
 
@@ -501,34 +558,6 @@ function renderDealerFolder(c){
 // Правка контрагента разрешена только владельцу/full (см. api/deals.js) —
 // маленький клиентский помощник, чтобы не звать сервер ради одной кнопки.
 function auth_isRestricted(){ return !(state.me && (state.me.isOwner || state.me.level === 'full')); }
-
-// Справочник контактов-физиков — не фильтр сделок, а список самих людей:
-// сюда заходят завести/поправить профиль (паспорт, ИНН и т.п.) и вне
-// привязки к какой-то конкретной сделке.
-function renderPhysiksTab(c){
-  const persons = state.parties.filter(p=>p.kind==='person').sort((a,b)=> a.name.localeCompare(b.name, 'ru'));
-  document.getElementById('subtitle').textContent = persons.length + ' записей';
-  const tabs = `
-    <div class="tabs">
-      <button class="tab" data-t="all">Все</button>
-      <button class="tab" data-t="dealers">Дилеры</button>
-      <button class="tab active" data-t="physiks">Физики</button>
-      <button class="tab" data-t="paperwork">Оформление</button>
-    </div>`;
-  const list = persons.length ? persons.map(p=>{
-    const dealer = p.dealerId ? state.parties.find(x=>x.id===p.dealerId) : null;
-    return `<div class="dealrow" data-pid="${esc(p.id)}">
-      <div class="name" style="margin-top:0;">${esc(p.name)}</div>
-      <div class="car">${esc(p.phone||'без телефона')}${dealer?' · через '+esc(dealer.name):''}</div>
-    </div>`;
-  }).join('') : `<div class="emptystate"><div class="big">Пока никого</div>Физики появляются при создании сделок или их можно добавить здесь.</div>`;
-  c.innerHTML = `<button class="btn" id="newDeal" style="margin-bottom:14px;">+ Новая сделка</button>` + tabs + list +
-    `<button class="btn secondary small" id="newPhysik" style="margin-top:10px;">+ Новый физик</button>`;
-  c.querySelectorAll('.tab').forEach(b=> b.onclick = ()=> selectTab(b.dataset.t));
-  c.querySelectorAll('[data-pid]').forEach(el=> el.onclick = ()=> openParty(el.dataset.pid));
-  document.getElementById('newDeal').onclick = openNewDealSheet;
-  document.getElementById('newPhysik').onclick = ()=> openPartySheet({kind:'person'}, (p)=> openParty(p.id));
-}
 
 // Архив и выгрузка — раньше были кнопкой прямо на главном экране сделок и
 // путались под ногами; теперь отдельное меню, открывается только из
@@ -614,9 +643,10 @@ function openPartySheet(initial, onSaved, opts){
   // назначенного этому физику: иначе при открытии на редактирование поле
   // тихо обнулилось бы, раз текущего значения нет среди опций.
   const dealers = state.parties.filter(x=> x.kind==='dealer' && (isDealerActive(x.id) || x.id===p.dealerId));
+  let gender = p.gender || '';
   openSheet(`
     <h3>${p.id ? esc(p.name||'Контрагент') : (isDealer?'Новый дилер':'Новый физик')}</h3>
-    <div class="field"><label>Телефон</label><input type="tel" id="pPhone" value="${esc(p.phone||'')}" inputmode="tel"></div>
+    ${isDealer ? `<div class="field"><label>Телефон</label><input type="tel" id="pPhone" value="${esc(p.phone||'')}" inputmode="tel"></div>` : ''}
     <div class="field"><label>ФИО / наименование</label><input type="text" id="pName" value="${esc(p.name||'')}"></div>
 
     ${isDealer ? `
@@ -638,18 +668,31 @@ function openPartySheet(initial, onSaved, opts){
       </select>
     </div>
     <button class="btn secondary small" id="pNewDealer" style="margin-bottom:10px;">+ Новый дилер</button>
-    <div id="passportToggle" style="cursor:pointer;color:var(--accent);font-size:13px;margin:4px 0 10px;">Паспортные данные (опционально) ▾</div>
-    <div id="passportFields" style="display:none;">
-      <div class="row2">
-        <div class="field"><label>Дата рождения</label><input type="text" id="pBirth" placeholder="ДД.ММ.ГГГГ" value="${esc(p.birthDate||'')}"></div>
-        <div class="field"><label>Паспорт (серия и номер)</label><input type="text" id="pPassNum" value="${esc(p.passportNumber||'')}"></div>
+    <div id="passportToggle" style="cursor:pointer;color:var(--accent);font-size:13px;margin:4px 0 10px;">Данные документов ▴</div>
+    <div id="passportFields">
+      <div class="field"><label>Телефон</label><input type="tel" id="pPhone" value="${esc(p.phone||'')}" inputmode="tel" placeholder="+7 999 123 45 67"></div>
+      <div class="field"><label>Пол</label>
+        <div class="seg" id="pGenderSeg">
+          <button type="button" data-g="m" class="${gender==='m'?'active':''}">Мужской</button>
+          <button type="button" data-g="f" class="${gender==='f'?'active':''}">Женский</button>
+        </div>
       </div>
-      <div class="field"><label>Кем и когда выдан</label><input type="text" id="pPassBy" value="${esc(p.passportIssuedBy||'')}"></div>
-      <div class="field"><label>Адрес регистрации (прописка)</label><textarea id="pReg">${esc(p.registrationAddress||'')}</textarea></div>
+      <div class="row2">
+        <div class="field"><label>Серия паспорта</label><input type="text" id="pPassSeries" inputmode="numeric" placeholder="0000" value="${esc(p.passportSeries||'')}"></div>
+        <div class="field"><label>Номер паспорта</label><input type="text" id="pPassNum" inputmode="numeric" placeholder="000000" value="${esc(p.passportNumber||'')}"></div>
+      </div>
+      <div class="field"><label>Дата рождения</label><input type="text" id="pBirth" placeholder="ДД.ММ.ГГГГ" value="${esc(p.birthDate||'')}"></div>
+      <div class="field" style="margin-bottom:5px;"><label>Паспорт выдан</label></div>
+      <div class="row2">
+        <div class="field"><label>Кем выдан</label><input type="text" id="pPassBy" value="${esc(p.passportIssuedBy||'')}"></div>
+        <div class="field"><label>Дата выдачи</label><input type="text" id="pPassDate" placeholder="ДД.ММ.ГГГГ" value="${esc(p.passportIssuedDate||'')}"></div>
+      </div>
+      <div class="field"><label>Код подразделения</label><input type="text" id="pDivCode" inputmode="numeric" placeholder="000-000" value="${esc(p.divisionCode||'')}"></div>
       <div class="row2">
         <div class="field"><label>ИНН</label><input type="text" id="pInn" inputmode="numeric" value="${esc(p.inn||'')}"></div>
-        <div class="field"><label>СНИЛС</label><input type="text" id="pSnils" inputmode="numeric" value="${esc(p.snils||'')}"></div>
+        <div class="field"><label>СНИЛС</label><input type="text" id="pSnils" inputmode="numeric" placeholder="000-000-000 00" value="${esc(p.snils||'')}"></div>
       </div>
+      <div class="field"><label>Адрес регистрации</label><textarea id="pReg">${esc(p.registrationAddress||'')}</textarea></div>
     </div>
     `}
 
@@ -662,8 +705,21 @@ function openPartySheet(initial, onSaved, opts){
     const box = document.getElementById('passportFields');
     const open = box.style.display !== 'none';
     box.style.display = open ? 'none' : '';
-    passToggle.textContent = 'Паспортные данные (опционально) ' + (open?'▾':'▴');
+    passToggle.textContent = 'Данные документов ' + (open?'▾':'▴');
   };
+  const genderSeg = document.getElementById('pGenderSeg');
+  if(genderSeg) genderSeg.querySelectorAll('button').forEach(b=> b.onclick = ()=>{
+    gender = b.dataset.g;
+    genderSeg.querySelectorAll('button').forEach(x=> x.classList.toggle('active', x===b));
+  });
+  if(!isDealer){
+    bindMask('pPhone', formatPhoneRu);
+    bindMask('pPassSeries', s=>onlyDigits(s,4));
+    bindMask('pPassNum', s=>onlyDigits(s,6));
+    bindMask('pDivCode', formatDivisionCode);
+    bindMask('pInn', s=>onlyDigits(s,12));
+    bindMask('pSnils', formatSnils);
+  }
   // Собирает текущие значения формы в объект той же формы, что и p — нужно
   // и для сохранения, и для возврата в эту же форму после вложенного
   // создания дилера, чтобы уже введённое не потерялось.
@@ -675,9 +731,13 @@ function openPartySheet(initial, onSaved, opts){
       party.channel = document.getElementById('pChannel').value;
       party.city = document.getElementById('pCity').value.trim();
       party.dealerId = document.getElementById('pDealer').value;
+      party.gender = gender;
       party.birthDate = document.getElementById('pBirth').value.trim();
+      party.passportSeries = document.getElementById('pPassSeries').value.trim();
       party.passportNumber = document.getElementById('pPassNum').value.trim();
       party.passportIssuedBy = document.getElementById('pPassBy').value.trim();
+      party.passportIssuedDate = document.getElementById('pPassDate').value.trim();
+      party.divisionCode = document.getElementById('pDivCode').value.trim();
       party.registrationAddress = document.getElementById('pReg').value.trim();
       party.inn = document.getElementById('pInn').value.trim();
       party.snils = document.getElementById('pSnils').value.trim();
@@ -1044,16 +1104,20 @@ async function openParty(id){
     document.getElementById('title').textContent = p.name;
     document.getElementById('subtitle').textContent = PARTY_KIND_LABELS[p.kind] || p.kind;
     const dealer = p.dealerId ? state.parties.find(x=>x.id===p.dealerId) : null;
+    const GENDER_LABELS = { m:'Мужской', f:'Женский' };
     const passportRows = p.kind==='person' ? [
-      ['Дата рождения', p.birthDate], ['Паспорт', p.passportNumber], ['Кем и когда выдан', p.passportIssuedBy],
-      ['Прописка', p.registrationAddress], ['ИНН', p.inn], ['СНИЛС', p.snils]
+      ['Телефон', p.phone], ['Пол', GENDER_LABELS[p.gender]], ['Дата рождения', p.birthDate],
+      ['Серия паспорта', p.passportSeries], ['Номер паспорта', p.passportNumber],
+      ['Кем выдан', p.passportIssuedBy], ['Дата выдачи', p.passportIssuedDate], ['Код подразделения', p.divisionCode],
+      ['ИНН', p.inn], ['СНИЛС', p.snils], ['Адрес регистрации', p.registrationAddress]
     ].filter(([,v])=>v) : [];
     c.innerHTML = `
       <button class="btn secondary small" id="prBack" style="margin-bottom:12px;">← Назад</button>
       <div class="card">
         <h2>${p.kind==='dealer'?'Дилер':'Физик'}</h2>
+        ${p.kind==='dealer' ? `
         <div class="kv"><span class="k">Телефон</span><span class="v">${esc(p.phone||'—')}</span></div>
-        ${p.kind==='dealer' ? (p.telegramUsername?`<div class="kv"><span class="k">Telegram</span><span class="v">@${esc(p.telegramUsername)}</span></div>`:'') : `
+        ${p.telegramUsername?`<div class="kv"><span class="k">Telegram</span><span class="v">@${esc(p.telegramUsername)}</span></div>`:''}` : `
         <div class="kv"><span class="k">Канал связи</span><span class="v">${esc(p.channel||'—')}</span></div>
         <div class="kv"><span class="k">Город</span><span class="v">${esc(p.city||'—')}</span></div>
         ${dealer?`<div class="kv"><span class="k">Через дилера</span><span class="v">${esc(dealer.name)}</span></div>`:''}`}
@@ -1061,7 +1125,7 @@ async function openParty(id){
         <button class="btn secondary small" id="prEdit" style="margin-top:12px;">Редактировать</button>
       </div>
       ${passportRows.length ? `<div class="card">
-        <h2>Паспортные данные</h2>
+        <h2>Данные документов</h2>
         ${passportRows.map(([k,v])=>`<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')}
       </div>` : ''}
       <div class="card">
@@ -1119,12 +1183,14 @@ function dealsCsv(deals){
   return '﻿' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
 }
 function partiesCsv(parties){
-  const head = ['Имя','Тип','Телефон','Telegram','Канал связи','Город','Через дилера','Дата рождения','Паспорт','Кем и когда выдан','Прописка','ИНН','СНИЛС','Заметки'];
+  const GENDER_LABELS = { m:'Мужской', f:'Женский' };
+  const head = ['Имя','Тип','Телефон','Telegram','Канал связи','Город','Через дилера','Пол','Дата рождения','Серия паспорта','Номер паспорта','Кем выдан','Дата выдачи','Код подразделения','Прописка','ИНН','СНИЛС','Заметки'];
   const byId = {};
   parties.forEach(p=>{ byId[p.id] = p.name; });
   const rows = parties.map(p=>[
     p.name||'', PARTY_KIND_LABELS[p.kind]||p.kind, p.phone||'', p.telegramUsername||'', p.channel||'', p.city||'',
-    p.dealerId ? (byId[p.dealerId]||'') : '', p.birthDate||'', p.passportNumber||'', p.passportIssuedBy||'',
+    p.dealerId ? (byId[p.dealerId]||'') : '', GENDER_LABELS[p.gender]||'', p.birthDate||'',
+    p.passportSeries||'', p.passportNumber||'', p.passportIssuedBy||'', p.passportIssuedDate||'', p.divisionCode||'',
     p.registrationAddress||'', p.inn||'', p.snils||'', p.notes||''
   ].map(csvCell).join(';'));
   return '﻿' + [head.map(csvCell).join(';')].concat(rows).join('\r\n');
