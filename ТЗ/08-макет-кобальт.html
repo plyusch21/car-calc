@@ -1,0 +1,316 @@
+
+<title>Baikal Auto Cobalt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Manrope:wght@500;600;700;800&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{ background:#05070a; color:#e6edf1; font-family:'Inter',system-ui,sans-serif; font-size:14px; margin:0; padding-block:28px; padding-inline:16px; -webkit-font-smoothing:antialiased; }
+.wrap{ max-width:1360px; margin:0 auto; }
+h1{ font:600 26px/1.15 'Fraunces',Georgia,serif; margin:0 0 6px; }
+.lead{ color:#8aa0ad; margin:0 0 20px; max-width:72ch; line-height:1.5; }
+.taste{ background:#0f1720; border:1px solid #1a2735; border-radius:14px; padding:16px 18px; margin:0 0 30px; display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px 24px; }
+.taste h3{ margin:0 0 6px; font-size:14px; } .taste p{ margin:0; color:#8aa0ad; font-size:13px; line-height:1.5; }
+.dir{ margin:0 0 44px; }
+.dir-head{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin:0 0 12px; }
+.dir-head h2{ font:600 22px/1.1 'Fraunces',Georgia,serif; margin:0; }
+.dir-head p{ margin:0; color:#8aa0ad; max-width:70ch; line-height:1.5; font-size:13px; }
+.dir-head .sw{ display:inline-flex; gap:4px; margin-left:auto; } .dir-head .sw i{ width:16px; height:16px; border-radius:4px; display:block; }
+.screens{ display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,390px)); gap:24px; justify-content:start; align-items:start; }
+.mono{ font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+/* ---------- shared skeleton, tokenised ---------- */
+.phone{ background:var(--bg); border:1px solid var(--border); border-radius:34px; padding:10px; box-shadow:0 30px 60px -30px rgba(0,0,0,.9); font-family:var(--font),'Inter',sans-serif; color:var(--text); }
+.app{ height:790px; display:flex; flex-direction:column; border-radius:26px; overflow:hidden; background:var(--bg); background-image:var(--bg-img); }
+.top{ padding:14px 16px 8px; display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.top.col{ flex-direction:column; align-items:flex-start; gap:6px; padding-bottom:10px; }
+.top .t{ font:600 22px/1.1 var(--display),'Fraunces',serif; letter-spacing:var(--display-ls,0); }
+.top .sub{ color:var(--muted); font-size:12px; } .top .sub.row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .top .who{ color:var(--text); }
+.body{ flex:1; overflow:hidden; padding:0 12px 12px; display:flex; flex-direction:column; gap:12px; }
+.card{ background:var(--s1); border:1px solid var(--card-border,transparent); border-radius:var(--r); padding:14px; box-shadow:var(--card-shadow,none); }
+.card h2{ margin:-14px -14px 14px; padding:10px 14px; font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; text-align:center; color:var(--h2-color); background:var(--h2-bg); border-bottom:var(--h2-line); border-radius:calc(var(--r) - 1px) calc(var(--r) - 1px) 0 0; }
+.field{ display:flex; flex-direction:column; gap:5px; } .field label{ font-size:12px; color:var(--muted); }
+.input{ background:var(--s2); border:1px solid var(--in-border,transparent); border-radius:var(--r-in); padding:5px 10px; min-height:36px; display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; }
+.input .unit{ color:var(--dim); font-size:12px; }
+.input .useg{ display:flex; background:var(--s3); border-radius:99px; padding:2px; gap:2px; margin-right:-4px; } .input .useg span{ font-size:10.5px; padding:2px 7px; border-radius:99px; color:var(--muted); font-family:var(--font),'Inter',sans-serif; } .input .useg .on{ background:var(--accent); color:var(--on-accent); font-weight:600; }
+.row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; } .stack{ display:flex; flex-direction:column; gap:10px; }
+.seg{ display:flex; background:var(--s2); border-radius:var(--r-seg); padding:3px; gap:2px; } .seg span{ flex:1; text-align:center; padding:8px 0; border-radius:calc(var(--r-seg) - 2px); font-size:12px; color:var(--muted); font-weight:500; } .seg .on{ background:var(--accent); color:var(--on-accent); font-weight:600; }
+.rate{ display:flex; align-items:center; justify-content:space-between; padding:9px 14px; background:var(--s1); border-radius:var(--r-in); border:1px solid var(--card-border,transparent); } .rate .l{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); } .dot{ width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 20%,transparent); } .rate .v{ font-size:16px; font-weight:600; } .rate .c{ font-size:11px; color:var(--dim); letter-spacing:.06em; }
+.btn{ display:flex; align-items:center; justify-content:center; min-height:46px; padding:0 14px; border-radius:var(--r-btn); font-weight:600; font-size:14px; }
+.btn.primary{ background:var(--primary); color:var(--on-accent); box-shadow:var(--primary-shadow,none); }
+.btn.send{ background:var(--send); color:#fff; }
+.btn.quiet{ background:var(--quiet-bg); color:var(--muted); min-height:36px; font-size:12px; font-weight:500; border-radius:99px; flex:1; padding:6px 10px; text-align:center; line-height:1.15; } .btn.quiet.x{ flex:0 0 36px; width:36px; padding:0; color:var(--dim); }
+.receipt{ background:var(--rc-bg,var(--s1)); }
+.receipt h2.rh{ background:var(--rh-bg); color:var(--rh-color); border-bottom:none; }
+.carname{ font:600 20px/1.15 var(--display),'Fraunces',serif; } .carmeta{ color:var(--muted); font-size:12px; margin:4px 0 8px; }
+.rl{ display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); } .rl .k{ color:var(--muted); } .rl .v{ font-weight:500; white-space:nowrap; }
+.total{ display:flex; justify-content:space-between; align-items:baseline; padding:12px 0 2px; margin-top:4px; border-top:var(--total-line); } .total .k{ text-transform:uppercase; letter-spacing:.08em; font-size:12px; color:var(--muted); } .total .v{ font-size:var(--total-size,28px); font-weight:600; color:var(--total-color,var(--text)); font-family:var(--total-font,'IBM Plex Mono'),monospace; }
+.nav{ display:flex; border-top:1px solid var(--line); background:var(--nav-bg,var(--s1)); padding:8px 4px 10px; } .nav span{ flex:1; text-align:center; font-size:11px; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:4px; } .nav span i{ width:22px; height:22px; border-radius:6px; border:1.6px solid currentColor; display:block; opacity:.85; } .nav .on{ color:var(--accent); }
+.stages{ position:relative; } .stage{ display:flex; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid var(--line); position:relative; } .stage:last-child{ border-bottom:none; }
+.mark{ width:24px; height:24px; border-radius:var(--mark-r,50%); border:1.5px solid var(--border); flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:12px; margin-top:1px; background:var(--s1); z-index:1; }
+.mark.done{ border-color:var(--good); color:var(--good); background:color-mix(in srgb,var(--good) 14%,var(--s1)); } .mark.wip{ border-color:var(--accent); background:color-mix(in srgb,var(--accent) 14%,var(--s1)); } .mark.wip::after{ content:''; width:8px; height:8px; border-radius:var(--mark-r,50%); background:var(--accent); }
+.stage .lbl{ font-weight:500; } .stage.off .lbl{ color:var(--muted); } .stage .meta{ color:var(--muted); font-size:11px; margin-top:2px; } .stage .meta b{ color:var(--good); font-weight:500; }
+.chip{ display:inline-flex; align-items:center; font-size:11px; padding:2px 8px; border-radius:99px; background:var(--s2); color:var(--muted); line-height:1.3; } .chip.accent{ background:color-mix(in srgb,var(--accent) 16%,transparent); color:var(--accent-text,var(--accent)); }
+.ci-top{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; } .ci-title{ font-weight:500; } .ci-date{ color:var(--dim); font-size:11px; margin-top:2px; } .ci-sum{ font-weight:600; white-space:nowrap; } .ci-status{ color:var(--muted); font-size:11px; margin-top:6px; } .ci-actions{ display:flex; gap:8px; align-items:center; margin-top:10px; }
+.mrow{ padding:8px 0; border-bottom:1px solid var(--line); } .mrow:last-child{ border-bottom:none; } .mrow .l1{ display:flex; justify-content:space-between; gap:10px; } .mrow .l1 .k{ color:var(--muted); } .mrow .l1 .v{ font-weight:600; } .mrow .l2{ display:flex; justify-content:space-between; gap:10px; font-size:11px; color:var(--dim); margin-top:3px; } .mrow .l2 .ok{ color:var(--good); }
+
+/* ---------- A · Кобальт ---------- */
+.vA{ --font:'Inter'; --display:'Fraunces'; --bg:#070c14; --bg-img:radial-gradient(120% 60% at 50% -10%, #12306a 0%, transparent 60%); --s1:rgba(255,255,255,.045); --s2:rgba(255,255,255,.07); --s3:rgba(255,255,255,.12); --card-border:rgba(255,255,255,.07); --line:rgba(255,255,255,.08); --border:#2a3b52; --text:#eef3f8; --muted:#8fa4b8; --dim:#5f748a; --accent:#4a94ff; --accent-text:#8fc0ff; --on-accent:#07101d; --good:#3ec48a; --r:18px; --r-in:12px; --r-seg:12px; --r-btn:14px; --h2-bg:linear-gradient(90deg,rgba(74,148,255,.22),rgba(74,148,255,.06)); --h2-color:#dbe8ff; --h2-line:1px solid rgba(74,148,255,.35); --primary:linear-gradient(135deg,#5aa2ff,#2f6fe0); --primary-shadow:0 8px 22px -10px rgba(74,148,255,.55); --send:linear-gradient(100deg,#2c9a63,#3d86ff 55%,#7a62ff); --quiet-bg:rgba(255,255,255,.06); --rc-bg:rgba(20,40,80,.35); --rh-bg:linear-gradient(90deg,rgba(74,148,255,.26),rgba(74,148,255,.08)); --rh-color:#dbe8ff; --total-line:1px dashed rgba(74,148,255,.5); --total-size:30px; --total-color:#8fc0ff; --nav-bg:rgba(7,12,20,.9); --mark-r:50%; }
+.vA .receipt h2.rh{ border-bottom:1px solid rgba(74,148,255,.35); }
+.vA .card{ backdrop-filter:blur(8px); }
+.vA .receipt{ position:relative; }
+.vA .receipt::before,.vA .receipt::after{ content:''; position:absolute; width:16px; height:16px; border-radius:50%; background:var(--bg); top:32px; } .vA .receipt::before{ left:-9px; } .vA .receipt::after{ right:-9px; }
+
+
+/* ---------- A light · Кобальт, светлая (v3) ---------- */
+.vAl{ --font:'Inter'; --display:'Fraunces'; --bg:#ebebee; --bg-img:radial-gradient(120% 45% at 50% -10%, #c9d6f5 0%, rgba(201,214,245,0) 60%); --s1:#ffffff; --s2:#eeeef1; --s3:#e0e0e5; --card-border:transparent; --line:#ebebee; --border:#c5cbd6; --text:#15171e; --muted:#5a606c; --dim:#8a8f9b; --accent:#1f56c9; --accent-text:#1a4db5; --on-accent:#ffffff; --good:#178a55; --r:18px; --r-in:12px; --r-seg:12px; --r-btn:14px; --h2-bg:#f4f4f6; --h2-color:#4e5460; --h2-line:1px solid #e6e6ea; --primary:#1f56c9; --primary-shadow:0 1px 2px rgba(31,86,201,.35), 0 10px 20px -10px rgba(31,86,201,.65); --send:linear-gradient(100deg,#2f8f62,#3b78d6 55%,#6f66d9); --quiet-bg:#f0f0f3; --rc-bg:#ffffff; --rh-bg:#e7efff; --rh-color:#1a3f8f; --total-line:1px dashed #a9c0ea; --total-size:30px; --total-color:#1a4db5; --nav-bg:#ffffff; --mark-r:50%; --in-border:#d9d9df; --shadow:0 2px 4px rgba(20,22,30,.06), 0 18px 34px -18px rgba(20,22,30,.45); }
+.vAl.phone{ border-color:#cfd8e5; box-shadow:0 30px 60px -30px rgba(0,0,0,.6); }
+.vAl .card{ box-shadow:var(--shadow); }
+.vAl .field label{ color:#4e5460; font-weight:500; }
+.vAl .input{ box-shadow:inset 0 1px 2px rgba(18,30,51,.07); }
+.vAl .rate{ background:#fff; border-color:transparent; box-shadow:var(--shadow); }
+.vAl .seg{ background:#dedfe5; box-shadow:inset 0 1px 2px rgba(18,30,51,.08); } .vAl .seg .on{ background:#fff; color:#1a4db5; box-shadow:0 1px 3px rgba(18,30,51,.22); }
+.vAl .input .useg{ background:#dedfe5; } .vAl .input .useg .on{ background:#fff; color:#1a4db5; box-shadow:0 1px 2px rgba(18,30,51,.2); }
+.vAl .receipt{ position:relative; border:1px solid #d3dff4; box-shadow:0 2px 4px rgba(18,30,51,.05), 0 20px 36px -20px rgba(26,77,181,.55); }
+.vAl .receipt h2.rh{ border-bottom:1px solid #d3dff4; }
+.vAl .receipt::before,.vAl .receipt::after{ content:''; position:absolute; width:16px; height:16px; border-radius:50%; background:var(--bg); border:1px solid #d3dff4; top:32px; } .vAl .receipt::before{ left:-9px; } .vAl .receipt::after{ right:-9px; }
+.vAl .btn.send{ box-shadow:0 8px 18px -10px rgba(59,120,214,.6); }
+.vAl .btn.quiet{ color:#4e5460; } .vAl .btn.quiet.x{ color:#8a8f9b; }
+.vAl .chip.accent{ background:#e7efff; color:#1a4db5; }
+.vAl .mark{ background:#fff; border-color:#c5d1e2; }
+.vAl .nav{ border-top-color:#e0e6ef; box-shadow:0 -8px 20px -16px rgba(18,30,51,.35); }
+.vAl .dot{ box-shadow:0 0 0 3px rgba(23,138,85,.18); }
+.vAl .carname{ color:#0d1a33; }
+
+/* --- светлая: вес (L3) влит в базу --- */
+.vAl{ --muted:#444a57; --dim:#6f7583; --line:#dcdde3; --h2-color:#33394a; }
+.vAl .top .sub{ color:#444a57; font-weight:500; }
+.vAl .rate .l{ color:#444a57; font-weight:500; } .vAl .rate .v{ font-weight:700; }
+.vAl .seg span{ font-weight:600; color:#444a57; }
+.vAl .card h2{ font-weight:700; }
+.vAl .field label{ color:#33394a; font-weight:600; }
+.vAl .input{ font-weight:600; } .vAl .input .unit{ font-weight:500; }
+.vAl .carmeta{ color:#444a57; font-weight:500; }
+.vAl .rl{ border-bottom-color:#dcdde3; } .vAl .rl .k{ color:#33394a; font-weight:500; } .vAl .rl .v{ font-weight:600; }
+.vAl .total .k{ color:#33394a; font-weight:600; } .vAl .total .v{ font-weight:700; }
+.vAl .stage .lbl{ font-weight:600; } .vAl .stage .meta{ color:#555b68; font-weight:500; } .vAl .stage.off .lbl{ color:#6f7583; font-weight:500; }
+.vAl .ci-title{ font-weight:600; } .vAl .ci-sum{ font-weight:700; } .vAl .ci-status{ color:#555b68; }
+.vAl .mrow .l1 .k{ color:#33394a; font-weight:500; } .vAl .mrow .l1 .v{ font-weight:700; } .vAl .mrow .l2{ color:#6f7583; font-weight:500; }
+.vAl .btn.quiet{ font-weight:600; color:#33394a; }
+.vAl .nav span{ font-weight:500; }
+.cmp{ display:grid; grid-template-columns:repeat(2,minmax(300px,390px)); gap:24px; justify-content:start; align-items:start; }
+.cmp .cap{ font:600 15px/1.2 'Fraunces',Georgia,serif; margin:0 0 4px; } .cmp .cap small{ display:block; font:400 12px/1.4 'Inter',sans-serif; color:#8aa0ad; margin-top:4px; }
+@media (max-width:1100px){ .cmp{ grid-template-columns:repeat(auto-fit,minmax(330px,390px)); } }
+.phone.bottom .body{ justify-content:flex-end; }
+</style>
+<div class="wrap">
+  <h1>Baikal Auto Cobalt · итог</h1>
+  <p class="lead">Утверждённые тёмная и светлая темы. Слева тёмная (по умолчанию), справа светлая (переключается в настройках). Ряды: верх расчёта, низ с чеком, карточка сделки.</p>
+  <section class="dir">
+    <div class="cmp">
+      <div class="cap">Кобальт · тёмная (по умолчанию)<small>Стеклянные карточки на кобальтовом свете, тихая шапка чека, итог кобальтовым.</small></div>
+      <div class="cap">Кобальт · светлая<small>Нейтральная бумага, белые карточки с глубокой тенью, плоская кобальтовая кнопка, плотный шрифт.</small></div>
+<div class="phone vA"><div class="app">
+  <div class="top"><div class="t">Расчёт</div><div class="sub">17.09.2026, ср</div></div>
+  <div class="body">
+    <div class="rate"><div class="l"><span class="dot"></span>обновлён 17.09</div><div class="v mono">0,5730</div><div class="c">ЙЕНА / ₽</div></div>
+    <div class="seg"><span class="on">🇯🇵 Япония</span><span>🇰🇷 Корея</span><span>🇨🇳 Китай</span><span>🌐 ЕАЭС</span></div>
+    <div class="card"><h2>Параметры автомобиля</h2>
+      <div class="stack">
+        <div class="row2">
+          <div class="field"><label>Цена, ¥</label><div class="input mono">1 000 000<span class="unit">¥</span></div></div>
+          <div class="field"><label>Расходы в стране, ¥</label><div class="input mono">50 000<span class="unit">¥</span></div></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Объём</label><div class="input mono">1 500<span class="unit">см³</span></div></div>
+          <div class="field"><label>Мощность</label><div class="input mono">110<span class="useg"><span class="on">л.с.</span><span>кВт</span></span></div></div>
+        </div>
+        <div class="field"><label>Возраст</label><div class="seg small"><span>до 3 лет</span><span>3–5 лет</span><span class="on">старше 5</span></div></div>
+      </div>
+    </div>
+    <div class="card"><h2>Комиссии</h2>
+      <div class="row2">
+        <div class="field"><label>Брокер</label><div class="input mono">80 000<span class="unit">₽</span></div></div>
+        <div class="field"><label>Наша комиссия</label><div class="input mono">50 000<span class="unit">₽</span></div></div>
+      </div>
+    </div>
+    <div class="btn primary">Рассчитать</div>
+    <div class="card receipt"><h2 class="rh">Расчёт</h2>
+      <div class="carname">Toyota Sienta</div>
+      <div class="carmeta">Япония · старше 5 лет · бензин · 1,5 л · 110 л.с.</div>
+      <div class="rl"><span class="k">Цена ТС с расходами</span><span class="v mono">610 675 ₽</span></div>
+      <div class="rl"><span class="k">Таможенные платежи</span><span class="v mono">770 661 ₽</span></div>
+      <div class="rl"><span class="k">Брокер</span><span class="v mono">80 000 ₽</span></div>
+      <div class="rl"><span class="k">Наша комиссия</span><span class="v mono">50 000 ₽</span></div>
+      <div class="total"><span class="k">Итого</span><span class="v mono">1 511 336 ₽</span></div>
+    </div>
+    <div class="btn send">Отправить в мессенджер</div>
+  </div>
+  <div class="nav"><span><i></i>Сделки</span><span class="on"><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+</div></div>
+<div class="phone vAl"><div class="app">
+  <div class="top"><div class="t">Расчёт</div><div class="sub">17.09.2026, ср</div></div>
+  <div class="body">
+    <div class="rate"><div class="l"><span class="dot"></span>обновлён 17.09</div><div class="v mono">0,5730</div><div class="c">ЙЕНА / ₽</div></div>
+    <div class="seg"><span class="on">🇯🇵 Япония</span><span>🇰🇷 Корея</span><span>🇨🇳 Китай</span><span>🌐 ЕАЭС</span></div>
+    <div class="card"><h2>Параметры автомобиля</h2>
+      <div class="stack">
+        <div class="row2">
+          <div class="field"><label>Цена, ¥</label><div class="input mono">1 000 000<span class="unit">¥</span></div></div>
+          <div class="field"><label>Расходы в стране, ¥</label><div class="input mono">50 000<span class="unit">¥</span></div></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Объём</label><div class="input mono">1 500<span class="unit">см³</span></div></div>
+          <div class="field"><label>Мощность</label><div class="input mono">110<span class="useg"><span class="on">л.с.</span><span>кВт</span></span></div></div>
+        </div>
+        <div class="field"><label>Возраст</label><div class="seg small"><span>до 3 лет</span><span>3–5 лет</span><span class="on">старше 5</span></div></div>
+      </div>
+    </div>
+    <div class="card"><h2>Комиссии</h2>
+      <div class="row2">
+        <div class="field"><label>Брокер</label><div class="input mono">80 000<span class="unit">₽</span></div></div>
+        <div class="field"><label>Наша комиссия</label><div class="input mono">50 000<span class="unit">₽</span></div></div>
+      </div>
+    </div>
+    <div class="btn primary">Рассчитать</div>
+    <div class="card receipt"><h2 class="rh">Расчёт</h2>
+      <div class="carname">Toyota Sienta</div>
+      <div class="carmeta">Япония · старше 5 лет · бензин · 1,5 л · 110 л.с.</div>
+      <div class="rl"><span class="k">Цена ТС с расходами</span><span class="v mono">610 675 ₽</span></div>
+      <div class="rl"><span class="k">Таможенные платежи</span><span class="v mono">770 661 ₽</span></div>
+      <div class="rl"><span class="k">Брокер</span><span class="v mono">80 000 ₽</span></div>
+      <div class="rl"><span class="k">Наша комиссия</span><span class="v mono">50 000 ₽</span></div>
+      <div class="total"><span class="k">Итого</span><span class="v mono">1 511 336 ₽</span></div>
+    </div>
+    <div class="btn send">Отправить в мессенджер</div>
+  </div>
+  <div class="nav"><span><i></i>Сделки</span><span class="on"><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+</div></div>
+<div class="phone vA bottom"><div class="app">
+  <div class="top"><div class="t">Расчёт</div><div class="sub">17.09.2026, ср</div></div>
+  <div class="body">
+    <div class="rate"><div class="l"><span class="dot"></span>обновлён 17.09</div><div class="v mono">0,5730</div><div class="c">ЙЕНА / ₽</div></div>
+    <div class="seg"><span class="on">🇯🇵 Япония</span><span>🇰🇷 Корея</span><span>🇨🇳 Китай</span><span>🌐 ЕАЭС</span></div>
+    <div class="card"><h2>Параметры автомобиля</h2>
+      <div class="stack">
+        <div class="row2">
+          <div class="field"><label>Цена, ¥</label><div class="input mono">1 000 000<span class="unit">¥</span></div></div>
+          <div class="field"><label>Расходы в стране, ¥</label><div class="input mono">50 000<span class="unit">¥</span></div></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Объём</label><div class="input mono">1 500<span class="unit">см³</span></div></div>
+          <div class="field"><label>Мощность</label><div class="input mono">110<span class="useg"><span class="on">л.с.</span><span>кВт</span></span></div></div>
+        </div>
+        <div class="field"><label>Возраст</label><div class="seg small"><span>до 3 лет</span><span>3–5 лет</span><span class="on">старше 5</span></div></div>
+      </div>
+    </div>
+    <div class="card"><h2>Комиссии</h2>
+      <div class="row2">
+        <div class="field"><label>Брокер</label><div class="input mono">80 000<span class="unit">₽</span></div></div>
+        <div class="field"><label>Наша комиссия</label><div class="input mono">50 000<span class="unit">₽</span></div></div>
+      </div>
+    </div>
+    <div class="btn primary">Рассчитать</div>
+    <div class="card receipt"><h2 class="rh">Расчёт</h2>
+      <div class="carname">Toyota Sienta</div>
+      <div class="carmeta">Япония · старше 5 лет · бензин · 1,5 л · 110 л.с.</div>
+      <div class="rl"><span class="k">Цена ТС с расходами</span><span class="v mono">610 675 ₽</span></div>
+      <div class="rl"><span class="k">Таможенные платежи</span><span class="v mono">770 661 ₽</span></div>
+      <div class="rl"><span class="k">Брокер</span><span class="v mono">80 000 ₽</span></div>
+      <div class="rl"><span class="k">Наша комиссия</span><span class="v mono">50 000 ₽</span></div>
+      <div class="total"><span class="k">Итого</span><span class="v mono">1 511 336 ₽</span></div>
+    </div>
+    <div class="btn send">Отправить в мессенджер</div>
+  </div>
+  <div class="nav"><span><i></i>Сделки</span><span class="on"><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+</div></div>
+<div class="phone vAl bottom"><div class="app">
+  <div class="top"><div class="t">Расчёт</div><div class="sub">17.09.2026, ср</div></div>
+  <div class="body">
+    <div class="rate"><div class="l"><span class="dot"></span>обновлён 17.09</div><div class="v mono">0,5730</div><div class="c">ЙЕНА / ₽</div></div>
+    <div class="seg"><span class="on">🇯🇵 Япония</span><span>🇰🇷 Корея</span><span>🇨🇳 Китай</span><span>🌐 ЕАЭС</span></div>
+    <div class="card"><h2>Параметры автомобиля</h2>
+      <div class="stack">
+        <div class="row2">
+          <div class="field"><label>Цена, ¥</label><div class="input mono">1 000 000<span class="unit">¥</span></div></div>
+          <div class="field"><label>Расходы в стране, ¥</label><div class="input mono">50 000<span class="unit">¥</span></div></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Объём</label><div class="input mono">1 500<span class="unit">см³</span></div></div>
+          <div class="field"><label>Мощность</label><div class="input mono">110<span class="useg"><span class="on">л.с.</span><span>кВт</span></span></div></div>
+        </div>
+        <div class="field"><label>Возраст</label><div class="seg small"><span>до 3 лет</span><span>3–5 лет</span><span class="on">старше 5</span></div></div>
+      </div>
+    </div>
+    <div class="card"><h2>Комиссии</h2>
+      <div class="row2">
+        <div class="field"><label>Брокер</label><div class="input mono">80 000<span class="unit">₽</span></div></div>
+        <div class="field"><label>Наша комиссия</label><div class="input mono">50 000<span class="unit">₽</span></div></div>
+      </div>
+    </div>
+    <div class="btn primary">Рассчитать</div>
+    <div class="card receipt"><h2 class="rh">Расчёт</h2>
+      <div class="carname">Toyota Sienta</div>
+      <div class="carmeta">Япония · старше 5 лет · бензин · 1,5 л · 110 л.с.</div>
+      <div class="rl"><span class="k">Цена ТС с расходами</span><span class="v mono">610 675 ₽</span></div>
+      <div class="rl"><span class="k">Таможенные платежи</span><span class="v mono">770 661 ₽</span></div>
+      <div class="rl"><span class="k">Брокер</span><span class="v mono">80 000 ₽</span></div>
+      <div class="rl"><span class="k">Наша комиссия</span><span class="v mono">50 000 ₽</span></div>
+      <div class="total"><span class="k">Итого</span><span class="v mono">1 511 336 ₽</span></div>
+    </div>
+    <div class="btn send">Отправить в мессенджер</div>
+  </div>
+  <div class="nav"><span><i></i>Сделки</span><span class="on"><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+</div></div>
+<div class="phone vA"><div class="app">
+  <div class="top col"><div class="t">BA-2026-0005</div><div class="sub row"><span class="who">Иванов Игорь</span><span>·</span><span>Импорт</span><span class="chip accent">Таможня / Лаборатория</span></div></div>
+  <div class="body">
+    <div class="card"><h2>Этапы</h2>
+      <div class="stages">
+      <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Договор / Предоплата</div><div class="meta">17.09.2026 · <b>80 000 ₽ поступило</b></div></div></div>
+      <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Бронь</div><div class="meta">17.09.2026 · предоплата удержана</div></div></div>
+      <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Оплата инвойса</div><div class="meta">17.09.2026 · курс зафиксирован</div></div></div>
+      <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Экспорт</div><div class="meta">пройден</div></div></div>
+      <div class="stage cur"><div class="mark wip"></div><div><div class="lbl">Таможня / Лаборатория</div><div class="meta">в процессе с 17.09.2026 · норма до 7 дн.</div></div></div>
+      <div class="stage off"><div class="mark"></div><div><div class="lbl">Наша стоянка</div></div></div>
+      <div class="stage off"><div class="mark"></div><div><div class="lbl">Расчёт</div></div></div>
+      </div>
+    </div>
+    <div class="card"><h2>Расчёты</h2>
+      <div class="ci-top"><div><div class="ci-title">Toyota Sienta · 🇯🇵</div><div class="ci-date">17.09.2026</div></div><div class="ci-sum mono">1 045 886 ₽</div></div>
+      <div class="ci-status">курсы на 17.09.2026 (оплата инвойса)</div>
+      <div class="ci-actions"><span class="btn quiet">пересчитать таможню</span><span class="btn quiet">открыть в калькуляторе</span><span class="btn quiet x">✕</span></div>
+    </div>
+    <div class="card"><h2>Деньги</h2>
+      <div class="mrow"><div class="l1"><span class="k">Первоначальный взнос</span><span class="v mono">80 000 ₽</span></div><div class="l2"><span>равен брокеру, засчитывается в остаток</span><span class="ok">поступил · удержан 17.09</span></div></div>
+      <div class="mrow"><div class="l1"><span class="k">Остаток при расчёте</span><span class="v mono">50 000 ₽</span></div><div class="l2"><span>комиссия агента</span><span>ожидается · «Расчёт»</span></div></div>
+      <div class="mrow"><div class="l1"><span class="k">К получению</span><span class="v mono">130 000 ₽</span></div><div class="l2"><span></span><span class="ok">поступило 80 000 ₽</span></div></div>
+    </div>
+  </div>
+  <div class="nav"><span class="on"><i></i>Сделки</span><span><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+</div></div></div><div class="phone vAl"><div class="app">
+  <div class="top col"><div class="t">BA-2026-0005</div><div class="sub row"><span class="who">Иванов Игорь</span><span>·</span><span>Импорт</span><span class="chip accent">Таможня / Лаборатория</span></div></div>
+  <div class="body">
+    <div class="card"><h2>Этапы</h2>
+      <div class="stages">
+      <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Договор / Предоплата</div><div class="meta">17.09.2026 · <b>80 000 ₽ поступило</b></div></div></div>
+      <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Бронь</div><div class="meta">17.09.2026 · предоплата удержана</div></div></div>
+      <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Оплата инвойса</div><div class="meta">17.09.2026 · курс зафиксирован</div></div></div>
+      <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Экспорт</div><div class="meta">пройден</div></div></div>
+      <div class="stage cur"><div class="mark wip"></div><div><div class="lbl">Таможня / Лаборатория</div><div class="meta">в процессе с 17.09.2026 · норма до 7 дн.</div></div></div>
+      <div class="stage off"><div class="mark"></div><div><div class="lbl">Наша стоянка</div></div></div>
+      <div class="stage off"><div class="mark"></div><div><div class="lbl">Расчёт</div></div></div>
+      </div>
+    </div>
+    <div class="card"><h2>Расчёты</h2>
+      <div class="ci-top"><div><div class="ci-title">Toyota Sienta · 🇯🇵</div><div class="ci-date">17.09.2026</div></div><div class="ci-sum mono">1 045 886 ₽</div></div>
+      <div class="ci-status">курсы на 17.09.2026 (оплата инвойса)</div>
+      <div class="ci-actions"><span class="btn quiet">пересчитать таможню</span><span class="btn quiet">открыть в калькуляторе</span><span class="btn quiet x">✕</span></div>
+    </div>
+    <div class="card"><h2>Деньги</h2>
+      <div class="mrow"><div class="l1"><span class="k">Первоначальный взнос</span><span class="v mono">80 000 ₽</span></div><div class="l2"><span>равен брокеру, засчитывается в остаток</span><span class="ok">поступил · удержан 17.09</span></div></div>
+      <div class="mrow"><div class="l1"><span class="k">Остаток при расчёте</span><span class="v mono">50 000 ₽</span></div><div class="l2"><span>комиссия агента</span><span>ожидается · «Расчёт»</span></div></div>
+      <div class="mrow"><div class="l1"><span class="k">К получению</span><span class="v mono">130 000 ₽</span></div><div class="l2"><span></span><span class="ok">поступило 80 000 ₽</span></div></div>
+    </div>
+  </div>
+  <div class="nav"><span class="on"><i></i>Сделки</span><span><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+</div></div></div></div>
+  </section>
+</div>

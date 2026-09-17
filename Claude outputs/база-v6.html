@@ -1,0 +1,264 @@
+<title>Baikal Auto Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080d12; --s1:#0f1720; --s2:#172432; --s3:#1d2c3c;
+  --border:#213040; --border-soft:#1a2735;
+  --text:#e6edf1; --muted:#7f98a6; --dim:#5b7280;
+  --accent:#2f7dd1; --accent-soft:#2f7dd11f; --accent-line:rgba(47,125,209,.45);
+  --teal:#37b07c; --teal-soft:#37b07c1f;
+  --warn:#d9a441; --warn-soft:#d9a4411f;
+  --danger:#d1573f; --danger-soft:#d1573f1f;
+  --r:14px; --r-sm:10px; --r-pill:99px;
+  --fs-xs:11px; --fs-sm:12px; --fs-base:14px; --fs-md:16px; --fs-lg:18px; --fs-xl:22px; --fs-2xl:28px;
+}
+body{ background:#05090d; color:var(--text); font-family:'Inter',system-ui,sans-serif; font-size:var(--fs-base); margin:0; padding-block:28px; padding-inline:16px; -webkit-font-smoothing:antialiased; }
+.mono{ font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+.serif{ font-family:'Fraunces',Georgia,serif; }
+.wrap{ max-width:1320px; margin:0 auto; }
+h1{ font:600 26px/1.15 'Fraunces',Georgia,serif; margin:0 0 6px; text-wrap:balance; }
+.lead{ color:var(--muted); margin:0 0 24px; max-width:68ch; line-height:1.5; }
+.screens{ display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,390px)); gap:28px; justify-content:center; align-items:start; }
+.screen-title{ font-size:var(--fs-sm); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 10px 4px; }
+.phone{ background:var(--bg); border:1px solid var(--border); border-radius:34px; padding:10px; box-shadow:0 30px 60px -30px rgba(0,0,0,.9); }
+.app{ height:780px; display:flex; flex-direction:column; border-radius:26px; overflow:hidden; background:var(--bg); position:relative; }
+.top{ padding:14px 16px 8px; display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.top .t{ font:600 22px/1.1 'Fraunces',Georgia,serif; }
+.top .sub{ color:var(--muted); font-size:var(--fs-sm); }
+.body{ flex:1; overflow:hidden; padding:0 12px 12px; display:flex; flex-direction:column; gap:12px; }
+.card{ background:var(--s1); border:1px solid var(--border-soft); border-radius:var(--r); padding:14px; }
+.card h2{ background:var(--accent-soft); color:var(--text); text-align:center; text-transform:uppercase; font-size:var(--fs-sm); font-weight:600; letter-spacing:.08em; padding:10px 14px; margin:-14px -14px 14px; border-bottom:1px solid var(--accent-line); border-radius:13px 13px 0 0; }
+.card h2.receipt{ background:#255aa1; color:#fff; border-bottom:none; }
+.field{ display:flex; flex-direction:column; gap:6px; }
+.field label{ font-size:var(--fs-sm); color:var(--muted); }
+.input{ background:var(--s2); border:1px solid var(--border); border-radius:var(--r-sm); padding:5px 10px; min-height:36px; font-size:var(--fs-base); display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.input .useg{ display:flex; background:var(--s3); border-radius:var(--r-pill); padding:2px; gap:2px; margin-right:-4px; }
+.input .useg span{ font-size:10.5px; padding:2px 7px; border-radius:var(--r-pill); color:var(--muted); font-family:'Inter',sans-serif; }
+.input .useg .on{ background:var(--accent); color:#08131c; font-weight:600; }
+.input .unit{ color:var(--dim); font-size:var(--fs-sm); }
+.row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.stack{ display:flex; flex-direction:column; gap:10px; }
+.seg{ display:flex; background:var(--s2); border-radius:var(--r-pill); padding:3px; gap:2px; }
+.seg span{ flex:1; text-align:center; padding:8px 0; border-radius:var(--r-pill); font-size:var(--fs-sm); color:var(--muted); font-weight:500; }
+.seg .on{ background:var(--accent); color:#08131c; font-weight:600; }
+.seg.small span{ padding:8px 0; }
+.rate{ display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--s1); border:1px solid var(--border-soft); border-radius:var(--r-sm); }
+.rate .l{ display:flex; align-items:center; gap:8px; font-size:var(--fs-sm); color:var(--muted); }
+.dot{ width:8px; height:8px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 3px var(--teal-soft); }
+.rate .v{ font-size:var(--fs-md); font-weight:600; }
+.rate .c{ font-size:var(--fs-xs); color:var(--dim); letter-spacing:.06em; }
+.btn{ display:flex; align-items:center; justify-content:center; min-height:46px; padding:0 14px; border-radius:var(--r-sm); font-weight:600; font-size:var(--fs-base); }
+.btn.primary{ background:var(--accent); color:#08131c; }
+.btn.ghost{ background:transparent; color:var(--accent); min-height:40px; font-weight:500; }
+.btn.ghost.muted{ color:var(--muted); }
+.btn.ghost.compact{ padding:0 8px; display:inline-flex; }
+.btn.quiet{ background:rgba(255,255,255,.045); color:var(--muted); min-height:36px; font-size:var(--fs-sm); font-weight:500; border-radius:var(--r-pill); flex:1; padding:6px 10px; text-align:center; line-height:1.15; }
+.btn.quiet.x{ flex:0 0 36px; width:36px; padding:0; color:var(--dim); font-size:14px; }
+.btn.tri{ background:linear-gradient(100deg,#2c8f5a 0%,#2f7dd1 50%,#6a5acd 100%); color:#fff; opacity:.92; }
+.sticky{ position:sticky; bottom:0; padding:10px 0 2px; background:linear-gradient(180deg,transparent,var(--bg) 40%); }
+.rl{ display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid var(--border-soft); }
+.rl:last-child{ border-bottom:none; }
+.rl .k{ color:var(--muted); }
+.rl .k small{ display:block; color:var(--dim); font-size:var(--fs-xs); margin-top:2px; }
+.rl .v{ font-weight:500; white-space:nowrap; }
+.total{ display:flex; justify-content:space-between; align-items:baseline; padding:12px 0 2px; margin-top:4px; border-top:1px solid var(--accent-line); }
+.total .k{ text-transform:uppercase; letter-spacing:.08em; font-size:var(--fs-sm); color:var(--muted); }
+.total .v{ font-size:var(--fs-2xl); font-weight:600; }
+.carname{ font:600 20px/1.15 'Fraunces',Georgia,serif; }
+.carmeta{ color:var(--muted); font-size:var(--fs-sm); margin-top:4px; }
+.nav{ display:flex; border-top:1px solid var(--border-soft); background:var(--s1); padding:8px 4px 10px; }
+.nav span{ flex:1; text-align:center; font-size:var(--fs-xs); color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:4px; }
+.nav span i{ width:22px; height:22px; border-radius:6px; border:1.6px solid currentColor; display:block; opacity:.85; }
+.nav .on{ color:var(--accent); }
+/* stages */
+.stage{ display:flex; gap:12px; align-items:flex-start; padding:9px 0; border-bottom:1px solid var(--border-soft); }
+.stage:last-child{ border-bottom:none; }
+.mark{ width:24px; height:24px; border-radius:50%; border:1.5px solid var(--border); flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:12px; margin-top:1px; }
+.mark.done{ border-color:var(--teal); color:var(--teal); background:var(--teal-soft); }
+.mark.wip{ border-color:var(--accent); background:var(--accent-soft); }
+.mark.wip::after{ content:''; width:8px; height:8px; border-radius:50%; background:var(--accent); }
+.stage .lbl{ font-weight:500; }
+.stage .meta{ color:var(--muted); font-size:var(--fs-xs); margin-top:2px; }
+.stage .meta b{ color:var(--teal); font-weight:500; }
+.chip{ display:inline-flex; align-items:center; font-size:var(--fs-xs); padding:3px 8px; border-radius:var(--r-pill); background:var(--s2); border:1px solid var(--border); color:var(--muted); line-height:1.2; }
+.chip.accent{ background:var(--accent-soft); border-color:var(--accent); color:#8fc0f2; }
+.chip.warn{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
+.chip.danger{ background:var(--danger-soft); border-color:var(--danger); color:#f08a74; }
+.chip.teal{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
+/* calc item */
+.ci-top{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.ci-title{ font-weight:500; }
+.ci-date{ color:var(--dim); font-size:var(--fs-xs); margin-top:2px; }
+.ci-sum{ font-weight:600; white-space:nowrap; }
+.ci-status{ color:var(--muted); font-size:var(--fs-xs); margin-top:6px; }
+.ci-actions{ display:flex; gap:8px; align-items:center; margin-top:10px; }
+/* money */
+.mrow{ padding:9px 0; border-bottom:1px solid var(--border-soft); }
+.mrow:last-child{ border-bottom:none; }
+.mrow .l1{ display:flex; justify-content:space-between; gap:10px; }
+.mrow .l1 .k{ color:var(--muted); }
+.mrow .l1 .v{ font-weight:600; }
+.mrow .l2{ display:flex; justify-content:space-between; gap:10px; font-size:var(--fs-xs); color:var(--dim); margin-top:3px; }
+.mrow .l2 .ok{ color:var(--teal); }
+/* deals list */
+.drow{ background:var(--s1); border:1px solid var(--border-soft); border-radius:var(--r); padding:12px 14px; display:flex; flex-direction:column; gap:6px; }
+.drow .h{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.drow .num{ font-size:var(--fs-sm); color:var(--dim); }
+.drow .name{ font-weight:600; font-size:var(--fs-md); }
+.drow .car{ color:var(--muted); font-size:var(--fs-sm); display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.drow .f{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:2px; }
+.idle{ font-size:var(--fs-xs); color:var(--muted); }
+.via{ font-size:var(--fs-xs); letter-spacing:.08em; text-transform:uppercase; color:#8fc0f2; display:flex; justify-content:space-between; gap:8px; }
+.via2{ font-size:var(--fs-xs); color:var(--muted); display:flex; gap:6px; }
+.via2 b{ color:#8fc0f2; font-weight:500; }
+.drow.rail{ border-left:3px solid var(--accent); }
+.vtag{ font-size:10px; color:var(--dim); text-transform:none; letter-spacing:0; }
+.idle.warn{ color:var(--warn); } .idle.bad{ color:var(--danger); }
+/* legend */
+.legend{ margin:36px auto 0; max-width:1320px; display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+.lg{ background:var(--s1); border:1px solid var(--border-soft); border-radius:var(--r); padding:16px 18px; }
+.lg h3{ margin:0 0 6px; font-size:var(--fs-base); font-weight:600; }
+.lg p{ margin:0; color:var(--muted); font-size:var(--fs-sm); line-height:1.5; }
+.lg.keep{ border-color:var(--accent-line); }
+@media (max-width:420px){ .app{ height:auto; } .screens{ gap:20px; } }
+@media (prefers-reduced-motion:reduce){ *{ transition:none !important; } }
+</style>
+
+<div class="wrap">
+  <h1>Baikal Auto Redesign</h1>
+  <p class="lead">Версия 6: поля ввода ниже (36 px), строка дилера слева единой строкой; поля ввода компактнее (40 px, цифры 14 px), день недели в дате, переключатель л.с./кВт внутри поля, шапка сделки без переносов и с воздухом; поля расчёта как в приложении (макет их не меняет), кнопки второго плана тише и по центру, пометка дилера — вариант Б в одну строку; флаги у маршрутов вернулись, возраст — тумблер, кнопка отправки не прилипает и градиент мягче, в списке сделок — два варианта пометки «физик от дилера» (А и Б), чтобы выбрать. Остальное как в первой версии: три уровня глубины, один акцент, кнопки второго плана без рамок, моноширинные цифры.</p>
+
+  <div class="screens">
+
+    <!-- ЭКРАН 1 — КАЛЬКУЛЯТОР -->
+    <div>
+      <p class="screen-title">1 · Расчёт с чеком</p>
+      <div class="phone"><div class="app">
+        <div class="top"><div class="t">Расчёт</div><div class="sub">17.09.2026, ср</div></div>
+        <div class="body">
+          <div class="rate"><div class="l"><span class="dot"></span>обновлён 17.09</div><div class="v mono">0,5730</div><div class="c">ЙЕНА / ₽</div></div>
+          <div class="seg"><span class="on">🇯🇵 Япония</span><span>🇰🇷 Корея</span><span>🇨🇳 Китай</span><span>🌐 ЕАЭС</span></div>
+          <div class="card"><h2>Параметры автомобиля</h2>
+            <div class="stack">
+              <div class="row2">
+                <div class="field"><label>Цена, ¥</label><div class="input mono">1 000 000<span class="unit">¥</span></div></div>
+                <div class="field"><label>Расходы в стране, ¥</label><div class="input mono">50 000<span class="unit">¥</span></div></div>
+              </div>
+              <div class="row2">
+                <div class="field"><label>Объём</label><div class="input mono">1 500<span class="unit">см³</span></div></div>
+                <div class="field"><label>Мощность</label><div class="input mono">110<span class="useg"><span class="on">л.с.</span><span>кВт</span></span></div></div>
+              </div>
+              <div class="field"><label>Двигатель</label><div class="input">Бензиновый<span class="unit">▾</span></div></div>
+              <div class="field"><label>Возраст</label><div class="seg small"><span>до 3 лет</span><span>3–5 лет</span><span class="on">старше 5</span></div></div>
+            </div>
+          </div>
+          <div class="card"><h2>Комиссии</h2>
+            <div class="row2">
+              <div class="field"><label>Брокер</label><div class="input mono">80 000<span class="unit">₽</span></div></div>
+              <div class="field"><label>Наша комиссия</label><div class="input mono">50 000<span class="unit">₽</span></div></div>
+            </div>
+          </div>
+          <div class="card"><h2 class="receipt">Расчёт</h2>
+            <div class="carname">Toyota Sienta</div>
+            <div class="carmeta">Япония · старше 5 лет · бензин · 1,5 л · 110 л.с.</div>
+            <div style="height:8px"></div>
+            <div class="rl"><span class="k">Цена ТС с расходами<small>по курсу 0,5730, комиссия банка учтена</small></span><span class="v mono">610 675 ₽</span></div>
+            <div class="rl"><span class="k">Таможенные платежи</span><span class="v mono">770 661 ₽</span></div>
+            <div class="rl"><span class="k">Брокер</span><span class="v mono">80 000 ₽</span></div>
+            <div class="rl"><span class="k">Наша комиссия</span><span class="v mono">50 000 ₽</span></div>
+            <div class="total"><span class="k">Итого</span><span class="v mono">1 511 336 ₽</span></div>
+          </div>
+          <div class="btn tri">Отправить в мессенджер</div>
+        </div>
+        <div class="nav"><span><i></i>Сделки</span><span class="on"><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+      </div></div>
+    </div>
+
+    <!-- ЭКРАН 2 — КАРТОЧКА СДЕЛКИ -->
+    <div>
+      <p class="screen-title">2 · Карточка сделки</p>
+      <div class="phone"><div class="app">
+        <div class="top" style="flex-direction:column;align-items:flex-start;gap:6px;padding-bottom:10px"><div class="t">BA-2026-0005</div><div class="sub" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="color:var(--text)">Иванов Игорь</span><span>·</span><span>Импорт</span><span>·</span><span class="chip accent" style="padding:2px 8px">Таможня / Лаборатория</span></div></div>
+        <div class="body">
+          <div class="card"><h2>Этапы</h2>
+            <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Договор / Предоплата</div><div class="meta">17.09.2026 · <b>80 000 ₽ поступило</b></div></div></div>
+            <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Бронь</div><div class="meta">17.09.2026 · предоплата удержана</div></div></div>
+            <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Оплата инвойса</div><div class="meta">17.09.2026 · курс зафиксирован</div></div></div>
+            <div class="stage"><div class="mark done">✓</div><div><div class="lbl">Экспорт</div><div class="meta">пройден</div></div></div>
+            <div class="stage"><div class="mark wip"></div><div><div class="lbl">Таможня / Лаборатория</div><div class="meta">в процессе с 17.09.2026 · норма до 7 дн.</div></div></div>
+            <div class="stage"><div class="mark"></div><div><div class="lbl" style="color:var(--muted)">Наша стоянка</div></div></div>
+            <div class="stage"><div class="mark"></div><div><div class="lbl" style="color:var(--muted)">Расчёт</div></div></div>
+          </div>
+          <div class="card"><h2>Расчёты</h2>
+            <div class="ci-top"><div><div class="ci-title">Toyota Sienta · 🇯🇵</div><div class="ci-date">17.09.2026</div></div><div class="ci-sum mono">1 045 886 ₽</div></div>
+            <div class="ci-status">курсы на 17.09.2026 (оплата инвойса)</div>
+            <div class="ci-actions"><span class="btn quiet">пересчитать таможню</span><span class="btn quiet">открыть в калькуляторе</span><span class="btn quiet x" title="убрать">✕</span></div>
+            <div style="height:10px"></div>
+            <div class="btn quiet" style="min-height:40px">Привязать расчёт из истории</div>
+          </div>
+          <div class="card"><h2>Деньги</h2>
+            <div class="mrow"><div class="l1"><span class="k">Первоначальный взнос</span><span class="v mono">80 000 ₽</span></div><div class="l2"><span>равен брокеру, засчитывается в остаток</span><span class="ok">поступил · удержан 17.09</span></div></div>
+            <div class="mrow"><div class="l1"><span class="k">Остаток при расчёте</span><span class="v mono">50 000 ₽</span></div><div class="l2"><span>комиссия агента</span><span>ожидается · «Расчёт»</span></div></div>
+            <div class="mrow"><div class="l1"><span class="k">К получению</span><span class="v mono">130 000 ₽</span></div><div class="l2"><span></span><span class="ok">поступило 80 000 ₽</span></div></div>
+          </div>
+        </div>
+        <div class="nav"><span class="on"><i></i>Сделки</span><span><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+      </div></div>
+    </div>
+
+    <!-- ЭКРАН 3 — СПИСОК СДЕЛОК -->
+    <div>
+      <p class="screen-title">3 · Список сделок</p>
+      <div class="phone"><div class="app">
+        <div class="top"><div class="t">Сделки</div><div class="sub">4 в работе</div></div>
+        <div class="body">
+          <div class="btn primary">+ Новая сделка</div>
+          <div class="seg"><span class="on">Физики</span><span>Дилеры</span><span>Оформление</span></div>
+          <div class="stack">
+            <div class="drow">
+              <div class="h"><span class="num mono">BA-2026-0005</span><span class="chip accent">Таможня / Лаборатория</span></div>
+              <div class="name">Иванов Игорь</div>
+              <div class="car">Toyota Sienta · 🇯🇵 Япония</div>
+              <div class="f"><span class="idle">без движения 2 дн. · норма до 7</span><span class="mono" style="color:var(--muted);font-size:12px">1 045 886 ₽</span></div>
+            </div>
+            <div class="drow rail">
+              <div class="h"><span class="num mono">BA-2026-0004</span><span class="chip">Экспорт</span></div>
+                            <div class="name">Петров Сергей</div>
+              <div class="car">Mercedes-Benz GLA · 🇯🇵 Япония <span class="chip warn">санкционная</span></div>
+              <div class="via2">↳ через дилера <b>Автолайн</b></div>
+              <div class="f"><span class="idle">без движения 34 дн. · норма до 80</span><span class="mono" style="color:var(--muted);font-size:12px">2 357 327 ₽</span></div>
+            </div>
+            <div class="drow rail">
+              <div class="h"><span class="num mono">BA-2026-0003</span><span class="chip">Оплата инвойса</span></div>
+              <div class="name">Смирнова Анна</div>
+              <div class="car">Kia Sorento · 🇰🇷 Корея</div>
+              <div class="via2">↳ через дилера <b>ДВ-Моторс</b></div>
+              <div class="f"><span class="idle warn">без движения 21 дн. · норма до 19</span><span class="mono" style="color:var(--muted);font-size:12px">2 980 100 ₽</span></div>
+            </div>
+            <div class="drow" style="border-color:var(--danger)">
+              <div class="h"><span class="num mono">BA-2026-0002</span><span class="chip danger">Подбор · проблема</span></div>
+              <div class="name">Ким Денис</div>
+              <div class="car">Zeekr 001 · 🇨🇳 Китай</div>
+              <div class="f"><span class="idle bad">без движения 16 дн.</span><span class="mono" style="color:var(--muted);font-size:12px">—</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="nav"><span class="on"><i></i>Сделки</span><span><i></i>Расчёт</span><span><i></i>История</span><span><i></i>Настройки</span></div>
+      </div></div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <div class="lg"><h3>Три уровня глубины</h3><p>Фон страницы → карточка → поле ввода. Поля стали заметно светлее карточек, и форму видно без рамок. Границы карточек — на полтона тише.</p></div>
+    <div class="lg"><h3>Один акцент — синий</h3><p>Синий только у действий и активных вкладок. Бирюзовый — только «сделано / деньги пришли». Красный и жёлтый — только тревога. Они больше не спорят.</p></div>
+    <div class="lg"><h3>Кнопки второго плана — «тихие» пилюли</h3><p>Едва заметная заливка (4 % белого), приглушённый текст по центру, без обводки, в одну строку равной ширины. «Убрать» — круглый ✕ в том же ряду. Тот же вид у «Привязать расчёт из истории» и у мелких кнопок в сделках.</p></div>
+    <div class="lg"><h3>Цифры моноширинные</h3><p>Суммы, номера сделок, курс — IBM Plex Mono с равной шириной цифр. В столбцах ничего не «дышит», глаз сравнивает суммы без усилия.</p></div>
+    <div class="lg"><h3>Маршруты, возраст, вкладки — переключатели</h3><p>Один и тот же элемент везде: маршруты с флагами в одну строку без прокрутки, возраст — три положения (тумблер остаётся), вкладки сделок.</p></div>
+    <div class="lg"><h3>Кнопка отправки</h3><p>Появляется под чеком после «Рассчитать», как сейчас, не прилипает. Трёхцветный градиент остаётся, но мягче: цвета перетекают, а не режут кнопку на три части.</p></div>
+    <div class="lg"><h3>Пометка «физик от дилера» — вариант Б</h3><p>Синяя полоса слева у карточки и одна строка «↳ через дилера …» под машиной. Чип из строки с именем убран.</p></div>
+    <div class="lg keep"><h3>Что не меняется</h3><p>Палитра, тёмная тема, порядок карточек и полей, все поля и тумблеры (день недели в дате, л.с./кВт, каталожная стоимость, доставка, «указать данные по авто» — всё остаётся), шапки карточек, чек и его шапка, картинка КП, нижнее меню, вся логика. Только CSS и мелкая разметка.</p></div>
+    <div class="lg"><h3>Правило «одна строка»</h3><p>Чипы и подписи не переносятся на вторую строку: если не влезает — короче текст или отдельная строка целиком. Шапка сделки: номер, под ним имя · тип · этап с воздухом между строками.</p></div>
+  </div>
+</div>
