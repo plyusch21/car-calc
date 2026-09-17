@@ -5,7 +5,7 @@
 Использование: найти нужный диапазон здесь, прочитать его `sed -n 'START,ENDp' файл`, а не файл целиком.
 
 
-## index.html (3022 строк)
+## index.html (3023 строк)
 
 ### Секции
 
@@ -16,11 +16,11 @@
 - L919-923: 5. Delivery lookup
 - L924-928: 6. Route → RUB conversion chains
 - L929-939: 7. Main calculation
-- L940-2310: 8. Rendering
-- L2311-2699: 9. Settings
-- L2700-2831: 10. Rate editor sheet
-- L2832-2876: 11. Nav + boot
-- L2877-3022: 12. Доступ через Telegram — приложение работает только как Mini App.
+- L940-2311: 8. Rendering
+- L2312-2700: 9. Settings
+- L2701-2832: 10. Rate editor sheet
+- L2833-2877: 11. Nav + boot
+- L2878-3023: 12. Доступ через Telegram — приложение работает только как Mini App.
 
 ### Функции
 
@@ -78,51 +78,51 @@
 - L1197-1199: `cityOptions()`
 - L1204-1243: `resizeImageToBase64()`
 - L1261-1317: `runListingParse()`
-- L1319-1614: `renderCalc()`
-- L1616-1633: `carDetailLines()`
-- L1638-1642: `pushArchive()`
-- L1643-1779: `showResult()`
-- L1783-1785: `fmtRate()`
-- L1794-1912: `buildKpHtml()`
-- L1917-1948: `renderKpImageBlob()`
-- L1965-2111: `shareResult()`
-- L2122-2164: `bindHistorySwipe()`
-- L2166-2182: `openClearHistoryConfirm()`
-- L2184-2206: `openOtherRoutePicker()`
-- L2213-2236: `renderArchiveList()`
-- L2238-2309: `renderHistory()`
-- L2329-2393: `renderSettingsView()`
-- L2399-2411: `themeSettingsCard()`
-- L2412-2425: `bindThemeSettings()`
-- L2431-2447: `openResetConfirm()`
-- L2449-2452: `fetchAdminUsers()`
-- L2453-2456: `adminAction()`
-- L2463-2490: `renderAdminUsersList()`
-- L2491-2511: `loadAdminCard()`
-- L2523-2531: `fetchDealsApi()`
-- L2532-2552: `loadDealsExtraCard()`
-- L2553-2569: `openDealsArchiveSheet()`
-- L2570-2570: `csvCellIdx()`
-- L2571-2571: `idleDaysIdx()`
-- L2572-2581: `dealsCsvIdx()`
-- L2582-2592: `partiesCsvIdx()`
-- L2593-2636: `runDealsExport()`
-- L2637-2655: `openWipeDealersConfirm()`
-- L2657-2667: `routeSettingsBlock()`
-- L2668-2677: `bindRouteSettings()`
-- L2679-2688: `deliveryTable()`
-- L2689-2698: `bindDeliveryTable()`
-- L2703-2703: `openSheet()`
-- L2704-2704: `closeSheet()`
-- L2709-2727: `openTextFieldSheet()`
-- L2773-2791: `openRateHistory()`
-- L2793-2830: `openRateEditor()`
-- L2856-2856: `toast()`
-- L2866-2873: `syncTelegramUI()`
-- L2874-2874: `renderAll()`
-- L2875-2875: `startApp()`
-- L2885-2899: `renderGate()`
-- L2901-3016: `bootGate()`
+- L1319-1615: `renderCalc()`
+- L1617-1634: `carDetailLines()`
+- L1639-1643: `pushArchive()`
+- L1644-1780: `showResult()`
+- L1784-1786: `fmtRate()`
+- L1795-1913: `buildKpHtml()`
+- L1918-1949: `renderKpImageBlob()`
+- L1966-2112: `shareResult()`
+- L2123-2165: `bindHistorySwipe()`
+- L2167-2183: `openClearHistoryConfirm()`
+- L2185-2207: `openOtherRoutePicker()`
+- L2214-2237: `renderArchiveList()`
+- L2239-2310: `renderHistory()`
+- L2330-2394: `renderSettingsView()`
+- L2400-2412: `themeSettingsCard()`
+- L2413-2426: `bindThemeSettings()`
+- L2432-2448: `openResetConfirm()`
+- L2450-2453: `fetchAdminUsers()`
+- L2454-2457: `adminAction()`
+- L2464-2491: `renderAdminUsersList()`
+- L2492-2512: `loadAdminCard()`
+- L2524-2532: `fetchDealsApi()`
+- L2533-2553: `loadDealsExtraCard()`
+- L2554-2570: `openDealsArchiveSheet()`
+- L2571-2571: `csvCellIdx()`
+- L2572-2572: `idleDaysIdx()`
+- L2573-2582: `dealsCsvIdx()`
+- L2583-2593: `partiesCsvIdx()`
+- L2594-2637: `runDealsExport()`
+- L2638-2656: `openWipeDealersConfirm()`
+- L2658-2668: `routeSettingsBlock()`
+- L2669-2678: `bindRouteSettings()`
+- L2680-2689: `deliveryTable()`
+- L2690-2699: `bindDeliveryTable()`
+- L2704-2704: `openSheet()`
+- L2705-2705: `closeSheet()`
+- L2710-2728: `openTextFieldSheet()`
+- L2774-2792: `openRateHistory()`
+- L2794-2831: `openRateEditor()`
+- L2857-2857: `toast()`
+- L2867-2874: `syncTelegramUI()`
+- L2875-2875: `renderAll()`
+- L2876-2876: `startApp()`
+- L2886-2900: `renderGate()`
+- L2902-3017: `bootGate()`
 
 
 ## deals.html (1983 строк)

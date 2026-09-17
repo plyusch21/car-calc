@@ -392,7 +392,8 @@ neither share nor download working).
   `main` is what Vercel deploys; a session branch alone never reaches the
   phone, and the owner doesn't want to be asked about branches vs. main.
   Fast-forward when possible so `main` history stays linear.
-- Commit messages end with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
+- Commit messages end with `Co-Authored-By: Claude <модель, которая выполняла ТЗ> <noreply@anthropic.com>`,
+  например `Claude Opus 5`.
 - Never type/enter secrets into any field — the owner pastes API keys etc.
   themselves; env vars only, never committed into tracked files.
 - Never fabricate results for systems this session can't access (e.g. "it

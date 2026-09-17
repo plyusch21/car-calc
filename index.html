@@ -1329,23 +1329,24 @@ function renderCalc(c){
   c.innerHTML = `
     ${rateWidgetHtml(route)}
     <div class="card">
-      <h2>${route==='japan' ? 'Автозаполнение по объявлению' : route==='korea' ? 'Автозаполнение по тексту или ссылке Encar' : 'Автозаполнение по тексту объявления'}</h2>
+      <h2>Автозаполнение</h2>
       <div class="smartfill">
-        <textarea id="f_listingText" rows="1" style="text-align:center;" placeholder="${route==='korea' ? 'Текст объявления или ссылка на encar.com' : 'Введите данные (RU/EN/CN/JP)'}">${escapeHtml(f.listingText)}</textarea>
+        ${route!=='japan' ? `
+        <textarea id="f_listingText" rows="1" style="text-align:center;" placeholder="${route==='korea' ? 'Введите текст или ссылку' : 'Введите текст'}">${escapeHtml(f.listingText)}</textarea>
         <button class="btn secondary" id="parseListingBtn" type="button">Распознать текст</button>
         <div id="parseListingStatus" class="smartfill-status"></div>
         ${route==='korea' ? `
-        <div class="smartfill-hint">Можно вставить ссылку на объявление encar.com — поля (марка, год, пробег, объём, цена и т.д.) заполнятся автоматически.</div>
+        <div class="smartfill-hint">Можно вставить ссылку на объявление Encar</div>
+        ` : ''}
         ` : ''}
         ${route==='japan' ? `
-        <div class="smartfill-divider"><span>или фото аукционного листа</span></div>
         <div class="row2">
           <label class="filepick" for="f_listingImage" id="listingImageLabel">Выбрать фото</label>
           <input type="file" accept="image/*" id="f_listingImage" style="display:none;">
           <button class="btn secondary" id="parseListingImageBtn" type="button">Распознать фото</button>
         </div>
         <div id="parseListingImageStatus" class="smartfill-status"></div>
-        <div class="smartfill-hint">Лист всегда на японском — читается автоматически. На нём указана дата первой регистрации, а не выпуска — так она и попадёт в расчёт.</div>
+        <div class="smartfill-hint">Можно подгрузить аукционный лист</div>
         ` : ''}
       </div>
     </div>
