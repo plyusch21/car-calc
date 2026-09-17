@@ -250,9 +250,10 @@ input:disabled{ color:var(--muted); }
 
 .smartfill{ background:transparent; border:1px dashed var(--border-strong); border-radius:var(--r-sm); padding:var(--sp-3); }
 .smartfill textarea{ margin-bottom:var(--sp-3); }
-.smartfill .btn{ margin-bottom:var(--sp-2); }
+.smartfill .btn{ margin-bottom:0; }
 .smartfill .row2 .btn{ margin-bottom:0; }
-.smartfill-status{ font-size:var(--fs-xs); color:var(--muted); min-height:14px; }
+.smartfill-status{ font-size:var(--fs-xs); color:var(--muted); margin-top:var(--sp-2); }
+.smartfill-status:empty{ display:none; }
 .smartfill-divider{ display:flex; align-items:center; gap:var(--sp-2); margin:var(--sp-3) 0 var(--sp-3); color:var(--muted); font-size:var(--fs-xs); }
 .smartfill-divider::before, .smartfill-divider::after{ content:''; flex:1; height:1px; background:var(--line); }
 .filepick{
@@ -2354,7 +2355,10 @@ function renderSettingsView(c){
   if(section==='theme'){
     body = themeSettingsCard();
   } else if(section==='admin' && ACCESS && ACCESS.isOwner){
-    body = `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div class="u-hint">Загрузка…</div></div>`;
+    // Переход на /diag внутри Mini App — только так у страницы есть initData
+    // (как у /deals); без него её серверные проверки отвечают 401.
+    body = `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div class="u-hint">Загрузка…</div></div>
+      <button class="btn secondary small" type="button" onclick="location.href='/diag'">Диагностика</button>`;
   } else if(section==='routes'){
     body = `<div class="card">
       <h2>Маршруты — комиссии по умолчанию</h2>

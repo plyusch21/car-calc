@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Диагностика шеринга</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   body{ background:#0b0f14; color:#e7ecf3; font-family:-apple-system,Inter,sans-serif; padding:18px; font-size:14px; line-height:1.5; }
   h1{ font-size:18px; margin:0 0 4px; }
@@ -30,10 +31,18 @@
 <button id="btnSheet">5. Распознать аукционный лист</button>
 <button id="btnFreeform">6. Просто прочитать лист вслух (без схемы)</button>
 
+<h1 style="margin-top:26px;">Диагностика: che168</h1>
+<p class="sub">Что сервер получает со страницы объявления che168.com — без разбора. Кнопки 5–7 работают только у владельца и только если страница открыта из приложения (Настройки → Доступ к приложению → Диагностика).</p>
+<input type="url" id="che168Url" placeholder="https://www.che168.com/dealer/…/….html" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:12px;border-radius:10px;border:1px solid #2a3442;background:#141a22;color:#e7ecf3;font-size:14px;">
+<button id="btnChe168">7. Проверить che168</button>
+
 <div id="log">Нажимайте кнопки по порядку и присылайте, что здесь появится.</div>
 
 <script>
 const log = document.getElementById('log');
+// initData есть, только если /diag открыт переходом внутри Mini App —
+// /api/parse-listing без него отвечает 401.
+function initData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
 function write(line, cls){
   const d = document.createElement('div');
   if(cls) d.className = cls;
@@ -60,8 +69,12 @@ document.getElementById('btnInfo').onclick = ()=>{
   write('navigator.canShare: ' + (typeof navigator.canShare), typeof navigator.canShare==='function'?'ok':'bad');
   write('navigator.clipboard: ' + (typeof (navigator.clipboard && navigator.clipboard.writeText)), (navigator.clipboard && navigator.clipboard.writeText)?'ok':'bad');
   write('isSecureContext: ' + window.isSecureContext);
-  write('В Telegram WebView: ' + !!(window.Telegram && window.Telegram.WebApp));
-  if(window.Telegram && window.Telegram.WebApp){
+  // Скрипт telegram-web-app.js подключён всегда, поэтому сам объект WebApp
+  // есть и в обычном браузере — там у него platform 'unknown'.
+  const inTg = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.platform !== 'unknown');
+  write('В Telegram WebView: ' + inTg);
+  write('Вход через Telegram (initData): ' + (initData() ? 'есть' : 'нет'));
+  if(inTg){
     write('Telegram platform: ' + window.Telegram.WebApp.platform);
     write('Telegram version: ' + window.Telegram.WebApp.version);
   }
@@ -184,7 +197,7 @@ document.getElementById('btnSheet').onclick = async ()=>{
     const res = await fetch('/api/parse-listing', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ image: prepared.base64, mimeType: 'image/jpeg' })
+      body: JSON.stringify({ image: prepared.base64, mimeType: 'image/jpeg', initData: initData() })
     });
     data = await res.json();
   }catch(e){ write('Сеть/сервер: ' + e.message, 'bad'); return; }
@@ -238,7 +251,7 @@ document.getElementById('btnFreeform').onclick = async ()=>{
     const res = await fetch('/api/parse-listing', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ image: prepared.base64, mimeType: 'image/jpeg', debugFreeform: true })
+      body: JSON.stringify({ image: prepared.base64, mimeType: 'image/jpeg', debugFreeform: true, initData: initData() })
     });
     data = await res.json();
   }catch(e){ write('Сеть/сервер: ' + e.message, 'bad'); return; }
@@ -248,6 +261,36 @@ document.getElementById('btnFreeform').onclick = async ()=>{
   write('');
   write('=== ЧТО МОДЕЛЬ ВИДИТ НА ЛИСТЕ ===');
   write(data.raw || '(пусто)');
+};
+
+// ТЗ 11, п. 0: доступна ли страница che168 с сервера (Vercel).
+document.getElementById('btnChe168').onclick = async ()=>{
+  clear();
+  const url = document.getElementById('che168Url').value.trim();
+  if(!url){ write('Сначала вставьте ссылку на объявление che168', 'bad'); return; }
+  if(!initData()){ write('Нет входа через Telegram — откройте эту страницу из приложения', 'bad'); return; }
+  write('Запрашиваю с сервера: ' + url);
+  const started = Date.now();
+  let data;
+  try{
+    const res = await fetch('/api/parse-listing', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ debugChe168Url: url, initData: initData() })
+    });
+    data = await res.json();
+  }catch(e){ write('Сеть/сервер: ' + e.message, 'bad'); return; }
+  write('Ответ за ' + ((Date.now()-started)/1000).toFixed(1) + ' сек');
+  if(data.error){ write('Ошибка от сервера: ' + data.error, 'bad'); return; }
+  const good = data.status===200 && data.hasInfoId && !data.botCheck;
+  write('status: ' + data.status + ' · bytes: ' + data.bytes, data.status===200 ? 'ok' : 'bad');
+  write('проверка на бота: ' + (data.botCheck ? 'ДА — страница закрыта' : 'нет'), data.botCheck ? 'bad' : 'ok');
+  write('hasInfoId: ' + data.hasInfoId + ' · specid: ' + data.specid + ' · продано: ' + data.isselled, data.hasInfoId ? 'ok' : 'bad');
+  write('paramStatus: ' + data.paramStatus + ' · returncode: ' + data.paramReturncode, data.paramStatus===200 ? 'ok' : 'bad');
+  write(good ? 'ИТОГ: страница доступна с сервера' : 'ИТОГ: страница с сервера НЕ доступна', good ? 'ok' : 'bad');
+  write('');
+  write('=== ПОЛНЫЙ ОТВЕТ ===');
+  write(JSON.stringify(data, null, 2));
 };
 </script>
 </body>

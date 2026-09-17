@@ -1214,6 +1214,96 @@ async function parseEncarListing(url) {
   return merged;
 }
 
+// ── che168.com (Китай, ТЗ 11) ────────────────────────────────────────────
+// Страница объявления в браузере приходит целиком (SSR, GBK), но обычному
+// HTTP-клиенту без JS che168 отдаёт не её, а ~1 КБ скрипта-проверки на бота
+// (ставит cookie `__tst_status`/`EO_Bot_Ssid` и перезагружает страницу) —
+// проверено 17.09.2026 с домашнего адреса. Проходить эту проверку мы не
+// будем: это обход защиты сайта, а не чтение открытых данных. Поэтому пока
+// здесь только распознавание ссылки и отладочная проверка доступа для
+// владельца (/diag) — см. РЕШЕНИЯ.md, запись от 2026-09-17 про ТЗ 11.
+// Справочник GetParam (cacheapigo) проверкой не закрыт и отвечает JSON.
+const CHE168_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+
+function isChe168Url(str) {
+  if (/\s/.test(str)) return false;
+  try {
+    const u = new URL(str);
+    return /(^|\.)che168\.com$/i.test(u.hostname) && /\/\d+\.html$/i.test(u.pathname);
+  } catch (e) {
+    return false;
+  }
+}
+
+// Хвост ?…/#… отбрасываем; мобильную ссылку с dealerid приводим к
+// www.che168.com/dealer/<dealerid>/<infoid>.html, без dealerid — как есть.
+function normalizeChe168Url(str) {
+  const u = new URL(str);
+  const m = u.pathname.match(/\/dealer\/(\d+)\/(\d+)\.html$/i);
+  if (m) return 'https://www.che168.com/dealer/' + m[1] + '/' + m[2] + '.html';
+  return u.protocol + '//' + u.hostname + u.pathname;
+}
+
+function decodeGbk(buf) {
+  try {
+    return new TextDecoder('gbk').decode(buf);
+  } catch (e) {
+    throw new Error('среда сервера не умеет декодировать GBK');
+  }
+}
+
+// Один повтор при сетевом обрыве — как у fetchEncarUrl.
+async function fetchChe168(url, accept) {
+  const headers = { 'User-Agent': CHE168_UA, 'Accept': accept, 'Accept-Language': 'zh-CN,zh;q=0.9' };
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+      const buf = await r.arrayBuffer();
+      return { status: r.status, url: r.url, bytes: buf.byteLength, text: decodeGbk(buf) };
+    } catch (e) {
+      lastErr = e;
+      if (attempt === 0) await sleep(1000);
+    }
+  }
+  throw lastErr;
+}
+
+function che168HiddenField(html, name) {
+  const m = html.match(new RegExp('<input[^>]*id="car_' + name + '"[^>]*>', 'i'));
+  if (!m) return null;
+  const v = m[0].match(/value="([^"]*)"/i);
+  return v ? v[1] : null;
+}
+
+// Отладка для /diag (body.debugChe168Url): что сервер реально получает от
+// che168, без разбора. Оставлена насовсем — пригодится, если сайт снимет
+// или ужесточит проверку.
+async function debugChe168(rawUrl) {
+  const out = { url: null, status: null, finalUrl: null, bytes: null, botCheck: null, hasInfoId: false, specid: null, isselled: null, paramStatus: null, paramReturncode: null, head: null };
+  if (!isChe168Url(rawUrl)) throw new Error('это не ссылка на объявление che168.com');
+  out.url = normalizeChe168Url(rawUrl);
+  const page = await fetchChe168(out.url, 'text/html');
+  out.status = page.status;
+  out.finalUrl = page.url;
+  out.bytes = page.bytes;
+  out.botCheck = /__tst_status|EO_Bot_Ssid/.test(page.text);
+  out.hasInfoId = che168HiddenField(page.text, 'infoid') !== null;
+  out.specid = che168HiddenField(page.text, 'specid');
+  out.isselled = che168HiddenField(page.text, 'isselled');
+  out.head = page.text.slice(0, 300);
+  if (out.specid) {
+    try {
+      const p = await fetchChe168('https://cacheapigo.che168.com/CarProduct/GetParam.ashx?specid=' + encodeURIComponent(out.specid), 'application/json');
+      out.paramStatus = p.status;
+      try { out.paramReturncode = JSON.parse(p.text).returncode; } catch (e) { out.paramReturncode = 'не JSON'; }
+    } catch (e) {
+      out.paramStatus = 'ошибка: ' + (e.message || String(e));
+    }
+  }
+  return out;
+}
+
 // Диагностика (страница /diag, флаг debugFreeform) — приложение её не
 // вызывает. Показывает результат ПЕРВОГО шага обычного разбора фото, без
 // второго: именно этот тест и показал, что модель читает лист прекрасно, а
@@ -1277,6 +1367,24 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // Проверка доступа к che168 с сервера (ТЗ 11, п. 0) — тоже только владельцу.
+  if (body.debugChe168Url) {
+    if (!auth.record.isOwner) {
+      res.status(401).send(JSON.stringify({ error: 'доступно только владельцу' }));
+      return;
+    }
+    const started = Date.now();
+    try {
+      const result = await debugChe168(body.debugChe168Url.toString().trim());
+      result.ms = Date.now() - started;
+      res.status(200).send(JSON.stringify(result));
+    } catch (e) {
+      console.error('api/parse-listing debugChe168 error:', e);
+      res.status(502).send(JSON.stringify({ error: 'che168: ' + (e.message || String(e)), ms: Date.now() - started }));
+    }
+    return;
+  }
+
   if (image) {
     const mimeType = (body.mimeType || '').toString();
     let geminiError = null;
@@ -1327,6 +1435,14 @@ module.exports = async (req, res) => {
       console.error('api/parse-listing Encar error:', e);
       res.status(502).send(JSON.stringify({ error: 'Encar: ' + (e.message || String(e)) }));
     }
+    return;
+  }
+
+  // Ссылка на che168 (ТЗ 11): разбор по ссылке пока невозможен (см. секцию
+  // che168 выше). Без этой ветки ИИ получил бы голый адрес и мог бы
+  // «угадать» машину по цифрам в нём — лучше честная ошибка.
+  if (isChe168Url(text)) {
+    res.status(502).send(JSON.stringify({ error: 'che168: сайт не отдаёт объявление серверу (проверка на бота) — скопируйте текст объявления и вставьте его вместо ссылки' }));
     return;
   }
 
