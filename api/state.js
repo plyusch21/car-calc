@@ -109,6 +109,24 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // Тема оформления (ТЗ 13) — личная, поэтому в записи пользователя
+    // access/<uid>, а не в общем state:config. Без версий: последняя запись
+    // побеждает. Запись перечитывается прямо перед HSET, чтобы не затереть
+    // то, что владелец мог поменять в ней (доступ, уровень) за это время.
+    if (action === 'saveTheme') {
+      const theme = body.theme;
+      if (theme !== 'dark' && theme !== 'light' && theme !== 'auto') {
+        res.status(400).send(JSON.stringify({ error: 'неизвестная тема' }));
+        return;
+      }
+      const raw = await kv('HGET', 'access', auth.uid);
+      const record = raw ? JSON.parse(raw) : auth.record;
+      record.theme = theme;
+      await kv('HSET', 'access', auth.uid, JSON.stringify(record));
+      res.status(200).send(JSON.stringify({ ok: true }));
+      return;
+    }
+
     if (action === 'saveHistory') {
       const history = Array.isArray(body.history) ? body.history.slice(0, 500) : [];
       await kv('SET', historyKey, JSON.stringify(history));

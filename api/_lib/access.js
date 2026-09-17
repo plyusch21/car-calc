@@ -3,7 +3,11 @@
  *
  * KV schema:
  *   HASH "access"  field=telegram user id (string)
- *                  value=JSON { status, isOwner, name, username, requestedAt, approvedAt }
+ *                  value=JSON { status, isOwner, name, username, requestedAt, approvedAt,
+ *                               dealsLevel?, theme? }
+ *   theme — личный выбор темы оформления ('dark'|'light'|'auto', ТЗ 13),
+ *   пишется действием saveTheme в api/state.js; нет поля — пользователь
+ *   тему ещё не выбирал.
  *
  * Bootstrap: the very first person ever to open the app (the hash is
  * empty) is auto-approved as the owner — expected to be whoever sets

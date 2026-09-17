@@ -11,9 +11,10 @@
 <script>
 /* Тема оформления (ТЗ 09). Стоит до <style>, чтобы data-theme на <html>
    оказался на месте до первой отрисовки — без вспышки тёмного у тех, кто
-   выбрал светлую. Выбор — личная настройка устройства: localStorage
-   bk_theme_v1 = {mode:'dark'|'light'|'auto'}, нет ключа — тёмная (не CONFIG
-   и не KV). «auto» берёт у Telegram (или у системы) только «светло/темно»,
+   выбрал светлую. Выбор — личная настройка пользователя (ТЗ 13): хранится
+   в KV access/<uid>.theme, а localStorage bk_theme_v1 = {mode:'dark'|
+   'light'|'auto'} — кэш последнего известного значения, чтобы не мигало
+   при открытии; нет ключа — тёмная. Не CONFIG. «auto» берёт у Telegram (или у системы) только «светло/темно»,
    палитра всегда наша. Копия, см. index.html — держать одинаковыми. */
 (function(){
   var KEY = 'bk_theme_v1', BG = { dark:'#070c14', light:'#ebebee' }, memMode = null;
@@ -40,7 +41,26 @@
     try{ localStorage.setItem(KEY, JSON.stringify({ mode:m })); }catch(e){}
     apply();
   }
-  var api = window.BkTheme = { mode:mode, effective:effective, apply:apply, setMode:setMode, onChange:null };
+  // Выбор уходит на сервер (api/state.js, saveTheme). Промис отклоняется
+  // при ошибке — страница показывает тост, локальный выбор остаётся.
+  function save(m){
+    var t = tg(), opt = { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ initData:(t && t.initData) || '', action:'saveTheme', theme:m }) };
+    try{ opt.signal = AbortSignal.timeout(15000); }catch(e){}
+    return fetch('/api/state', opt).then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); });
+  }
+  // Тема из ответа сервера при загрузке (/api/auth или bootstrap). Есть —
+  // она главнее локального кэша; нет (null) — пользователь её ещё не
+  // сохранял, и локальный выбор, если он не по умолчанию, один раз
+  // становится аккаунтным.
+  function sync(serverTheme){
+    if(serverTheme === 'dark' || serverTheme === 'light' || serverTheme === 'auto'){
+      if(serverTheme !== mode()){ setMode(serverTheme); if(api.onChange) try{ api.onChange(); }catch(e){} }
+    } else if(mode() !== 'dark'){
+      save(mode()).catch(function(){});
+    }
+  }
+  var api = window.BkTheme = { mode:mode, effective:effective, apply:apply, setMode:setMode, save:save, sync:sync, onChange:null };
   apply();
   // Тема телефона сменилась на лету — перекрашиваемся, если выбрано «как на телефоне».
   function onSystemChange(){ if(mode() !== 'auto') return; apply(); if(api.onChange) try{ api.onChange(); }catch(e){} }
@@ -1974,6 +1994,8 @@ async function boot(){
     const r = document.getElementById('retry'); if(r) r.onclick = ()=> location.reload();
     return;
   }
+  // Тема за аккаунтом (ТЗ 13): до этого стояла из локального кэша.
+  BkTheme.sync(state.me && state.me.theme);
   renderList();
 }
 

@@ -289,7 +289,7 @@ module.exports = async (req, res) => {
         }
       }
       res.status(200).send(JSON.stringify({
-        me: { uid, name: auth.record.name || ('id ' + uid), isOwner: !!auth.record.isOwner, level },
+        me: { uid, name: auth.record.name || ('id ' + uid), isOwner: !!auth.record.isOwner, level, theme: auth.record.theme || null },
         deals: visible, parties, users
       }));
       return;

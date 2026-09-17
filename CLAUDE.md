@@ -370,13 +370,19 @@ falls back to a copyable JSON textarea — same three-tier fallback as the
 sharing code below, for the same reason (Telegram's Android WebView has
 neither share nor download working).
 
-## Тема оформления (ТЗ 08–09)
+## Тема оформления (ТЗ 08–09, 13)
 
 Две темы «Кобальт»: тёмная (по умолчанию, значения в `:root`) и светлая
 (`:root[data-theme="light"]` плюс правила `[data-theme="light"] …` в конце
 `<style>`), одинаково в `index.html` и `deals.html`. Выбор — личная
-настройка устройства: `localStorage` `bk_theme_v1 = {mode:'dark'|'light'|'auto'}`,
-не `CONFIG` и не KV, «Сбросить настройки» его не трогает. `BkTheme` —
+настройка пользователя: KV `access/<uid>.theme`, `localStorage`
+`bk_theme_v1 = {mode:'dark'|'light'|'auto'}` — кэш, чтобы не мигало при
+открытии. Не `CONFIG`, «Сбросить настройки» его не трогает. С сервером
+тема приходит в ответе `/api/auth` (`theme`) и `bootstrap` (`me.theme`) и
+применяется через `BkTheme.sync()`; пустое значение — локальный выбор
+(если не тёмная) один раз уходит на сервер. Смена в настройках —
+`BkTheme.save()` → `api/state.js` `saveTheme`; ошибка — тост, экран не
+откатывается. Автопереключение в режиме `auto` на сервер не пишет. `BkTheme` —
 маленький скрипт в `<head>` **до** `<style>` (иначе при открытии мигает
 тёмная), копия в обоих файлах; он же красит шапку/фон Telegram в `--bg`
 темы (`#070c14` / `#ebebee`) — не вызывать `setHeaderColor` с

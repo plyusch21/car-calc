@@ -32,7 +32,9 @@ module.exports = async (req, res) => {
       // Чтобы калькулятор не показывал вкладку «Сделки» тому, кому раздел
       // не открыт. Сам доступ всё равно проверяется на сервере в /api/deals —
       // это только про то, что показывать в меню.
-      dealsLevel: dealsLevelOf(result.record)
+      dealsLevel: dealsLevelOf(result.record),
+      // Тема оформления — за аккаунтом (ТЗ 13); null — ещё не выбирал.
+      theme: result.record.theme || null
     }));
   } catch (e) {
     console.error('api/auth error:', e);
