@@ -47,6 +47,8 @@ top to bottom.
   old names (`calcDeal(route,f)` etc.). Bump `?v=N` in both html files
   whenever this file changes. Regression check: `node tools/calc-check.js`
   must print the reference output recorded in `tools/calc-fixture.md`.
+  `node tools/calc-check.js` — основной способ; браузерный стенд — только
+  если Node недоступен.
 - `index.html` — everything else: markup skeleton, all CSS, all client JS. Organized
   in numbered sections (search for `/* ---... N. ... ---... */` comment
   headers) — config, currency rates, customs calc, rendering, history,
