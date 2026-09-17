@@ -42,6 +42,32 @@ const newId = () => crypto.randomBytes(8).toString('hex');
 const str = (v, max) => String(v == null ? '' : v).slice(0, max || 500);
 const oneOf = (v, list) => (list.indexOf(v) === -1 ? null : v);
 
+// Курсы, зафиксированные у снимка расчёта при «Оплата инвойса — пройден»
+// (ТЗ 04): { at, values:{JPY,KRW_USDT,USDT_RUB,CNY}, source, missing }.
+// Сервер их только хранит и приводит к форме; считает и подбирает — клиент
+// (recalcBookedCalc в deals.html). null — инвойс ещё не оплачен.
+const RATE_IDS = ['JPY', 'KRW_USDT', 'USDT_RUB', 'CNY'];
+function cleanRatesLock(x) {
+  if (!x || typeof x !== 'object') return null;
+  const values = {};
+  RATE_IDS.forEach(id => {
+    const n = Number(x.values && x.values[id]);
+    if (Number.isFinite(n) && n > 0) values[id] = n;
+  });
+  return {
+    at: Number(x.at) || 0,
+    values,
+    source: x.source === 'history' ? 'history' : 'current',
+    missing: Array.isArray(x.missing) ? x.missing.filter(m => RATE_IDS.indexOf(m) !== -1) : []
+  };
+}
+// ДД.ММ.ГГГГ для строки лога. Клиент присылает дату сам (ratesDate) — у него
+// локальное время владельца; это запасной вариант, если не прислал.
+function ddMmYyyy(ts) {
+  const d = new Date(Number(ts) || Date.now());
+  return String(d.getUTCDate()).padStart(2, '0') + '.' + String(d.getUTCMonth() + 1).padStart(2, '0') + '.' + d.getUTCFullYear();
+}
+
 // Телефон сравниваем по цифрам: "+7 (999) 123-45-67", "8 999 1234567" и
 // "79991234567" — один и тот же человек. Ведущую 8 приводим к 7.
 function normPhone(raw) {
@@ -352,7 +378,13 @@ module.exports = async (req, res) => {
               broker: Number(x.parts.broker) || 0,
               agent: Number(x.parts.agent) || 0,
               delivery: Number(x.parts.delivery) || 0
-            } : null
+            } : null,
+            // ratesLock — курсы инвойса, зафиксированные оплатой инвойса;
+            // frozenAt — момент, после которого расчёт не меняется (таможня
+            // оплачена). Оба ставит и снимает клиент отметками этапов, сервер
+            // хранит как есть (см. ТЗ 04 и recalcDealCalc ниже).
+            ratesLock: cleanRatesLock(x && x.ratesLock),
+            frozenAt: Number(x && x.frozenAt) || 0
           };
         }) : (before ? (before.calcs || []) : []),
         problem: {
@@ -431,10 +463,15 @@ module.exports = async (req, res) => {
       return;
     }
 
-    // Пересчёт забронированного расчёта по свежим курсам — вызывается из
-    // index.html (не из deals.html), поэтому патчит только сам calcs[i],
-    // а не весь объект сделки: у калькулятора нет остальных полей сделки
-    // под рукой, а обычный saveDeal затёр бы их пустыми значениями.
+    // Пересчёт забронированного расчёта — вызывается и из deals.html
+    // (автопересчёт по этапам, ТЗ 04), и из index.html («Сохранить в сделку
+    // и отправить»), поэтому патчит только сам calcs[i], а не весь объект
+    // сделки: у калькулятора нет остальных полей сделки под рукой, а
+    // обычный saveDeal затёр бы их пустыми значениями.
+    // mode: 'full' (по умолчанию) — пересчитан весь расчёт, в лог идёт дата
+    // курсов; 'customs' — пересчитаны только таможенные платежи, инвойс по
+    // зафиксированному курсу. ratesLock принимается, только если пришёл
+    // (ставится при оплате инвойса), иначе остаётся прежний.
     if (action === 'recalcDealCalc') {
       const id = str(body.dealId, 40);
       const calcId = str(body.calcId, 40);
@@ -445,6 +482,9 @@ module.exports = async (req, res) => {
       const calcs = Array.isArray(deal.calcs) ? deal.calcs.slice() : [];
       const idx = calcs.findIndex(x => x.id === calcId);
       if (idx === -1) { res.status(400).send(JSON.stringify({ error: 'расчёт не найден в сделке — возможно, его уже отвязали' })); return; }
+      // Таможня оплачена — расчёт заморожен, никаких пересчётов, пока
+      // отметку «Таможня / Лаборатория — пройден» не снимут.
+      if (calcs[idx].frozenAt) { res.status(409).send(JSON.stringify({ error: 'расчёт зафиксирован после оплаты таможни' })); return; }
       const total = Number(body.total);
       if (!isFinite(total)) { res.status(400).send(JSON.stringify({ error: 'некорректная сумма пересчёта' })); return; }
       let form = calcs[idx].form;
@@ -456,13 +496,24 @@ module.exports = async (req, res) => {
         agent: Number(body.parts.agent) || 0,
         delivery: Number(body.parts.delivery) || 0
       } : (calcs[idx].parts || null);
-      calcs[idx] = Object.assign({}, calcs[idx], { total, form, parts, at: Date.now() });
+      const mode = body.mode === 'customs' ? 'customs' : 'full';
+      const patch = { total, form, parts, at: Date.now() };
+      if (body.ratesLock && typeof body.ratesLock === 'object') patch.ratesLock = cleanRatesLock(body.ratesLock);
+      calcs[idx] = Object.assign({}, calcs[idx], patch);
       deal.calcs = calcs;
       deal.updatedAt = Date.now();
       deal.updatedBy = uid;
       await kv('SET', 'deal:' + id, JSON.stringify(deal));
       await kv('HSET', 'deals:idx', id, JSON.stringify(dealIndexRow(deal)));
-      await appendLog(id, auth, 'пересчитал расчёт «' + str(calcs[idx].model || 'без названия', 60) + '» по свежим курсам: ' + Math.round(total) + ' ₽');
+      const name = str(calcs[idx].model || 'без названия', 60);
+      if (mode === 'customs') {
+        await appendLog(id, auth, 'пересчитал таможню в расчёте «' + name + '»: ' + Math.round(total) + ' ₽');
+      } else {
+        const ratesDate = /^\d{2}\.\d{2}\.\d{4}$/.test(String(body.ratesDate || ''))
+          ? String(body.ratesDate)
+          : ddMmYyyy(calcs[idx].ratesLock && calcs[idx].ratesLock.at ? calcs[idx].ratesLock.at : Date.now());
+        await appendLog(id, auth, 'пересчитал расчёт «' + name + '»: ' + Math.round(total) + ' ₽ (курсы на ' + ratesDate + ')');
+      }
       res.status(200).send(JSON.stringify({ ok: true, total }));
       return;
     }

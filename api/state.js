@@ -142,6 +142,32 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // Курсы на дату (ТЗ 04, автопересчёт по этапам сделки): для каждой из
+    // четырёх валют — последняя запись истории не позже момента `at`. Момент
+    // считает КЛИЕНТ (конец дня, вписанного в этап, по его локальному
+    // времени) — сервер про часовые пояса не гадает. Валюты, для которых
+    // истории на ту дату нет (дата старше 3 месяцев хранения или история
+    // ещё не велась), попадают в `missing`, значение не отдаётся — клиент
+    // подставляет текущий курс сам.
+    if (action === 'getRatesAt') {
+      const at = Number(body.at);
+      if (!Number.isFinite(at) || at <= 0) { res.status(400).send(JSON.stringify({ error: 'нет at — момент времени в мс' })); return; }
+      const { getRateHistory } = require('./_lib/rateHistory');
+      const IDS = ['JPY', 'KRW_USDT', 'USDT_RUB', 'CNY'];
+      const lists = await Promise.all(IDS.map(id => getRateHistory(id)));
+      const values = {};
+      const missing = [];
+      IDS.forEach((id, i) => {
+        // getRateHistory отдаёт от новых к старым — первая подходящая и есть
+        // последняя на тот момент.
+        const entry = (lists[i] || []).find(e => e && Number(e.at) <= at && Number.isFinite(Number(e.value)) && Number(e.value) > 0);
+        if (entry) values[id] = Number(entry.value);
+        else missing.push(id);
+      });
+      res.status(200).send(JSON.stringify({ values, missing }));
+      return;
+    }
+
     res.status(400).send(JSON.stringify({ error: 'неизвестное действие' }));
   } catch (e) {
     console.error('api/state error:', e);

@@ -748,7 +748,11 @@ function convertToRub(route, carPrice, extraCosts, bankPct){ return BkCalc.conve
 --------------------------------------------------------------------- */
 // Сама формула живёт в lib/calc.js (BkCalc.calcDeal) — здесь только тонкая
 // обёртка с прежним именем, чтобы не трогать все места вызова.
-function calcDeal(route, f){ return BkCalc.calcDeal(route, f, CONFIG); }
+// Пришли из сделки с зафиксированным курсом инвойса (RECALC_CTX.ratesLock,
+// ставится оплатой инвойса — ТЗ 04): инвойс считается по нему, а не по
+// текущим курсам, четвёртым аргументом; CONFIG.rates при этом не трогаем.
+function lockedRates(){ return (RECALC_CTX && RECALC_CTX.ratesLock && RECALC_CTX.ratesLock.values) ? RECALC_CTX.ratesLock.values : undefined; }
+function calcDeal(route, f){ return BkCalc.calcDeal(route, f, CONFIG, lockedRates()); }
 
 /* ---------------------------------------------------------------------
    8. Rendering
@@ -791,11 +795,14 @@ const LOGO_URL = 'logo.png';
 // расчёта — по направлению. Для Кореи это тот же расчётный курс (USDT/₽ ÷
 // USDT/вона), что участвует в calcDeal, а не отдельное поле CONFIG.rates.
 function rateWidgetData(route){
-  const R = CONFIG.rates;
-  if(route==='china') return { ids:['CNY'], pair:'ЮАНЬ / ₽', value:R.CNY.value };
-  if(route==='japan') return { ids:['JPY'], pair:'ЙЕНА / ₽', value:R.JPY.value };
-  if(route==='eaeu')  return { ids:['USDT_RUB'], pair:'USDT / ₽', value:R.USDT_RUB.value };
-  return { ids:['USDT_RUB','KRW_USDT'], pair:'ВОНА / ₽', value:R.USDT_RUB.value / R.KRW_USDT.value };
+  // Под зафиксированным курсом (см. lockedRates) виджет показывает именно
+  // его — то, по чему на самом деле считается инвойс на этом экране.
+  const lock = lockedRates();
+  const v = id => (lock && lock[id]!=null) ? lock[id] : CONFIG.rates[id].value;
+  if(route==='china') return { ids:['CNY'], pair:'ЮАНЬ / ₽', value:v('CNY') };
+  if(route==='japan') return { ids:['JPY'], pair:'ЙЕНА / ₽', value:v('JPY') };
+  if(route==='eaeu')  return { ids:['USDT_RUB'], pair:'USDT / ₽', value:v('USDT_RUB') };
+  return { ids:['USDT_RUB','KRW_USDT'], pair:'ВОНА / ₽', value:v('USDT_RUB') / v('KRW_USDT') };
 }
 function isUpdatedToday(iso){
   if(!iso) return false;
@@ -813,12 +820,17 @@ function rateWidgetStatus(ids){
 }
 function rateWidgetHtml(route){
   const data = rateWidgetData(route);
-  const status = rateWidgetStatus(data.ids);
+  const lock = RECALC_CTX && RECALC_CTX.ratesLock;
   const dateStr = new Date().toLocaleDateString('ru-RU',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
-  return `<div class="rate-widget" id="rateWidget">
+  // Курс зафиксирован оплатой инвойса — вместо «обновлён/не обновился» так и
+  // пишем: статус свежести к нему не относится, он и не должен меняться.
+  const statusHtml = lock
+    ? `<span style="color:var(--teal);">курс зафиксирован ${new Date(lock.at||Date.now()).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'})} по оплате инвойса</span>`
+    : (()=>{ const st = rateWidgetStatus(data.ids); return `<span class="rw-dot" style="background:${st.color};"></span><span style="color:${st.color};">${st.word}</span>`; })();
+  return `<div class="rate-widget" id="rateWidget"${lock ? ' style="cursor:default;"' : ''}>
     <div class="rw-date">${dateStr}</div>
     <div class="rw-row">
-      <div class="rw-status"><span class="rw-dot" style="background:${status.color};"></span><span style="color:${status.color};">${status.word}</span></div>
+      <div class="rw-status">${statusHtml}</div>
       <div class="rw-value">${data.value.toFixed(4).replace('.', ',')}</div>
       <div class="rw-pair">${data.pair}</div>
     </div>
@@ -826,9 +838,11 @@ function rateWidgetHtml(route){
 }
 // Клик открывает редактор курса (для Кореи, где курс собран из двух —
 // весь список). Полноценная история конкретного курса — Блок 8.
+// Под зафиксированным курсом редактор не открывается: править нечего.
 function bindRateWidget(route){
   const el = document.getElementById('rateWidget');
   if(!el) return;
+  if(RECALC_CTX && RECALC_CTX.ratesLock){ el.onclick = null; return; }
   el.onclick = ()=>{
     const data = rateWidgetData(route);
     openRateHistory(data.ids);
@@ -1541,7 +1555,12 @@ function showResult(route, f, opts){
     try{
       const res = await fetch('/api/deals', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ initData:getInitData(), action:'recalcDealCalc', dealId:ctx.dealId, calcId:ctx.calcId, total:r.total, form:f, parts:{ broker:r.broker, agent:r.agent, delivery:r.delivery } })
+        // Полный пересчёт; в лог сделки идёт дата курсов — зафиксированных
+        // оплатой инвойса, если они есть, иначе сегодняшняя. Расчёт,
+        // замороженный оплатой таможни, сервер не примет (409) — текст
+        // ошибки показываем как есть, это правильный исход.
+        body: JSON.stringify({ initData:getInitData(), action:'recalcDealCalc', dealId:ctx.dealId, calcId:ctx.calcId, mode:'full', total:r.total, form:f, parts:{ broker:r.broker, agent:r.agent, delivery:r.delivery },
+          ratesDate: new Date(ctx.ratesLock && ctx.ratesLock.at ? ctx.ratesLock.at : Date.now()).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) })
       });
       const data = await res.json();
       if(data.error) throw new Error(data.error);
@@ -2739,7 +2758,10 @@ async function bootGate(){
         state.formCache[payload.route] = state.form;
         state.view = 'calc';
         document.querySelectorAll('.navbtn').forEach(b=> b.classList.toggle('active', b.dataset.view === 'calc'));
-        RECALC_CTX = { dealId: payload.dealId, dealNum: payload.dealNum || '', calcId: payload.calcId };
+        // ratesLock — курс инвойса, зафиксированный оплатой инвойса (ТЗ 04):
+        // пока он в контексте, calcDeal считает по нему (см. lockedRates).
+        RECALC_CTX = { dealId: payload.dealId, dealNum: payload.dealNum || '', calcId: payload.calcId,
+          ratesLock: (payload.ratesLock && payload.ratesLock.values) ? payload.ratesLock : null };
       }
     }
   }catch(e){ /* битый payload — просто открываем калькулятор как обычно */ }

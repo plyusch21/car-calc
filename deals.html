@@ -324,7 +324,12 @@ function fixMoneyAmounts(deal, stages){
 /* =====================================================================
    2. Утилиты и состояние
 ===================================================================== */
-const state = { view:'list', tab:'all', archive:false, dealerFolder:null, deals:[], parties:[], users:[], me:null, deal:null, log:[], canWrite:false, party:null };
+const state = { view:'list', tab:'all', archive:false, dealerFolder:null, deals:[], parties:[], users:[], me:null, deal:null, log:[], canWrite:false, party:null,
+  // Настройки и история калькулятора (loadCalcState), состояние автопересчёта
+  // (ТЗ 04): recalcBusy — ключ снимка, который сейчас пересчитывается;
+  // recalcNeeded — снимки, у которых последний пересчёт не прошёл (живёт
+  // только в памяти страницы, в запись сделки не попадает).
+  calcConfig:null, calcHistory:null, recalcBusy:null, recalcNeeded:{} };
 const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('ru-RU') : '—';
 const fmtMoney = n => (Math.round(Number(n)||0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -1033,19 +1038,27 @@ function renderDeal(){
 
     <div class="card">
       <h2>Расчёты</h2>
-      ${(d.calcs||[]).length ? (d.calcs||[]).map((x,i)=>`
+      ${(d.calcs||[]).length ? (d.calcs||[]).map((x,i)=>{
+        // Кнопка пересчёта и ссылка в калькулятор — только у источника
+        // (забронированный, либо единственный) и только пока расчёт не
+        // заморожен оплатой таможни. Пока идёт пересчёт — всё заблокировано.
+        const src = moneyCalc(d) === x;
+        const dis = state.recalcBusy ? ' disabled' : '';
+        return `
         <div class="kv" style="align-items:flex-start;">
           <span class="k">
             ${x.booked?'<span class="chip stage" style="margin-bottom:var(--sp-1);display:inline-block;">забронирован</span><br>':''}
             ${esc(x.model||'без названия')}${x.route?' · '+(ROUTE_FLAGS[x.route]||''):''}<br><span style="font-size:var(--fs-xs);">${fmtDate(x.at)}</span>
           </span>
           <span class="v">
-            ${fmtMoney(x.total)} ₽<br>
-            ${state.canWrite ? `<button class="btn secondary small compact" data-book="${i}" style="margin-top:var(--sp-2);">${x.booked?'снять бронь':'забронировать'}</button>` : ''}
-            ${state.canWrite ? `<button class="btn secondary small compact" data-unlink="${i}" style="margin-top:var(--sp-2);margin-left:var(--sp-2);">убрать</button>` : ''}
-            ${state.canWrite && x.booked && x.form ? `<br><button class="btn secondary small compact" data-recalc="${i}" style="margin-top:var(--sp-2);">пересчитать по курсам</button>` : ''}
+            ${fmtMoney(x.total)} ₽
+            ${calcStatusHtml(d, x)}
+            ${state.canWrite ? `<button class="btn secondary small compact" data-book="${i}" style="margin-top:var(--sp-2);"${dis}>${x.booked?'снять бронь':'забронировать'}</button>` : ''}
+            ${state.canWrite ? `<button class="btn secondary small compact" data-unlink="${i}" style="margin-top:var(--sp-2);margin-left:var(--sp-2);"${dis}>убрать</button>` : ''}
+            ${state.canWrite && src && x.form && !x.frozenAt ? `<br><button class="btn secondary small compact" data-recalc="${i}" style="margin-top:var(--sp-2);"${dis}>пересчитать по курсам</button>
+              <br><a href="#" class="u-hint" data-open-calc="${i}" style="display:inline-block;margin-top:var(--sp-2);color:var(--accent);text-decoration:none;">открыть в калькуляторе</a>` : ''}
           </span>
-        </div>`).join('') : '<div class="u-hint">Расчёты не привязаны.</div>'}
+        </div>`;}).join('') : '<div class="u-hint">Расчёты не привязаны.</div>'}
       ${state.canWrite ? `<button class="btn secondary small mt-3" id="dLinkCalc">Привязать расчёт из истории</button>` : ''}
       ${(d.calcs||[]).length>1 ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:var(--sp-2);">Забронированный расчёт — тот, что едет на импорт по этой сделке. После отметки «Оплата инвойса» пройденной остальные расчёты удалятся сами.</div>` : ''}
     </div>
@@ -1092,16 +1105,27 @@ function renderDeal(){
     next.stages = stages;
     saveDeal(next);
   });
-  // Пересчёт живёт в калькуляторе (там же курсы и формула calcDeal) — сюда
-  // передаём только route/form через localStorage (тот же tab, тот же
-  // Telegram WebView, обычная навигация), калькулятор сам досчитает и
-  // сохранит результат обратно в эту же сделку одной кнопкой.
+  // «Пересчитать по курсам» — прямо здесь, формула та же (lib/calc.js).
+  // Режим — по состоянию снимка: курс инвойса уже зафиксирован оплатой —
+  // пересчитывается только таможня; иначе весь расчёт на сегодня.
   c.querySelectorAll('[data-recalc]').forEach(b=> b.onclick = ()=>{
     const x = state.deal.calcs[Number(b.dataset.recalc)];
-    if(!x || !x.form) return;
+    if(!x || !x.form || x.frozenAt) return;
+    recalcBookedCalc(state.deal, (x.ratesLock && x.ratesLock.values) ? 'customs' : 'full');
+  });
+  // «Открыть в калькуляторе» — прежний переход через localStorage (тот же
+  // tab, тот же Telegram WebView, обычная навигация): нужен, чтобы отправить
+  // клиенту КП по актуальной сумме — там кнопка «Сохранить в сделку и
+  // отправить». Зафиксированный курс едет вместе с формой: калькулятор в
+  // этом режиме считает инвойс по нему, а не по своим текущим курсам.
+  c.querySelectorAll('[data-open-calc]').forEach(a=> a.onclick = (e)=>{
+    e.preventDefault();
+    const x = state.deal.calcs[Number(a.dataset.openCalc)];
+    if(!x || !x.form || x.frozenAt) return;
     try{
       localStorage.setItem('bk_recalc_v1', JSON.stringify({
-        dealId: state.deal.id, dealNum: state.deal.num, calcId: x.id, route: x.route, form: x.form
+        dealId: state.deal.id, dealNum: state.deal.num, calcId: x.id, route: x.route, form: x.form,
+        ratesLock: x.ratesLock || null
       }));
     }catch(e){ toast('Не удалось передать расчёт в калькулятор: ' + e.message); return; }
     location.href = '/';
@@ -1142,6 +1166,7 @@ function openStageSheet(key){
     const val = document.getElementById('stState').value;
     const dateStr = document.getElementById('stDate').value.trim();
     const note = document.getElementById('stNote').value.trim();
+    const prev = (d.stages && d.stages[key]) || {};
     const stages = Object.assign({}, d.stages || {});
     if(!val){ delete stages[key]; }
     else {
@@ -1174,7 +1199,32 @@ function openStageSheet(key){
       const booked = d.calcs.find(x=>x.booked);
       if(booked) patch.calcs = [Object.assign({}, booked, {booked:true})];
     }
-    await saveDeal(Object.assign({}, d, patch));
+    // Заморозка расчёта (ТЗ 04): «Таможня / Лаборатория — пройден» ставит
+    // frozenAt у расчёта-источника в том же сохранении; любое другое
+    // состояние этого этапа заморозку снимает. Повторное сохранение уже
+    // пройденного этапа (правка заметки) момент заморозки не сдвигает.
+    if(key==='customs'){
+      const src = moneyCalc(d);
+      if(src){
+        const frozenAt = val==='done' ? (src.frozenAt || Date.now()) : 0;
+        if(frozenAt !== (src.frozenAt || 0)){
+          patch.calcs = (patch.calcs || d.calcs || []).map(x => x.id===src.id ? Object.assign({}, x, { frozenAt }) : x);
+        }
+      }
+    }
+    const saved = await saveDeal(Object.assign({}, d, patch));
+    if(!saved) return;
+    // Автопересчёт — только по явной отметке ЭТОГО этапа. Автозакрытие
+    // предыдущих (выше) его не запускает: отметил «Выдан авто» — «Оплата
+    // инвойса» закрылась задним числом без даты, курс на «никогда» не
+    // найти, такой снимок остаётся как был. Не ждём: saveDeal уже
+    // перерисовал карточку, пересчёт покажет своё состояние в ней сам.
+    const mark = stages[key] || {};
+    if(key==='invoice' && val==='done' && (prev.state!=='done' || !isSameLocalDay(prev.at || 0, mark.at))){
+      recalcBookedCalc(state.deal, 'full', endOfDayTs(mark.at));
+    } else if(key==='customs' && val==='wip' && prev.state!=='wip'){
+      recalcBookedCalc(state.deal, 'customs');
+    }
   };
 }
 
@@ -1272,6 +1322,10 @@ function openDealEditSheet(){
    поля для списка (текущий этап, дата движения, архив) — сервер их не
    вычисляет, потому что перечня этапов не знает. */
 async function saveDeal(next, doneMsg){
+  // Пока идёт автопересчёт, запись сделки менять нельзя: клиент шлёт calcs
+  // целиком, и сохранение с ещё не пересчитанным снимком затёрло бы то, что
+  // recalcDealCalc только что записал.
+  if(state.recalcBusy){ toast('Идёт пересчёт расчёта — подожди пару секунд'); return false; }
   try{
     const stage = currentStage(next);
     next.stageKey = stage ? stage.key : '';
@@ -1286,27 +1340,176 @@ async function saveDeal(next, doneMsg){
     closeSheet();
     renderDeal();
     toast(doneMsg || 'Сохранено');
-  }catch(e){ toast('Не сохранилось: ' + e.message); }
+    return true;
+  }catch(e){ toast('Не сохранилось: ' + e.message); return false; }
 }
 
-/* История расчётов лежит там же, где её ведёт калькулятор (/api/state),
-   отдельного хранилища для неё здесь не заводим — это один и тот же список,
-   просто читаем его при первой надобности и держим в памяти страницы. */
-async function loadCalcHistory(){
-  if(state.calcHistory) return state.calcHistory;
+/* Настройки и история расчётов лежат там же, где их ведёт калькулятор
+   (/api/state), отдельного хранилища здесь не заводим. Один запрос, один раз
+   за загрузку страницы: история — для привязки расчёта, настройки (формула,
+   таблица доставки, ТЕКУЩИЕ курсы — те же, что показывает калькулятор, он их
+   обновляет при каждом своём открытии; к источникам курсов эта страница сама
+   не ходит) — для автопересчёта. */
+async function loadCalcState(){
+  if(state.calcConfig && state.calcHistory) return state;
   const res = await fetch('/api/state', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ initData: initData(), action:'get' })
   });
   const data = await res.json();
   if(data.error) throw new Error(data.error);
+  state.calcConfig = BkCalc.applyStoredConfig(data.config);
   state.calcHistory = Array.isArray(data.history) ? data.history : [];
-  return state.calcHistory;
+  return state;
+}
+
+/* ---- Автопересчёт расчёта по этапам сделки (ТЗ 04) ----------------------
+   Три состояния снимка, привязанные к этапам, без отдельных нажатий:
+   1. «Оплата инвойса — пройден»  → полный пересчёт по курсам на дату этапа,
+      курс инвойса с этого момента зафиксирован (calc.ratesLock);
+   2. «Таможня — в процессе»      → пересчёт только таможенных платежей на
+      сегодня, инвойс по зафиксированному курсу;
+   3. «Таможня — пройден»         → заморозка (calc.frozenAt), пересчётов нет.
+   До первого из них расчёт пересчитывается кнопкой целиком по свежим курсам. */
+const RATE_IDS = ['JPY','KRW_USDT','USDT_RUB','CNY'];
+// Какие курсы участвуют в инвойсе маршрута — чтобы подпись про недостающую
+// историю не поминала юань в японской сделке.
+const ROUTE_RATE_IDS = { japan:['JPY'], korea:['KRW_USDT','USDT_RUB'], china:['CNY'], eaeu:['USDT_RUB'] };
+const RATE_GENITIVE = { JPY:'йены', KRW_USDT:'воны', USDT_RUB:'USDT', CNY:'юаня' };
+
+// Конец дня по локальному времени владельца — момент, на который берутся
+// курсы из истории; сервер про часовые пояса не гадает (см. getRatesAt).
+function endOfDayTs(ts){
+  const d = new Date(ts);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
+}
+function isSameLocalDay(a, b){ return tsToDdMmYyyy(a) === tsToDdMmYyyy(b); }
+function recalcKey(deal, calc){ return deal.id + ':' + calc.id; }
+
+// Возвращает строку-исход ('ok' | 'nothing' | 'frozen' | 'manual' | 'busy' |
+// 'customs-failed' | 'failed'); ошибок наружу не бросает — всё, что нужно
+// знать человеку, показывается тостом и строкой в карточке «Расчёты».
+async function recalcBookedCalc(deal, mode, atTs){
+  // Источник — забронированный расчёт, а если он один — он (тот же
+  // moneyCalc, что и у блока «Деньги»). Несколько без брони или ни одного —
+  // пересчитывать нечего, и это не ошибка.
+  const calc = moneyCalc(deal);
+  if(!calc || !calc.form || !ROUTE_LABELS[calc.route]) return 'nothing';
+  if(calc.frozenAt) return 'frozen';
+  if(state.recalcBusy){ toast('Пересчёт уже идёт'); return 'busy'; }
+  const form = Object.assign({}, calc.form);
+  const route = calc.route;
+  // Ручная таможня — это таможня: пересчитывать в режиме «таможня» нечего.
+  if(mode==='customs' && form.customsOverride){ toast('Таможня введена вручную — пересчитывать нечего'); return 'manual'; }
+  // Инвойс отметили, а пересчёт тогда не прошёл — курса зафиксировать не
+  // успели: работаем как полный пересчёт на сегодня и фиксируем сейчас.
+  if(mode==='customs' && !(calc.ratesLock && calc.ratesLock.values)){ mode = 'full'; atTs = undefined; }
+  const key = recalcKey(deal, calc);
+  state.recalcBusy = key;
+  if(state.deal && state.deal.id===deal.id) renderDeal();
+  try{
+    await loadCalcState();
+    const cfg = state.calcConfig;
+
+    // Курсы.
+    let values, ratesLock = null;
+    if(mode==='customs'){
+      values = Object.assign({}, calc.ratesLock.values);
+    } else {
+      const current = {};
+      RATE_IDS.forEach(id=>{ current[id] = cfg.rates[id].value; });
+      const now = Date.now();
+      const historic = atTs && !isSameLocalDay(atTs, now) && atTs < now;
+      if(historic){
+        const res = await fetch('/api/state', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ initData: initData(), action:'getRatesAt', at: atTs })
+        });
+        const data = await res.json();
+        if(data.error) throw new Error(data.error);
+        // Недостающие валюты — из конфига (текущий курс), об этом честно
+        // говорит missing в самой фиксации.
+        values = Object.assign({}, current, data.values || {});
+        ratesLock = { at: atTs, values, source:'history', missing: Array.isArray(data.missing) ? data.missing : [] };
+      } else {
+        values = current;
+        ratesLock = { at: atTs || now, values, source:'current', missing:[] };
+      }
+    }
+
+    // Таможня — тем же запросом, что и из калькулятора. Ошибка ТКС прерывает
+    // пересчёт целиком: половинчатый снимок (новый инвойс, старая таможня)
+    // хуже старого, ничего не сохраняем.
+    if(!form.customsOverride){
+      let data;
+      try{
+        const payload = Object.assign({ initData: initData() }, BkCalc.customsPayload(cfg, route, form));
+        const res = await fetch(cfg.customsProxyUrl || '/api/customs', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(25000) // как в калькуляторе: сервер сам ждёт TKS 8с + резерв alta.ru
+        });
+        try{ data = await res.json(); }catch(e){ throw new Error('HTTP '+res.status); }
+        if(data.error) throw new Error(data.error);
+        if(!res.ok) throw new Error('HTTP '+res.status);
+      }catch(e){
+        state.recalcNeeded[key] = true;
+        const why = e.name==='TimeoutError' ? 'нет ответа 25 с' : e.message;
+        toast('Таможня не пересчиталась: ' + why + ' — нажми «пересчитать» позже', 4500);
+        return 'customs-failed';
+      }
+      form.customsAuto = String(Math.round(BkCalc.customsAutoTotal(cfg, route, form, data)));
+    }
+
+    const r = BkCalc.calcDeal(route, form, cfg, values);
+    const body = {
+      dealId: deal.id, calcId: calc.id, mode, total: r.total, form,
+      parts: { broker:r.broker, agent:r.agent, delivery:r.delivery }
+    };
+    // Фиксация курса — только при полном пересчёте; в режиме «таможня»
+    // прежняя фиксация остаётся на сервере как есть.
+    if(mode==='full'){ body.ratesLock = ratesLock; body.ratesDate = tsToDdMmYyyy(ratesLock.at); }
+    await api('recalcDealCalc', body);
+    delete state.recalcNeeded[key];
+    toast(mode==='customs' ? 'Таможня пересчитана' : 'Расчёт пересчитан по курсам на ' + tsToDdMmYyyy(ratesLock.at));
+    return 'ok';
+  }catch(e){
+    state.recalcNeeded[key] = true;
+    toast('Пересчёт не прошёл: ' + e.message + ' — нажми «пересчитать» позже', 4500);
+    return 'failed';
+  }finally{
+    state.recalcBusy = null;
+    // Перечитываем сделку с сервера (как после saveDeal): снимок, лог и
+    // индексы там уже новые, а в памяти страницы — ещё старые.
+    if(state.deal && state.deal.id===deal.id){
+      try{
+        const data = await api('getDeal', { id: deal.id });
+        state.deal = data.deal; state.log = data.log || []; state.canWrite = !!data.canWrite;
+      }catch(e){ /* покажем, что есть; следующий заход в карточку перечитает */ }
+      if(state.view==='deal') renderDeal();
+    }
+  }
+}
+
+// Строка состояния под суммой снимка в карточке «Расчёты».
+function calcStatusHtml(deal, x){
+  const key = recalcKey(deal, x);
+  const lines = [];
+  if(state.recalcBusy === key) lines.push('пересчитываю…');
+  else if(state.recalcNeeded[key]) lines.push('<span style="color:var(--danger);">требуется пересчёт</span>');
+  if(x.frozenAt){
+    lines.push('расчёт зафиксирован ' + tsToDdMmYyyy(x.frozenAt));
+  } else if(x.ratesLock && x.ratesLock.at){
+    let t = 'курсы на ' + tsToDdMmYyyy(x.ratesLock.at) + ' (оплата инвойса)';
+    const miss = (x.ratesLock.missing || []).filter(id => (ROUTE_RATE_IDS[x.route] || []).indexOf(id) >= 0);
+    if(miss.length) t += ' · для ' + miss.map(id => RATE_GENITIVE[id] || id).join(' и ') + ' истории нет, взят текущий';
+    lines.push(t);
+  }
+  return lines.length ? `<div class="u-hint" style="margin-top:var(--sp-1);">${lines.join('<br>')}</div>` : '';
 }
 
 async function openCalcPicker(){
   let history;
-  try{ history = await loadCalcHistory(); }
+  try{ history = (await loadCalcState()).calcHistory; }
   catch(e){ toast('Не удалось загрузить историю: ' + e.message); return; }
   if(!history.length){ toast('В истории калькулятора пока пусто'); return; }
 
