@@ -117,6 +117,16 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .kv .k{ color:var(--muted); flex:0 0 auto; }
 .kv .v{ text-align:right; word-break:break-word; }
 
+.calcitem{ padding:var(--sp-2) 0; border-bottom:1px solid var(--border); }
+.calcitem:last-of-type{ border-bottom:none; }
+.calcitem-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-3); }
+.calcitem-title{ min-width:0; }
+.calcitem-title .chip{ margin-bottom:var(--sp-1); }
+.calcitem-sum{ font-weight:600; white-space:nowrap; }
+.calcitem-status{ margin-top:var(--sp-1); }
+.calcitem-actions{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2); }
+.calcitem-remove{ margin-left:auto; color:var(--muted); }
+
 .logitem{ font-size:var(--fs-sm); padding:var(--sp-2) 0; border-bottom:1px solid var(--border); }
 .logitem:last-child{border-bottom:none;}
 .logitem .who{ color:var(--muted); }
@@ -939,7 +949,7 @@ async function openDeal(id){
 function moneyCardHtml(d){
   const wrap = inner => `<div class="card"><h2>Деньги</h2>${inner}</div>`;
   if(!moneyCalc(d)) return wrap(`<div class="u-hint">${(d.calcs||[]).length
-    ? 'Забронируй расчёт, по которому идёт сделка, — суммы возьмутся из него.'
+    ? 'Выбери основной расчёт, по которому идёт сделка, — суммы возьмутся из него.'
     : 'Привяжи расчёт — взнос, брокер, комиссия и доставка возьмутся из него.'}</div>`);
 
   const due = moneyDue(d);
@@ -1061,27 +1071,34 @@ function renderDeal(){
       <h2>Расчёты</h2>
       ${(d.calcs||[]).length ? (d.calcs||[]).map((x,i)=>{
         // Кнопка пересчёта и ссылка в калькулятор — только у источника
-        // (забронированный, либо единственный) и только пока расчёт не
-        // заморожен оплатой таможни. Пока идёт пересчёт — всё заблокировано.
+        // (основной, либо единственный) и только пока расчёт не заморожен
+        // оплатой таможни. Пока идёт пересчёт — всё заблокировано.
         const src = moneyCalc(d) === x;
+        const multi = (d.calcs||[]).length > 1;
         const dis = state.recalcBusy ? ' disabled' : '';
+        const status = calcStatusHtml(d, x);
+        const actions = [];
+        if(!x.frozenAt && state.canWrite){
+          if(multi && !x.booked) actions.push(`<button class="btn secondary small compact" data-book="${i}"${dis}>сделать основным</button>`);
+          if(src && x.form) actions.push(`<button class="btn secondary small compact" data-recalc="${i}"${dis}>пересчитать по курсам</button>`);
+          if(src && x.form) actions.push(`<button class="btn secondary small compact" data-open-calc="${i}"${dis}>открыть в калькуляторе</button>`);
+          if(stageState(d,'invoice') !== 'done') actions.push(`<button class="btn secondary small compact calcitem-remove" data-unlink="${i}"${dis}>убрать</button>`);
+        }
         return `
-        <div class="kv" style="align-items:flex-start;">
-          <span class="k">
-            ${x.booked?'<span class="chip stage" style="margin-bottom:var(--sp-1);display:inline-block;">забронирован</span><br>':''}
-            ${esc(x.model||'без названия')}${x.route?' · '+(ROUTE_FLAGS[x.route]||''):''}<br><span style="font-size:var(--fs-xs);">${fmtDate(x.at)}</span>
-          </span>
-          <span class="v">
-            ${fmtMoney(x.total)} ₽
-            ${calcStatusHtml(d, x)}
-            ${state.canWrite ? `<button class="btn secondary small compact" data-book="${i}" style="margin-top:var(--sp-2);"${dis}>${x.booked?'снять бронь':'забронировать'}</button>` : ''}
-            ${state.canWrite ? `<button class="btn secondary small compact" data-unlink="${i}" style="margin-top:var(--sp-2);margin-left:var(--sp-2);"${dis}>убрать</button>` : ''}
-            ${state.canWrite && src && x.form && !x.frozenAt ? `<br><button class="btn secondary small compact" data-recalc="${i}" style="margin-top:var(--sp-2);"${dis}>пересчитать по курсам</button>
-              <br><a href="#" class="u-hint" data-open-calc="${i}" style="display:inline-block;margin-top:var(--sp-2);color:var(--accent);text-decoration:none;">открыть в калькуляторе</a>` : ''}
-          </span>
+        <div class="calcitem">
+          <div class="calcitem-top">
+            <div class="calcitem-title">
+              ${multi && x.booked ? '<span class="chip stage" style="display:inline-block;">основной</span><br>' : ''}
+              <div>${esc(x.model||'без названия')}${x.route?' · '+(ROUTE_FLAGS[x.route]||''):''}</div>
+              <div class="u-hint">${fmtDate(x.at)}</div>
+            </div>
+            <div class="calcitem-sum">${fmtMoney(x.total)} ₽</div>
+          </div>
+          ${status ? `<div class="u-hint calcitem-status">${status}</div>` : ''}
+          ${actions.length ? `<div class="calcitem-actions">${actions.join('')}</div>` : ''}
         </div>`;}).join('') : '<div class="u-hint">Расчёты не привязаны.</div>'}
       ${state.canWrite ? `<button class="btn secondary small mt-3" id="dLinkCalc">Привязать расчёт из истории</button>` : ''}
-      ${(d.calcs||[]).length>1 ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:var(--sp-2);">Забронированный расчёт — тот, что едет на импорт по этой сделке. После отметки «Оплата инвойса» пройденной остальные расчёты удалятся сами.</div>` : ''}
+      ${(d.calcs||[]).length ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:var(--sp-2);">Основной расчёт — тот, что едет на импорт по этой сделке. Если расчёт один, он основной сам по себе. После отметки «Оплата инвойса» пройденной остальные удалятся сами.</div>` : ''}
     </div>
 
     ${moneyApplies(d) ? moneyCardHtml(d) : ''}
@@ -1532,7 +1549,7 @@ function calcStatusHtml(deal, x){
     if(miss.length) t += ' · для ' + miss.map(id => RATE_GENITIVE[id] || id).join(' и ') + ' истории нет, взят текущий';
     lines.push(t);
   }
-  return lines.length ? `<div class="u-hint" style="margin-top:var(--sp-1);">${lines.join('<br>')}</div>` : '';
+  return lines.join('<br>');
 }
 
 async function openCalcPicker(){
