@@ -122,17 +122,17 @@
 - L2655-2770: `bootGate()`
 
 
-## deals.html (1698 строк)
+## deals.html (1726 строк)
 
 ### Секции
 
-- L185-323: 1. Этапы — перечень живёт здесь, в коде, и только здесь.
-- L324-436: 2. Утилиты и состояние
-- L437-689: 3. Экран списка
-- L690-902: 4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
-- L903-1575: 5. Карточка сделки
-- L1576-1640: 6. Профиль контакта (физик или дилер) — физики доступны через вкладку
-- L1641-1698: 8. Загрузка и гейт
+- L185-343: 1. Этапы — перечень живёт здесь, в коде, и только здесь.
+- L344-456: 2. Утилиты и состояние
+- L457-710: 3. Экран списка
+- L711-923: 4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
+- L924-1603: 5. Карточка сделки
+- L1604-1668: 6. Профиль контакта (физик или дилер) — физики доступны через вкладку
+- L1669-1726: 8. Загрузка и гейт
 
 ### Функции
 
@@ -142,59 +142,60 @@
 - L239-242: `isArchived()`
 - L246-253: `lastMovementAt()`
 - L254-257: `idleDays()`
-- L266-268: `moneyApplies()`
-- L273-276: `moneyCalc()`
-- L280-288: `moneyParts()`
-- L293-300: `moneyDue()`
-- L305-322: `fixMoneyAmounts()`
-- L344-344: `onlyDigits()`
-- L345-348: `formatDivisionCode()`
-- L349-356: `formatSnils()`
-- L357-373: `formatPhoneRu()`
-- L376-380: `bindMask()`
-- L384-390: `formatDateDdMmYyyy()`
-- L393-396: `formatMoney()`
-- L397-400: `tsToDdMmYyyy()`
-- L404-411: `parseDdMmYyyy()`
-- L412-412: `toast()`
-- L413-413: `openSheet()`
-- L414-414: `closeSheet()`
-- L417-417: `initData()`
-- L419-427: `api()`
-- L429-435: `pluralDays()`
-- L448-489: `bindDealSwipe()`
-- L491-508: `openDeleteDealConfirm()`
-- L512-545: `dealRowsHtml()`
-- L546-560: `bindDealRows()`
-- L562-562: `activeDealsOf()`
-- L564-573: `renderList()`
-- L577-577: `selectTab()`
-- L587-607: `renderFlatDeals()`
-- L609-617: `renderArchiveList()`
-- L619-625: `pluralDealers()`
-- L629-663: `renderDealerFolders()`
-- L665-685: `renderDealerFolder()`
-- L688-688: `auth_isRestricted()`
-- L699-726: `openNewDealSheet()`
-- L733-750: `askSamePerson()`
-- L755-886: `openPartySheet()`
-- L888-901: `createDeal()`
-- L906-913: `openDeal()`
-- L918-972: `moneyCardHtml()`
-- L974-1136: `renderDeal()`
-- L1140-1229: `openStageSheet()`
-- L1231-1246: `openProblemSheet()`
-- L1248-1319: `openDealEditSheet()`
-- L1324-1345: `saveDeal()`
-- L1353-1364: `loadCalcState()`
-- L1382-1385: `endOfDayTs()`
-- L1386-1386: `isSameLocalDay()`
-- L1387-1387: `recalcKey()`
-- L1392-1491: `recalcBookedCalc()`
-- L1494-1508: `calcStatusHtml()`
-- L1510-1556: `openCalcPicker()`
-- L1559-1574: `calcFillsForDeal()`
-- L1580-1639: `openParty()`
-- L1644-1650: `reloadIndexes()`
-- L1658-1661: `gate()`
-- L1663-1692: `boot()`
+- L273-277: `idleNorm()`
+- L286-288: `moneyApplies()`
+- L293-296: `moneyCalc()`
+- L300-308: `moneyParts()`
+- L313-320: `moneyDue()`
+- L325-342: `fixMoneyAmounts()`
+- L364-364: `onlyDigits()`
+- L365-368: `formatDivisionCode()`
+- L369-376: `formatSnils()`
+- L377-393: `formatPhoneRu()`
+- L396-400: `bindMask()`
+- L404-410: `formatDateDdMmYyyy()`
+- L413-416: `formatMoney()`
+- L417-420: `tsToDdMmYyyy()`
+- L424-431: `parseDdMmYyyy()`
+- L432-432: `toast()`
+- L433-433: `openSheet()`
+- L434-434: `closeSheet()`
+- L437-437: `initData()`
+- L439-447: `api()`
+- L449-455: `pluralDays()`
+- L468-509: `bindDealSwipe()`
+- L511-528: `openDeleteDealConfirm()`
+- L532-566: `dealRowsHtml()`
+- L567-581: `bindDealRows()`
+- L583-583: `activeDealsOf()`
+- L585-594: `renderList()`
+- L598-598: `selectTab()`
+- L608-628: `renderFlatDeals()`
+- L630-638: `renderArchiveList()`
+- L640-646: `pluralDealers()`
+- L650-684: `renderDealerFolders()`
+- L686-706: `renderDealerFolder()`
+- L709-709: `auth_isRestricted()`
+- L720-747: `openNewDealSheet()`
+- L754-771: `askSamePerson()`
+- L776-907: `openPartySheet()`
+- L909-922: `createDeal()`
+- L927-934: `openDeal()`
+- L939-993: `moneyCardHtml()`
+- L995-1157: `renderDeal()`
+- L1161-1250: `openStageSheet()`
+- L1252-1267: `openProblemSheet()`
+- L1269-1347: `openDealEditSheet()`
+- L1352-1373: `saveDeal()`
+- L1381-1392: `loadCalcState()`
+- L1410-1413: `endOfDayTs()`
+- L1414-1414: `isSameLocalDay()`
+- L1415-1415: `recalcKey()`
+- L1420-1519: `recalcBookedCalc()`
+- L1522-1536: `calcStatusHtml()`
+- L1538-1584: `openCalcPicker()`
+- L1587-1602: `calcFillsForDeal()`
+- L1608-1667: `openParty()`
+- L1672-1678: `reloadIndexes()`
+- L1686-1689: `gate()`
+- L1691-1720: `boot()`

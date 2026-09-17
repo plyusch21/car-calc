@@ -256,6 +256,26 @@ function idleDays(ts){
   return Math.floor((Date.now() - ts) / 86400000);
 }
 
+// Норма простоя в днях по маршруту и текущему этапу — сроки владельца
+// (см. ТЗ 05). warn — верхняя граница нормального
+// срока, после неё жёлтый; bad — красный. Чего нет в таблице — 7/14.
+// Ключ этапа — ТЕКУЩИЙ этап сделки (d.stageKey) и его состояние: после
+// «Оплата инвойса — пройден» ждём экспорт (выкуп и подготовка), после
+// «Экспорт — пройден» ждём прихода (море / автовоз), «Таможня — в процессе» —
+// само оформление.
+const IDLE_DEFAULT = { warn:7, bad:14 };
+const IDLE_NORMS = {
+  japan:      { 'invoice:done':{warn:22,bad:30}, 'export:done':{warn:7,bad:14},  'customs:wip':{warn:7,bad:12} },
+  japan_sanc: { 'invoice:done':{warn:22,bad:30}, 'export:done':{warn:80,bad:100},'customs:wip':{warn:7,bad:12} },
+  korea:      { 'invoice:done':{warn:19,bad:26}, 'export:done':{warn:5,bad:10},  'customs:wip':{warn:7,bad:12} },
+  china:      { 'invoice:done':{warn:25,bad:35}, 'export:done':{warn:5,bad:10},  'customs:wip':{warn:7,bad:12} }
+};
+function idleNorm(d){
+  const key = (d.route==='japan' && d.sanctioned) ? 'japan_sanc' : d.route;
+  const byRoute = IDLE_NORMS[key];
+  return (byRoute && byRoute[(d.stageKey||'') + ':' + (d.stageState||'')]) || IDLE_DEFAULT;
+}
+
 /* Деньги по сделке: считаем ТОЛЬКО наши — первоначальный взнос, брокерские
    услуги, комиссию агента и доставку по РФ. Инвойс и таможенные платежи
    сюда не входят и входить не будут (решение владельца): это не наши
@@ -516,8 +536,9 @@ function dealRowsHtml(rows, opts){
   }
   return rows.map(d=>{
     const days = idleDays(d.stageAt || d.createdAt);
-    const cls = d.archived ? 'good' : (days >= 14 ? 'bad' : (days >= 7 ? 'warn' : ''));
-    const idleLabel = d.archived ? 'завершена' : 'без движения ' + pluralDays(days);
+    const norm = idleNorm(d);
+    const cls = d.archived ? 'good' : (days >= norm.bad ? 'bad' : (days >= norm.warn ? 'warn' : ''));
+    const idleLabel = d.archived ? 'завершена' : 'без движения ' + pluralDays(days) + (norm !== IDLE_DEFAULT ? ' · норма до ' + norm.warn : '');
     const stage = d.stageKey ? (stagesOf(d.type).find(s=>s.key===d.stageKey) || {}).label : null;
     const wip = d.stageState === 'wip';
     const party = state.parties.find(p=>p.id===d.partyId);
@@ -530,7 +551,7 @@ function dealRowsHtml(rows, opts){
           <span class="idle ${cls}">${idleLabel}</span>
         </div>
         <div class="name">${esc(d.partyName || 'без контрагента')}${dealer ? ` <span class="chip">через ${esc(dealer.name)}</span>` : ''}</div>
-        <div class="car">${esc(d.car || 'машина не указана')}${d.route ? ' · ' + (ROUTE_FLAGS[d.route]||'') + ' ' + (ROUTE_LABELS[d.route]||'') : ''}</div>
+        <div class="car">${esc(d.car || 'машина не указана')}${d.route ? ' · ' + (ROUTE_FLAGS[d.route]||'') + ' ' + (ROUTE_LABELS[d.route]||'') : ''}${(d.route==='japan' && d.sanctioned) ? ' <span class="chip">санкционная</span>' : ''}</div>
         <div class="foot">
           <span>
             <span class="chip ${stage?(wip?'wip':'stage'):''}">${esc(stage || 'этапов нет')}${stage&&wip?' · в процессе':''}</span>
@@ -1014,7 +1035,7 @@ function renderDeal(){
       <h2>Сделка</h2>
       <div class="kv"><span class="k">Контрагент</span><span class="v">${party ? `<a href="#" id="toParty" style="color:var(--accent);text-decoration:none;">${esc(d.partyName)}</a>` : esc(d.partyName||'—')}</span></div>
       <div class="kv"><span class="k">Тип</span><span class="v">${esc(DEAL_TYPE_LABELS[d.type]||d.type)}</span></div>
-      <div class="kv"><span class="k">Маршрут</span><span class="v">${d.route ? (ROUTE_FLAGS[d.route]||'') + ' ' + esc(ROUTE_LABELS[d.route]||d.route) : '—'}</span></div>
+      <div class="kv"><span class="k">Маршрут</span><span class="v">${d.route ? (ROUTE_FLAGS[d.route]||'') + ' ' + esc(ROUTE_LABELS[d.route]||d.route) : '—'}${(d.route==='japan' && d.sanctioned) ? ' <span class="chip">санкционная</span>' : ''}</span></div>
       <div class="kv"><span class="k">Что ищем</span><span class="v">${esc(d.car||'—')}${d.year?' · '+esc(d.year):''}</span></div>
       <div class="kv"><span class="k">Бюджет</span><span class="v">${d.budget ? esc(formatMoney(d.budget))+' ₽' : '—'}</span></div>
       <div class="kv"><span class="k">Город доставки</span><span class="v">${esc(d.deliveryCity||'—')}</span></div>
@@ -1261,6 +1282,9 @@ function openDealEditSheet(){
         ${Object.keys(ROUTE_LABELS).map(r=>`<option value="${r}" ${d.route===r?'selected':''}>${ROUTE_FLAGS[r]} ${ROUTE_LABELS[r]}</option>`).join('')}
       </select>
     </div>
+    <div class="field" id="eSanctionedField" style="${d.route==='japan'?'':'display:none;'}">
+      <label><input type="checkbox" id="eSanctioned" ${d.sanctioned?'checked':''}> Санкционная (свыше 1,9 л, гибрид, электро; мягкий гибрид — нет)</label>
+    </div>
     <div class="field"><label>Что ищем — модель</label><input type="text" id="eCar" value="${esc(d.car||'')}"></div>
     <div class="row2">
       <div class="field"><label>Год</label><input type="text" id="eYear" value="${esc(d.year||'')}"></div>
@@ -1280,6 +1304,9 @@ function openDealEditSheet(){
     <button class="btn" id="eSave">Сохранить</button>
     <button class="btn secondary mt-2" id="eCancel">Отмена</button>
   `);
+  const routeSel = document.getElementById('eRoute');
+  const sancField = document.getElementById('eSanctionedField');
+  routeSel.onchange = ()=>{ sancField.style.display = routeSel.value === 'japan' ? '' : 'none'; };
   const respSel = document.getElementById('eResp');
   if(respSel){
     const manual = document.getElementById('eRespName');
@@ -1297,6 +1324,7 @@ function openDealEditSheet(){
       dealNum: document.getElementById('eDealNum').value.trim(),
       dealDate: document.getElementById('eDealDate').value.trim(),
       route: document.getElementById('eRoute').value,
+      sanctioned: document.getElementById('eRoute').value === 'japan' && document.getElementById('eSanctioned').checked,
       car: document.getElementById('eCar').value.trim(),
       year: document.getElementById('eYear').value.trim(),
       budget: document.getElementById('eBudget').value.trim(),

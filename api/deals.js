@@ -92,6 +92,7 @@ function dealIndexRow(deal) {
     dealNum: deal.dealNum || '',
     type: deal.type,
     route: deal.route,
+    sanctioned: !!deal.sanctioned,
     partyId: deal.partyId || '',
     partyName: deal.partyName || '',
     partyKind: deal.partyKind || '',
@@ -169,7 +170,8 @@ function describeChanges(before, after) {
       // У «Брони» состояние skip значит не «не требуется», а «без
       // предоплаты» — см. skipLabel в STAGE_TEMPLATES (deals.html).
       const word = a.state === 'done' ? 'пройден'
-        : (a.state === 'skip' ? (key === 'booking' ? 'без предоплаты' : 'не требуется') : 'снят');
+        : (a.state === 'skip' ? (key === 'booking' ? 'без предоплаты' : 'не требуется')
+        : (a.state === 'wip' ? 'в процессе' : 'снят'));
       // Деньги по сделке фиксируются прямо в отметке этапа (amount) — без
       // этого куска в логе поступление денег нигде не было бы видно.
       const money = (a.state === 'done' && typeof a.amount === 'number')
@@ -325,6 +327,7 @@ module.exports = async (req, res) => {
         dealDate: str(incoming.dealDate, 40),
         type: before ? before.type : type,
         route: oneOf(incoming.route, ROUTES) || '',
+        sanctioned: !!incoming.sanctioned,
         partyId: str(incoming.partyId, 40),
         partyName: str(incoming.partyName, 200),
         partyKind: oneOf(incoming.partyKind, PARTY_KINDS) || '',

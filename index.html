@@ -1461,7 +1461,7 @@ function showResult(route, f, opts){
       </div>
       ${carLines.length ? `<div class="receipt-body" style="padding-bottom:2px;border-bottom:1px dashed var(--border);">${carLines.map(([k,v])=>`<div class="rline"><div class="k">${k}</div><div class="v" style="font-weight:400;">${escapeHtml(v)}</div></div>`).join('')}</div>` : ''}
       <div class="receipt-body">
-        <div class="rline"><div class="k">Цена ТС с расходами до РФ<span class="hint">переведено в рубли по текущим курсам, банк. комиссия учтена</span></div><div class="v">${fmt(r.invoiceRub,'₽')}</div></div>
+        <div class="rline"><div class="k">Цена ТС с расходами до РФ<span class="hint">${lockedRates() ? ('переведено в рубли по курсу на ' + new Date(RECALC_CTX.ratesLock.at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' (оплата инвойса), банк. комиссия учтена') : 'переведено в рубли по текущим курсам, банк. комиссия учтена'}</span></div><div class="v">${fmt(r.invoiceRub,'₽')}</div></div>
         <div class="rline"><div class="k">${r.customsLabel}${f.customsOverride?' (вручную)':''}</div><div class="v">${fmt(r.customsTotal,'₽')}</div></div>
         <div class="rline"><div class="k">Брокер</div><div class="v">${fmt(r.broker,'₽')}</div></div>
         <div class="rline"><div class="k">Наша комиссия</div><div class="v">${fmt(r.agent,'₽')}</div></div>
