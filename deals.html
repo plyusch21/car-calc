@@ -8,6 +8,49 @@
 <script src="/lib/calc.js?v=1"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+/* Тема оформления (ТЗ 09). Стоит до <style>, чтобы data-theme на <html>
+   оказался на месте до первой отрисовки — без вспышки тёмного у тех, кто
+   выбрал светлую. Выбор — личная настройка устройства: localStorage
+   bk_theme_v1 = {mode:'dark'|'light'|'auto'}, нет ключа — тёмная (не CONFIG
+   и не KV). «auto» берёт у Telegram (или у системы) только «светло/темно»,
+   палитра всегда наша. Копия, см. index.html — держать одинаковыми. */
+(function(){
+  var KEY = 'bk_theme_v1', BG = { dark:'#070c14', light:'#ebebee' }, memMode = null;
+  function tg(){ return window.Telegram && window.Telegram.WebApp; }
+  function mode(){
+    try{ var v = JSON.parse(localStorage.getItem(KEY)); if(v && /^(dark|light|auto)$/.test(v.mode)) return v.mode; }catch(e){}
+    return memMode || 'dark';
+  }
+  function systemTheme(){
+    var t = tg();
+    if(t && (t.colorScheme === 'light' || t.colorScheme === 'dark')) return t.colorScheme;
+    try{ return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; }catch(e){ return 'dark'; }
+  }
+  function effective(){ var m = mode(); return m === 'auto' ? systemTheme() : m; }
+  // Ставит тему на страницу и красит шапку/фон Telegram в --bg этой темы.
+  function apply(){
+    var th = effective(), t = tg();
+    document.documentElement.setAttribute('data-theme', th);
+    try{ if(t && t.initData){ t.setHeaderColor && t.setHeaderColor(BG[th]); t.setBackgroundColor && t.setBackgroundColor(BG[th]); } }catch(e){}
+    return th;
+  }
+  function setMode(m){
+    memMode = m;
+    try{ localStorage.setItem(KEY, JSON.stringify({ mode:m })); }catch(e){}
+    apply();
+  }
+  var api = window.BkTheme = { mode:mode, effective:effective, apply:apply, setMode:setMode, onChange:null };
+  apply();
+  // Тема телефона сменилась на лету — перекрашиваемся, если выбрано «как на телефоне».
+  function onSystemChange(){ if(mode() !== 'auto') return; apply(); if(api.onChange) try{ api.onChange(); }catch(e){} }
+  try{ var t = tg(); if(t && t.onEvent) t.onEvent('themeChanged', onSystemChange); }catch(e){}
+  try{
+    var mq = matchMedia('(prefers-color-scheme: light)');
+    if(mq.addEventListener) mq.addEventListener('change', onSystemChange); else if(mq.addListener) mq.addListener(onSystemChange);
+  }catch(e){}
+})();
+</script>
 <style>
 /* Оформление намеренно повторяет калькулятор — это один продукт, человек
    переходит сюда с главного экрана и не должен чувствовать смену приложения.
@@ -28,6 +71,7 @@
   --teal:#3ec48a; --good:#3ec48a; --teal-soft: rgba(62,196,138,.14);
   --danger:#d1573f; --danger-soft:#d1573f22;
   --warn:#d9b25f; --warn-soft:#d9b25f22;
+  --card-shadow: none;                  /* в светлой глубина карточек — тенью (ТЗ 09) */
   --radius:18px;   /* карточки */
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
   --tg-top-pad: 0px;
@@ -54,10 +98,13 @@
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
+/* Ни один элемент не должен раздвигать страницу шире экрана (ТЗ 09, п. 0).
+   clip, а не hidden, где браузер умеет: hidden ломает sticky у .topbar. */
+html,body{ overflow-x:hidden; overflow-x:clip; }
 body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums; }
 /* Кобальтовый свет сверху — тот же слой, что в калькуляторе (прибит к экрану). */
 body::before{ content:''; position:fixed; inset:0; z-index:-1; pointer-events:none; background:var(--bg-glow), var(--bg); }
-.app{ max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(64px + var(--safe-bottom)); }
+.app{ max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(64px + var(--safe-bottom)); overflow-x:hidden; overflow-x:clip; }
 .mono{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
 .topbar{ padding:calc(14px + var(--safe-top) + var(--tg-top-pad)) 16px 10px; position:sticky; top:0; z-index:20; background:linear-gradient(180deg, var(--bg) 72%, transparent); }
 .topbar h1{ font-family:'Fraunces',serif; font-weight:600; font-size:var(--fs-xl); line-height:1.1; margin:0; }
@@ -74,7 +121,7 @@ body::before{ content:''; position:fixed; inset:0; z-index:-1; pointer-events:no
 .seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:8px 0; border-radius:10px; font-size:var(--fs-sm); font-weight:500; cursor:pointer; font-family:inherit; white-space:nowrap; }
 .seg button.active{ background:var(--accent); color:var(--on-accent); font-weight:600; }
 
-.card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:var(--sp-4); margin-bottom:var(--sp-3); }
+.card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:var(--sp-4); margin-bottom:var(--sp-3); box-shadow:var(--card-shadow); }
 .card h2{
   background:linear-gradient(90deg, rgba(74,148,255,.22), rgba(74,148,255,.06)); color:#dbe8ff; text-align:center; text-transform:uppercase;
   font-size:var(--fs-sm); font-weight:600; letter-spacing:0.08em; padding:var(--sp-3) var(--sp-4);
@@ -100,7 +147,7 @@ select option{ background:#0d1626; color:var(--text); }
 textarea{resize:vertical; min-height:64px; padding:var(--sp-2) 10px;}
 input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
-.dealrow{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-3) var(--sp-3); margin-bottom:0; cursor:pointer; touch-action:pan-y; will-change:transform; }
+.dealrow{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-3) var(--sp-3); margin-bottom:0; cursor:pointer; touch-action:pan-y; will-change:transform; box-shadow:var(--card-shadow); }
 /* Физик от дилера — синяя полоса слева и строка «↳ через дилера …». */
 .dealrow.via{ border-left:3px solid var(--accent); }
 .dealrow .top{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--sp-3); }
@@ -151,6 +198,11 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .kv .k{ color:var(--muted); flex:0 0 auto; }
 .kv .v{ text-align:right; word-break:break-word; }
 .money{ font-family:'IBM Plex Mono',monospace; font-weight:600; white-space:nowrap; }
+/* Подписи под суммами в блоке «Деньги» */
+.mmeta{ font-size:var(--fs-xs); color:var(--muted); margin-top:2px; }
+.mmeta.r{ text-align:right; }
+.mmeta.hint{ margin-top:4px; }
+.mmeta.ok{ color:var(--good); }
 .ok{ color:var(--good); }
 
 .calcitem{ padding:var(--sp-2) 0; border-bottom:1px solid var(--line); }
@@ -197,6 +249,69 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .u-hint{font-size:var(--fs-sm); color:var(--muted);}
 .u-note{font-size:var(--fs-base); color:var(--muted); line-height:1.5; margin:0 0 var(--sp-5);}
 .btn.compact{width:auto; padding:var(--sp-1) var(--sp-2);}
+/* -----------------------------------------------------------------------
+   Светлая тема «Кобальт» (ТЗ 09) — те же значения и правила, что в
+   index.html (копия, см. index.html), плюс то, чего в калькуляторе нет:
+   этапы, строки сделок, блок «Деньги», карточка «Расчёты».
+----------------------------------------------------------------------- */
+:root[data-theme="light"]{
+  --bg:#ebebee;
+  --bg-glow: radial-gradient(120% 45% at 50% -10%, #c9d6f5 0%, rgba(201,214,245,0) 60%);
+  --panel:#ffffff;  --panel-2:#eeeef1;  --panel-3:#e0e0e5;
+  --border: transparent;                 /* обводки карточек нет — глубина тенью */
+  --card-shadow: 0 2px 4px rgba(20,22,30,.06), 0 18px 34px -18px rgba(20,22,30,.45);
+  --line:#dcdde3;  --border-strong:#c5cbd6;
+  --text:#15171e;  --muted:#444a57;  --dim:#6f7583;
+  --accent:#1f56c9;  --accent-text:#1a4db5;  --accent-soft:#e7efff;  --on-accent:#ffffff;
+  --teal:#178a55;  --good:#178a55;  --teal-soft: rgba(23,138,85,.14);
+  --danger:#c94b34;  --danger-soft: rgba(201,75,52,.12);  --warn:#a8811a;  --warn-soft: rgba(168,129,26,.14);
+}
+/* Шапка экрана, карточки */
+[data-theme="light"] .topbar .sub{ color:#444a57; font-weight:500; }
+[data-theme="light"] .card h2{ font-weight:700; color:#33394a; background:#f4f4f6; border-bottom:1px solid #e6e6ea; }
+/* Поля */
+[data-theme="light"] .field label{ color:#33394a; font-weight:600; }
+[data-theme="light"] input[type=text], [data-theme="light"] input[type=tel], [data-theme="light"] select, [data-theme="light"] textarea{
+  border:1px solid #d9d9df; box-shadow:inset 0 1px 2px rgba(18,30,51,.07);
+}
+[data-theme="light"] input[type=text], [data-theme="light"] input[type=tel], [data-theme="light"] select{ font-weight:600; }
+[data-theme="light"] input:focus, [data-theme="light"] select:focus, [data-theme="light"] textarea:focus{ border-color:var(--accent); }
+[data-theme="light"] select{ color-scheme:light; }
+[data-theme="light"] select option{ background:#fff; }
+/* Сегменты — активный белой пилюлей */
+[data-theme="light"] .seg, [data-theme="light"] .tabs{ background:#dedfe5; box-shadow:inset 0 1px 2px rgba(18,30,51,.08); }
+[data-theme="light"] .seg button, [data-theme="light"] .tab{ font-weight:600; color:#444a57; }
+[data-theme="light"] .seg button.active, [data-theme="light"] .tab.active{ background:#fff; color:#1a4db5; box-shadow:0 1px 3px rgba(18,30,51,.22); }
+/* Кнопки */
+[data-theme="light"] .btn{ background:#1f56c9; color:#fff; box-shadow:0 1px 2px rgba(31,86,201,.35), 0 10px 20px -10px rgba(31,86,201,.65); }
+[data-theme="light"] .btn.secondary{ background:#f0f0f3; color:#33394a; font-weight:600; box-shadow:none; }
+[data-theme="light"] .btn.danger{ background:var(--danger); color:#fff; box-shadow:none; }
+/* Строки списков */
+[data-theme="light"] .dealrow .name{ font-weight:600; }
+/* Этапы */
+[data-theme="light"] .stage .mark{ background:#fff; border-color:#c5cbd6; }
+[data-theme="light"] .stage .mark.done{ background:var(--teal-soft); border-color:var(--good); color:var(--good); }
+[data-theme="light"] .stage .mark.skip{ background:var(--warn-soft); border-color:var(--warn); }
+[data-theme="light"] .stage .mark.wip{ background:var(--accent-soft); border-color:var(--accent); }
+[data-theme="light"] .stage .lbl{ font-weight:600; }
+[data-theme="light"] .stage .meta{ color:#555b68; font-weight:500; }
+[data-theme="light"] .stage.off .lbl{ color:#6f7583; font-weight:500; }
+/* Чипы */
+[data-theme="light"] .chip{ background:#eeeef1; color:var(--muted); }
+[data-theme="light"] .chip.stage, [data-theme="light"] .chip.wip{ background:#e7efff; color:#1a4db5; }
+/* «Расчёты» и «Деньги» */
+[data-theme="light"] .calcitem-title{ font-weight:600; }
+[data-theme="light"] .calcitem-sum{ font-weight:700; }
+[data-theme="light"] .calcitem-actions .btn, [data-theme="light"] .calcitem-open{ background:#f0f0f3; color:#33394a; font-weight:600; box-shadow:none; }
+[data-theme="light"] .moneycard .kv .k{ color:#33394a; font-weight:500; }
+[data-theme="light"] .moneycard .money{ font-weight:700; }
+[data-theme="light"] .mmeta{ color:#6f7583; font-weight:500; }
+[data-theme="light"] .mmeta.ok{ color:var(--good); }
+/* Нижнее меню, шит */
+[data-theme="light"] .bottomnav{ background:#ffffff; border-top:1px solid #e0e6ef; box-shadow:0 -8px 20px -16px rgba(18,30,51,.35); }
+[data-theme="light"] .navbtn{ font-weight:500; }
+[data-theme="light"] .navbtn.active{ color:var(--accent); }
+[data-theme="light"] .sheet{ background:#fff; border-color:#e3e3e8; box-shadow:0 -10px 30px -20px rgba(0,0,0,.35); }
 </style>
 </head>
 <body>
@@ -1034,7 +1149,7 @@ async function openDeal(id){
    («Договор / Предоплата» даёт взнос, «Бронь» его удерживает, «Расчёт» —
    остаток) и пересчитать сам расчёт. */
 function moneyCardHtml(d){
-  const wrap = inner => `<div class="card"><h2>Деньги</h2>${inner}</div>`;
+  const wrap = inner => `<div class="card moneycard"><h2>Деньги</h2>${inner}</div>`;
   if(!moneyCalc(d)) return wrap(`<div class="u-hint">${(d.calcs||[]).length
     ? 'Выбери основной расчёт, по которому идёт сделка, — суммы возьмутся из него.'
     : 'Привяжи расчёт — взнос, брокер, комиссия и доставка возьмутся из него.'}</div>`);
@@ -1052,9 +1167,9 @@ function moneyCardHtml(d){
       <div style="display:flex;justify-content:space-between;gap:var(--sp-3);">
         <span class="k">${label}</span><span class="money">${right}</span>
       </div>
-      <div style="font-size:var(--fs-xs);color:var(--muted);text-align:right;margin-top:2px;">${meta}</div>
-      ${meta2 ? `<div style="font-size:var(--fs-xs);color:var(--muted);text-align:right;margin-top:2px;">${meta2}</div>` : ''}
-      ${hint ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px;">${hint}</div>` : ''}
+      <div class="mmeta r">${meta}</div>
+      ${meta2 ? `<div class="mmeta r">${meta2}</div>` : ''}
+      ${hint ? `<div class="mmeta hint">${hint}</div>` : ''}
     </div>`;
   // "поступил" без даты — этап закрыли задним числом (автоматически), даты
   // у него нет и выдумывать её не надо, как и в списке этапов.
@@ -1090,7 +1205,7 @@ function moneyCardHtml(d){
     `<div class="kv" style="align-items:flex-start;">
       <span class="k">Итого</span>
       <span class="v" style="white-space:nowrap;">К получению <span class="money">${remApprox ? 'от ' : ''}${fmtMoney(totalDue)} ₽</span>
-        <div style="font-size:var(--fs-xs);color:${allIn ? 'var(--good)' : 'var(--muted)'};margin-top:2px;">поступило ${fmtMoney(got)} ₽${allIn ? ' · всё получено' : ''}</div>
+        <div class="mmeta${allIn ? ' ok' : ''}">поступило ${fmtMoney(got)} ₽${allIn ? ' · всё получено' : ''}</div>
       </span>
     </div>`);
 }
@@ -1127,7 +1242,7 @@ function renderDeal(){
         + (held ? ' · предоплата удержана' : ''))
       : (mark.state==='wip' ? ('в процессе' + (mark.at ? ' с ' + fmtDate(mark.at) : ''))
       : (mark.state==='skip' ? (st.skipLabel ? st.skipLabel.toLowerCase() : (st.optional ? 'не требуется' : 'без предоплаты')) : 'не пройден'));
-    return `<div class="stage">
+    return `<div class="stage${cls ? '' : ' off'}">
       <div class="mark ${cls}" data-stage="${esc(st.key)}">${glyph}</div>
       <div class="body">
         <div class="lbl">${esc(st.label)}${st.optional?' <span class="chip">необязательный</span>':''}</div>
@@ -1835,7 +1950,8 @@ async function boot(){
     gate(`<div class="emptystate"><div class="big">Откройте через Telegram</div>Раздел работает только внутри Telegram — откройте бота и запустите мини-приложение.</div>`);
     return;
   }
-  try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#070c14'); tg.setBackgroundColor && tg.setBackgroundColor('#070c14'); }catch(e){}
+  // Шапка и фон Telegram — в цвет var(--bg) текущей темы (BkTheme в <head>, ТЗ 09).
+  try{ tg.ready(); tg.expand(); BkTheme.apply(); }catch(e){}
   try{
     // См. index.html/bootGate() — тот же приём: с Bot API 8.0 Telegram сам
     // кладёт точный отступ в --tg-content-safe-area-inset-top, наш расчёт

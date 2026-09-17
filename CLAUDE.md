@@ -368,6 +368,21 @@ falls back to a copyable JSON textarea — same three-tier fallback as the
 sharing code below, for the same reason (Telegram's Android WebView has
 neither share nor download working).
 
+## Тема оформления (ТЗ 08–09)
+
+Две темы «Кобальт»: тёмная (по умолчанию, значения в `:root`) и светлая
+(`:root[data-theme="light"]` плюс правила `[data-theme="light"] …` в конце
+`<style>`), одинаково в `index.html` и `deals.html`. Выбор — личная
+настройка устройства: `localStorage` `bk_theme_v1 = {mode:'dark'|'light'|'auto'}`,
+не `CONFIG` и не KV, «Сбросить настройки» его не трогает. `BkTheme` —
+маленький скрипт в `<head>` **до** `<style>` (иначе при открытии мигает
+тёмная), копия в обоих файлах; он же красит шапку/фон Telegram в `--bg`
+темы (`#070c14` / `#ebebee`) — не вызывать `setHeaderColor` с
+захардкоженным цветом. «Как на телефоне» берёт у Telegram только
+`colorScheme` (светло/темно), палитра всегда наша. Фото-КП (`.kp-*`) от
+темы не зависит. Новый элемент со своим цветом — сразу решить, как он
+выглядит в светлой.
+
 ## Standing conventions (from the owner, apply without re-asking)
 
 - Respond to the owner in Russian in normal conversation.
