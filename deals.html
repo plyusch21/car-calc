@@ -215,7 +215,8 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .calcitem-status{ margin-top:var(--sp-1); }
 .calcitem-actions{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2); align-items:center; }
 .calcitem-actions .btn, .calcitem-open{ background:rgba(255,255,255,.06); border:none; color:var(--muted); min-height:36px; font-size:var(--fs-sm); font-weight:500; border-radius:var(--r-pill); padding:var(--sp-1) var(--sp-3); }
-.calcitem-remove{ margin-left:auto; color:var(--dim) !important; }
+.calcitem-actions .btn{ flex:1 1 0; min-width:0; }
+.calcitem-remove{ margin-left:0; color:var(--dim) !important; }
 .calcitem-open{ width:100%; margin-top:var(--sp-2); }
 
 .logitem{ font-size:var(--fs-sm); padding:var(--sp-2) 0; border-bottom:1px solid var(--line); }
