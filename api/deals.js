@@ -269,8 +269,8 @@ module.exports = async (req, res) => {
     if (action === 'bootstrap') {
       const [deals, allParties] = await Promise.all([readHash('deals:idx'), readHash('parties:idx')]);
       // d.removed — наследие прежнего «мягкого» удаления: такие записи
-      // считаются удалёнными и не показываются нигде; их дочищает
-      // api/deals-cleanup.js.
+      // считаются удалёнными и не показываются нигде; их никто не дочищает
+      // (таких записей не осталось, отдельный крон под это не нужен).
       const visible = deals.filter(d => !d.removed && canRead(level, d, uid));
       const parties = (level === 'own' && !auth.record.isOwner)
         ? allParties.filter(p => visiblePartyIds(visible).has(p.id))

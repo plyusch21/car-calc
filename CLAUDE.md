@@ -242,7 +242,7 @@ physik exists only through a deal, deleting their last one also deletes
 their party record and phone-index entry (checked for both `partyId` and
 `endBuyerId` against the remaining deals); dealers are never touched.
 Legacy `removed: true` rows from the old soft-delete are filtered out of
-`bootstrap` and purged by the `api/deals-cleanup.js` daily cron.
+`bootstrap`; nothing purges them — there were none left worth a cron slot.
 
 ### Access is a second axis, independent of app access
 
