@@ -11,20 +11,30 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#080d12;
-  --panel:#0f1720;
-  --panel-2:#141f2a;
-  --border:#213040;
-  --text:#e6edf1;
-  --muted:#75919e;
-  --accent:#2f7dd1;
-  --accent-soft:#2f7dd122;
-  --teal:#37b07c;
-  --teal-soft:#37b07c22;
+  /* Оформление «Кобальт» (ТЗ 08): глубина тоном — фон → карточка → поле */
+  --bg:#070c14;
+  --bg-glow: radial-gradient(120% 60% at 50% -10%, #12306a 0%, transparent 60%);
+  --panel: rgba(255,255,255,.045);      /* карточка */
+  --panel-2: rgba(255,255,255,.07);     /* поле ввода, дорожка переключателя */
+  --panel-3: rgba(255,255,255,.12);     /* дорожка л.с./кВт, дорожка тумблера */
+  --border: rgba(255,255,255,.07);      /* обводка карточки */
+  --line: rgba(255,255,255,.08);        /* разделители строк */
+  --border-strong:#2a3b52;              /* кружки этапов, тумблеры, шит */
+  --text:#eef3f8;
+  --muted:#8fa4b8;
+  --dim:#5f748a;
+  --accent:#4a94ff;
+  --accent-text:#8fc0ff;
+  --accent-soft: rgba(74,148,255,.16);
+  --on-accent:#07101d;
+  --teal:#3ec48a;
+  --teal-soft: rgba(62,196,138,.14);
   --danger:#d1573f;
   --danger-soft:#d1573f22;
-  --good:#37b07c;
-  --radius:14px;
+  --warn:#d9b25f;
+  --warn-soft:#d9b25f22;
+  --good:#3ec48a;
+  --radius:18px;   /* карточки */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --tg-top-pad: 0px; /* доп. место под кнопки закрыть/свернуть/⋯ в Telegram Mini App, см. bootGate() */
@@ -44,8 +54,9 @@
   --sp-5: 24px;
   --sp-6: 32px;
   /* Радиусы */
-  --r-sm:   10px;  /* поля ввода, мелкие кнопки */
-  --r-md:   12px;  /* карточки в списках */
+  --r-sm:   12px;  /* поля ввода, сегменты */
+  --r-btn:  14px;  /* кнопки */
+  --r-md:   16px;  /* строки списков (сделки, история) */
   --r-pill: 99px;  /* чипы, тумблеры */
 }
 *{box-sizing:border-box;}
@@ -57,6 +68,12 @@ body{
   min-height:100vh;
   -webkit-font-smoothing:antialiased;
 }
+/* Табличные цифры — на контейнерах приложения, не на body: карточка фото-КП
+   монтируется прямо в body (renderKpImageBlob) и должна остаться как была. */
+.app, .sheet, .toast{ font-variant-numeric:tabular-nums; }
+/* Кобальтовый свет сверху — отдельный слой, прибитый к экрану: на iOS
+   background-attachment:fixed не работает, поэтому псевдоэлемент. */
+body::before{ content:''; position:fixed; inset:0; z-index:-1; pointer-events:none; background:var(--bg-glow), var(--bg); }
 .app{
   max-width:480px;
   margin:0 auto;
@@ -69,132 +86,155 @@ body{
 .mono{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
 .serif{font-family:'Fraunces',serif;}
 
-/* Пустой отступ под кнопки закрыть/свернуть/⋯ Telegram и чёлку устройства —
-   раньше тут был текст "BAIKAL AUTO" + направление, убраны как дублирующие
-   вкладки направлений/истории, которые и так показывают то же самое. */
+/* Шапка экрана: отступ под кнопки закрыть/свернуть/⋯ Telegram и чёлку,
+   слева заголовок экрана, справа дата (только на «Расчёте») — см. renderTopbar(). */
 .topbar{
-  padding-top:calc(14px + var(--safe-top) + var(--tg-top-pad));
-  position:sticky; top:0; z-index:20;
+  padding:calc(14px + var(--safe-top) + var(--tg-top-pad)) var(--sp-4) var(--sp-3);
+  display:flex; align-items:baseline; justify-content:space-between; gap:var(--sp-3);
 }
+.topbar h1{ margin:0; font-family:'Fraunces',serif; font-weight:600; font-size:var(--fs-xl); line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.topbar .date{ color:var(--muted); font-size:var(--fs-sm); white-space:nowrap; }
 
-.rate-widget{ text-align:center; margin-bottom:var(--sp-4); cursor:pointer; }
-.rate-widget .rw-date{ font-size:var(--fs-xs); color:var(--muted); margin-bottom:var(--sp-2); }
-.rate-widget .rw-row{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; }
+.rate-widget{ margin-bottom:var(--sp-4); cursor:pointer; background:var(--panel); border:1px solid var(--border); border-radius:var(--r-sm); padding:9px 14px; }
+.rate-widget .rw-row{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:var(--sp-2); }
 .rate-widget .rw-status{ display:flex; align-items:center; gap:var(--sp-2); font-size:var(--fs-sm); justify-self:start; }
-.rate-widget .rw-dot{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+.rate-widget .rw-dot{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 20%, transparent); }
 .rate-widget .rw-value{ font-family:'IBM Plex Mono',monospace; font-size:var(--fs-md); font-weight:600; font-variant-numeric:tabular-nums; justify-self:center; }
-.rate-widget .rw-pair{ font-size:var(--fs-sm); color:var(--muted); justify-self:end; }
+.rate-widget .rw-pair{ font-size:var(--fs-xs); color:var(--dim); letter-spacing:.06em; text-transform:uppercase; justify-self:end; white-space:nowrap; }
 
-.tabs{ display:flex; gap:var(--sp-2); padding:var(--sp-2) var(--sp-4) var(--sp-4); overflow-x:auto; scrollbar-width:none; }
+/* Вкладки: на «Расчёте» — сегмент в одну строку (.tabs.segtabs), в
+   остальных местах, где не помещаются, — тихие пилюли с прокруткой. */
+.tabs{ display:flex; gap:var(--sp-2); padding:0 var(--sp-4) var(--sp-4); overflow-x:auto; scrollbar-width:none; }
 .tabs::-webkit-scrollbar{display:none;}
 .tab{
-  flex:0 0 auto; padding:var(--sp-2) var(--sp-4); border-radius:var(--r-sm); background:transparent; border:1px solid var(--border);
-  color:var(--muted); font-size:var(--fs-base); font-weight:500; cursor:pointer;
+  flex:0 0 auto; padding:var(--sp-2) var(--sp-4); border-radius:var(--r-pill); background:var(--panel-2); border:none;
+  color:var(--muted); font-size:var(--fs-sm); font-weight:500; cursor:pointer; font-family:'Inter',sans-serif; white-space:nowrap;
 }
-.tab.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--text); }
+.tab.active{ background:var(--accent-soft); color:var(--accent-text); }
+.segtabs{ display:flex; gap:2px; background:var(--panel-2); border-radius:var(--r-sm); padding:3px; overflow:hidden; }
+.segtabs .tab{ flex:1 1 0; min-width:0; background:transparent; border-radius:10px; padding:8px 2px; text-align:center; font-size:var(--fs-sm); font-weight:500; color:var(--muted); }
+.segtabs .tab.active{ background:var(--accent); color:var(--on-accent); font-weight:600; }
+.segtabs.fit .tab{ flex:1 1 auto; padding:8px 4px; }
+.routeseg-wrap{ padding:0 var(--sp-4) var(--sp-4); }
 
 .content{flex:1; padding:0 var(--sp-4) var(--sp-5);}
 
 .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:var(--sp-4); margin-bottom:var(--sp-4); }
 .card h2{
-  background:#2f7dd122; color:#e6edf1; text-align:center; text-transform:uppercase;
+  background:linear-gradient(90deg, rgba(74,148,255,.22), rgba(74,148,255,.06)); color:#dbe8ff; text-align:center; text-transform:uppercase;
   font-size:var(--fs-sm); font-weight:600; letter-spacing:0.08em; padding:var(--sp-3) var(--sp-4);
-  margin:calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4); border-bottom:1px solid rgba(47,125,209,.45);
-  border-radius:13px 13px 0 0;
+  margin:calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4); border-bottom:1px solid rgba(74,148,255,.35);
+  border-radius:calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
 }
 .receipt-title{
-  background:#255aa1; color:#fff; text-align:center; text-transform:uppercase;
+  background:linear-gradient(90deg, rgba(74,148,255,.26), rgba(74,148,255,.08)); color:#dbe8ff; text-align:center; text-transform:uppercase;
   font-size:var(--fs-sm); font-weight:600; letter-spacing:0.08em; padding:var(--sp-3) var(--sp-4);
-  margin:0; border-bottom:none; border-radius:13px 13px 0 0;
+  margin:0; border-bottom:1px solid rgba(74,148,255,.35); border-radius:calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
 }
 .field{margin-bottom:var(--sp-3);}
 .field:last-child{margin-bottom:0;}
 .field label{ display:block; font-size:var(--fs-sm); color:var(--muted); margin-bottom:var(--sp-1); }
 .carried-hint{ font-size:var(--fs-xs); color:var(--muted); margin-top:var(--sp-1); }
-.unfilled-hint{ font-size:var(--fs-xs); color:#d9b25f; margin-top:var(--sp-1); }
-input.unfilled-input, select.unfilled-input{ border-color:#d9b25f; border-style:dashed; }
+.unfilled-hint{ font-size:var(--fs-xs); color:var(--warn); margin-top:var(--sp-1); }
+input.unfilled-input, select.unfilled-input{ border-color:var(--warn); border-style:dashed; }
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3);}
 .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:var(--sp-3);}
 input[type=text], input[type=number], select, textarea{
-  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:var(--r-sm);
-  padding:var(--sp-3) var(--sp-3); font-size:var(--fs-base); font-family:'IBM Plex Mono',monospace; outline:none;
+  width:100%; background:var(--panel-2); border:1px solid transparent; color:var(--text); border-radius:var(--r-sm);
+  padding:5px 10px; min-height:36px; font-size:var(--fs-base); font-family:'IBM Plex Mono',monospace; outline:none;
 }
-select{font-family:'Inter',sans-serif;}
-textarea{font-family:'Inter',sans-serif; resize:vertical;}
+select{font-family:'Inter',sans-serif; color-scheme:dark;}
+select option{ background:#0d1626; color:var(--text); }
+textarea{font-family:'Inter',sans-serif; resize:vertical; padding:var(--sp-2) 10px;}
 input:focus, select:focus, textarea:focus{border-color:var(--accent);}
+input:disabled{ color:var(--muted); }
 .textfield-btn{
-  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:var(--r-sm);
-  padding:var(--sp-3) var(--sp-3); font-size:var(--fs-base); font-family:'Inter',sans-serif; text-align:left; cursor:pointer;
+  width:100%; background:var(--panel-2); border:1px solid transparent; color:var(--text); border-radius:var(--r-sm);
+  padding:5px 10px; min-height:36px; font-size:var(--fs-base); font-family:'Inter',sans-serif; text-align:left; cursor:pointer;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;
 }
 .textfield-btn .ph{ color:var(--muted); }
 
-.seg{ display:flex; background:var(--panel-2); border-radius:var(--r-sm); padding:var(--sp-1); border:1px solid var(--border); }
-.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:var(--sp-2) var(--sp-1); border-radius:7px; font-size:var(--fs-sm); cursor:pointer; font-family:'Inter',sans-serif; }
-.seg button.active{background:var(--accent); color:#08131c; font-weight:600;}
+.seg{ display:flex; gap:2px; background:var(--panel-2); border-radius:var(--r-sm); padding:3px; border:none; }
+.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:8px 0; border-radius:10px; font-size:var(--fs-sm); font-weight:500; cursor:pointer; font-family:'Inter',sans-serif; white-space:nowrap; }
+.seg button.active{background:var(--accent); color:var(--on-accent); font-weight:600;}
+
+/* Поле мощности со встроенным переключателем л.с./кВт (как .input .useg в макете):
+   контейнер выглядит как поле, сам <input> — без фона и обводки. */
+.inputbox{ display:flex; align-items:center; gap:var(--sp-2); background:var(--panel-2); border:1px solid transparent; border-radius:var(--r-sm); min-height:36px; padding:0 6px 0 0; }
+.inputbox:focus-within{ border-color:var(--accent); }
+.inputbox input[type=text]{ flex:1; min-width:0; background:transparent; border:none; min-height:34px; }
+.inputbox.unfilled-box{ border-color:var(--warn); border-style:dashed; }
+.useg{ display:flex; flex:0 0 auto; gap:2px; background:var(--panel-3); border-radius:var(--r-pill); padding:2px; }
+.useg button{ background:transparent; border:none; color:var(--muted); font-size:10.5px; line-height:1.3; padding:2px 7px; border-radius:var(--r-pill); cursor:pointer; font-family:'Inter',sans-serif; white-space:nowrap; }
+.useg button.active{ background:var(--accent); color:var(--on-accent); font-weight:600; }
 
 .toggle-row{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3);}
 .advanced-toggle{ display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-size:var(--fs-sm); color:var(--muted); padding:var(--sp-2) 0; }
 .advanced-chevron{ transition:transform .15s ease; }
 .advanced-chevron.open{ transform:rotate(90deg); }
 #advancedBody{ margin-top:var(--sp-1); }
-.switch{ width:40px; height:24px; border-radius:var(--r-pill); background:var(--panel-2); border:1px solid var(--border); position:relative; cursor:pointer; flex:0 0 auto; }
-.switch .knob{ position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--muted); transition:left .15s; }
-.switch.on{background:var(--teal-soft); border-color:var(--teal);}
-.switch.on .knob{left:18px; background:var(--teal);}
+.switch{ width:40px; height:24px; border-radius:var(--r-pill); background:var(--panel-3); border:none; position:relative; cursor:pointer; flex:0 0 auto; }
+.switch .knob{ position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:var(--muted); transition:left .15s; }
+.switch.on{background:var(--accent);}
+.switch.on .knob{left:19px; background:#fff;}
 
-.btn{ width:100%; background:var(--accent); color:#08131c; border:none; border-radius:var(--r-sm); padding:var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; }
-.btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
-.btn.small{padding:var(--sp-2); font-size:var(--fs-sm);}
-.row3 .btn{ padding:var(--sp-3) var(--sp-1); font-size:var(--fs-sm); }
+.btn{ width:100%; min-height:46px; background:linear-gradient(135deg,#5aa2ff,#2f6fe0); color:var(--on-accent); border:none; border-radius:var(--r-btn); padding:var(--sp-2) var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; box-shadow:0 8px 22px -10px rgba(74,148,255,.55); }
+.btn.secondary{ background:rgba(255,255,255,.06); border:none; color:var(--muted); box-shadow:none; }
+.btn.small{min-height:36px; padding:var(--sp-1) var(--sp-2); font-size:var(--fs-sm);}
+.btn:disabled{ opacity:.6; }
+.row3 .btn{ padding:var(--sp-2) var(--sp-1); font-size:var(--fs-sm); }
 .btn-send{
-  background:linear-gradient(90deg,#25D366 0%, #2AABEE 52%, #9B7FE0 100%);
-  color:#fff; font-weight:700; letter-spacing:.2px;
-  box-shadow:0 6px 18px rgba(42,171,238,.22);
+  background:linear-gradient(100deg,#2c9a63,#3d86ff 55%,#7a62ff);
+  color:#fff; font-weight:600; box-shadow:none; border-radius:var(--r-btn);
 }
 .btn-send:active{ opacity:.88; }
 .send-hint{ font-size:var(--fs-xs); color:var(--muted); text-align:center; margin-top:var(--sp-2); line-height:1.4; }
 .linkbtn{
   display:flex; align-items:center; justify-content:space-between; gap:var(--sp-2);
-  background:var(--teal-soft); border:1px solid var(--teal); color:var(--teal);
+  background:var(--teal-soft); border:none; color:var(--teal);
   border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; text-decoration:none;
   margin-bottom:var(--sp-2);
 }
 .linkbtn:last-child{margin-bottom:0;}
 .linkbtn small{display:block; font-weight:400; color:var(--teal); opacity:0.8; font-size:var(--fs-xs); margin-top:1px;}
 
-.smartfill{ background:var(--panel-2); border:1px dashed var(--border); border-radius:var(--r-md); padding:var(--sp-3); }
+.smartfill{ background:transparent; border:1px dashed var(--border-strong); border-radius:var(--r-sm); padding:var(--sp-3); }
 .smartfill textarea{ margin-bottom:var(--sp-3); }
 .smartfill .btn{ margin-bottom:var(--sp-2); }
 .smartfill .row2 .btn{ margin-bottom:0; }
 .smartfill-status{ font-size:var(--fs-xs); color:var(--muted); min-height:14px; }
 .smartfill-divider{ display:flex; align-items:center; gap:var(--sp-2); margin:var(--sp-3) 0 var(--sp-3); color:var(--muted); font-size:var(--fs-xs); }
-.smartfill-divider::before, .smartfill-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
+.smartfill-divider::before, .smartfill-divider::after{ content:''; flex:1; height:1px; background:var(--line); }
 .filepick{
   display:flex; align-items:center; justify-content:center; text-align:center;
-  background:var(--panel); border:1px solid var(--border); border-radius:var(--r-sm);
-  padding:var(--sp-3) var(--sp-2); font-size:var(--fs-sm); color:var(--muted); cursor:pointer; font-family:'Inter',sans-serif;
+  background:var(--panel-2); border:1px solid transparent; border-radius:var(--r-btn); min-height:46px;
+  padding:var(--sp-2) var(--sp-2); font-size:var(--fs-sm); color:var(--muted); cursor:pointer; font-family:'Inter',sans-serif;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .filepick.has-file{ color:var(--text); border-color:var(--accent); }
 .smartfill-hint{ font-size:var(--fs-xs); color:var(--muted); margin-top:var(--sp-3); line-height:1.4; }
 
-.receipt{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:var(--sp-4); }
+/* Чек-«билет»: тонированная шапка и перфорация — два круга цвета фона по бокам. */
+.receipt{ position:relative; background:rgba(20,40,80,.35); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:var(--sp-4); }
+.receipt::before, .receipt::after{ content:''; position:absolute; top:32px; width:16px; height:16px; border-radius:50%; background:var(--bg); }
+.receipt::before{ left:-9px; }
+.receipt::after{ right:-9px; }
 #resultZone > .receipt{ margin-top:var(--sp-4); }
-.receipt-head{ padding:var(--sp-4) var(--sp-4) var(--sp-3); border-bottom:1px dashed var(--border); }
-.receipt-head .model{font-family:'Fraunces',serif; font-size:var(--fs-lg); font-weight:600;}
+.receipt-head{ padding:var(--sp-4) var(--sp-4) var(--sp-2); }
+.receipt-head .model{font-family:'Fraunces',serif; font-size:20px; font-weight:600; line-height:1.15;}
 .receipt-head .meta{color:var(--muted); font-size:var(--fs-sm); margin-top:var(--sp-1);}
-.receipt-body{padding:var(--sp-2) var(--sp-4);}
-.rline{ display:flex; justify-content:space-between; align-items:baseline; padding:var(--sp-2) 0; border-bottom:1px solid var(--panel-2); font-size:var(--fs-base); }
+.receipt-body{padding:0 var(--sp-4);}
+.rline{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:var(--fs-base); }
 .rline:last-child{border-bottom:none;}
 .rline .k{color:var(--muted);}
-.rline .k .hint{display:block; font-size:var(--fs-xs); color:#5c6b69; margin-top:1px;}
-.rline .v{font-family:'IBM Plex Mono',monospace; font-weight:500;}
-.receipt-total{ padding:var(--sp-4); background:var(--panel-2); display:flex; justify-content:space-between; align-items:center; border-top:1px dashed var(--border); }
-.receipt-total .lbl{font-size:var(--fs-base); color:var(--muted);}
-.receipt-total .amt{font-family:'IBM Plex Mono',monospace; font-size:var(--fs-xl); font-weight:600; color:var(--good);}
+.rline .k .hint{display:block; font-size:var(--fs-xs); color:var(--dim); margin-top:1px;}
+.rline .v{font-family:'IBM Plex Mono',monospace; font-weight:500; white-space:nowrap;}
+.receipt-total{ margin:var(--sp-1) var(--sp-4) 0; padding:var(--sp-3) 0 var(--sp-4); display:flex; justify-content:space-between; align-items:baseline; gap:var(--sp-3); border-top:1px dashed rgba(74,148,255,.5); }
+.receipt-total .lbl{font-size:var(--fs-sm); color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+.receipt-total .amt{font-family:'IBM Plex Mono',monospace; font-size:var(--fs-2xl); font-weight:600; color:var(--accent-text); white-space:nowrap;}
 
-.bottomnav{ position:fixed; bottom:0; left:0; right:0; z-index:30; background:rgba(8,13,18,0.92); backdrop-filter:blur(10px); border-top:1px solid var(--border); padding-bottom:var(--safe-bottom); }
+.bottomnav{ position:fixed; bottom:0; left:0; right:0; z-index:30; background:rgba(7,12,20,.9); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-top:1px solid var(--line); padding-bottom:var(--safe-bottom); }
 .bottomnav .inner{ max-width:480px; margin:0 auto; display:flex; }
 .navbtn{ flex:1; background:none; border:none; color:var(--muted); padding:var(--sp-3) var(--sp-1) var(--sp-2); font-size:var(--fs-xs); display:flex; flex-direction:column; align-items:center; gap:var(--sp-1); cursor:pointer; font-family:'Inter',sans-serif; }
 .navbtn.active{color:var(--accent);}
@@ -202,8 +242,8 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
 .sheet-overlay{ position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:40; display:none; align-items:flex-end; justify-content:center; }
 .sheet-overlay.open{display:flex;}
-.sheet{ background:var(--bg); width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border); border-bottom:none; padding:10px 16px calc(24px + var(--safe-bottom)); }
-.sheet-handle{width:36px; height:4px; background:var(--border); border-radius:2px; margin:var(--sp-2) auto var(--sp-4);}
+.sheet{ background:#0d1626; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border-strong); border-bottom:none; padding:10px 16px calc(24px + var(--safe-bottom)); }
+.sheet-handle{width:36px; height:4px; background:var(--border-strong); border-radius:2px; margin:var(--sp-2) auto var(--sp-4);}
 .sheet h3{font-family:'Fraunces',serif; font-size:var(--fs-lg); margin:var(--sp-1) 0 var(--sp-4);}
 .sub-h{font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:var(--sp-4) 0 var(--sp-2);}
 .sub-h:first-child{margin-top:2px;}
@@ -220,15 +260,21 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .histcard-wrap{ position:relative; border-radius:var(--r-md); overflow:hidden; margin-bottom:var(--sp-3); }
 .histcard-wrap .histcard{ margin-bottom:0; }
 .histcard-del{ position:absolute; top:0; right:0; bottom:0; width:88px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:var(--fs-base); font-weight:600; cursor:pointer; }
+/* Карточка полупрозрачная — кнопка «Удалить» под ней видна, пока карточку
+   не сдвинули свайпом; прячем её до сдвига (где браузер умеет :has). */
+@supports selector(:has(a)){
+  .histcard-del{ visibility:hidden; }
+  .histcard-wrap:has(> .histcard[style*="translateX(-"]) .histcard-del{ visibility:visible; }
+}
 .histcard{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-3); display:flex; justify-content:space-between; align-items:center; cursor:pointer; touch-action:pan-y; will-change:transform; }
 .histcard .l .m{font-weight:600; font-size:var(--fs-base);}
 .histcard .l .d{color:var(--muted); font-size:var(--fs-xs); margin-top:2px;}
 .histcard .r{text-align:right;}
-.histcard .r .t{font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent);}
+.histcard .r .t{font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--accent-text); white-space:nowrap;}
 .histcard .r .c{font-size:var(--fs-xs); color:var(--muted);}
 
 .settings-menu{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:var(--sp-4); }
-.settings-row{ display:flex; justify-content:space-between; align-items:center; padding:var(--sp-4) var(--sp-4); cursor:pointer; border-bottom:1px solid var(--panel-2); }
+.settings-row{ display:flex; justify-content:space-between; align-items:center; padding:var(--sp-4) var(--sp-4); cursor:pointer; border-bottom:1px solid var(--line); }
 .settings-row:last-child{border-bottom:none;}
 .settings-row .lbl{font-size:var(--fs-base); font-weight:500;}
 .settings-row .arrow{color:var(--muted); font-size:var(--fs-lg);}
@@ -238,7 +284,7 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
 .notice{ background:var(--danger-soft); border:1px solid var(--danger); color:var(--danger); border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-3); font-size:var(--fs-sm); margin-bottom:var(--sp-3); line-height:1.45; }
 .notice.info{background:var(--teal-soft); border-color:var(--teal); color:var(--teal);}
-.notice.warn{background:#d9b25f22; border-color:#d9b25f; color:#d9b25f;}
+.notice.warn{background:var(--warn-soft); border-color:var(--warn); color:var(--warn);}
 .src-line{font-size:var(--fs-xs); color:var(--muted); margin-top:var(--sp-2); line-height:1.5; word-break:break-all;}
 .src-line b{color:var(--text);}
 
@@ -307,8 +353,8 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 </head>
 <body>
 <div class="app" id="app">
-  <div class="topbar"></div>
-  <div class="tabs" id="routeTabs"></div>
+  <div class="topbar"><h1 id="screenTitle"></h1><span class="date" id="screenDate"></span></div>
+  <div class="routeseg-wrap" id="routeTabs"></div>
   <div class="content" id="content"></div>
 </div>
 
@@ -822,14 +868,12 @@ function rateWidgetStatus(ids){
 function rateWidgetHtml(route){
   const data = rateWidgetData(route);
   const lock = RECALC_CTX && RECALC_CTX.ratesLock;
-  const dateStr = new Date().toLocaleDateString('ru-RU',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
   // Курс зафиксирован оплатой инвойса — вместо «обновлён/не обновился» так и
   // пишем: статус свежести к нему не относится, он и не должен меняться.
   const statusHtml = lock
     ? `<span style="color:var(--teal);">курс зафиксирован ${new Date(lock.at||Date.now()).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'})} по оплате инвойса</span>`
-    : (()=>{ const st = rateWidgetStatus(data.ids); return `<span class="rw-dot" style="background:${st.color};"></span><span style="color:${st.color};">${st.word}</span>`; })();
+    : (()=>{ const st = rateWidgetStatus(data.ids); return `<span class="rw-dot" style="background:${st.color};color:${st.color};"></span><span style="color:${st.color};">${st.word}</span>`; })();
   return `<div class="rate-widget" id="rateWidget"${lock ? ' style="cursor:default;"' : ''}>
-    <div class="rw-date">${dateStr}</div>
     <div class="rw-row">
       <div class="rw-status">${statusHtml}</div>
       <div class="rw-value">${data.value.toFixed(4).replace('.', ',')}</div>
@@ -945,10 +989,10 @@ function renderTabs(){
   // набор (с «Общие»), на курсах/настройках направление не при чём.
   if(state.view!=='calc'){ tabs.style.display='none'; tabs.innerHTML=''; return; }
   tabs.style.display='';
-  tabs.innerHTML = Object.keys(CONFIG.routes).map(id=>{
+  tabs.innerHTML = '<div class="segtabs">' + Object.keys(CONFIG.routes).map(id=>{
     const r = CONFIG.routes[id];
-    return `<button class="tab ${state.route===id?'active':''}" data-route="${id}">${r.label} ${ROUTE_FLAG[id]||''}</button>`;
-  }).join('');
+    return `<button class="tab ${state.route===id?'active':''}" data-route="${id}">${ROUTE_FLAG[id]||''} ${r.label}</button>`;
+  }).join('') + '</div>';
   tabs.querySelectorAll('.tab').forEach(el=>{
     el.onclick = ()=>{
       state.formCache[state.route] = state.form; // черновик текущего направления не теряется при переключении
@@ -959,8 +1003,27 @@ function renderTabs(){
   });
 }
 
+// Шапка экрана: заголовок по вкладке (в подразделе настроек — его название,
+// в архиве истории — «Архив»), дата — только на «Расчёте».
+function renderTopbar(){
+  const t = document.getElementById('screenTitle'), dt = document.getElementById('screenDate');
+  if(!t || !dt) return;
+  let title = 'Расчёт';
+  if(state.view==='history') title = state.historyArchiveOpen ? 'Архив' : 'История';
+  if(state.view==='settings'){
+    const sec = state.settingsSection && SETTINGS_SECTIONS.find(x=>x.id===state.settingsSection);
+    title = sec ? sec.title : 'Настройки';
+  }
+  t.textContent = title;
+  const d = new Date();
+  dt.textContent = state.view==='calc'
+    ? d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) + ', ' + d.toLocaleDateString('ru-RU',{weekday:'short'})
+    : '';
+}
+
 function renderContent(){
   const c = document.getElementById('content');
+  renderTopbar();
   if(state.view==='calc') return renderCalc(c);
   if(state.view==='history') return renderHistory(c);
   if(state.view==='settings') return renderSettingsView(c);
@@ -1169,9 +1232,9 @@ function renderCalc(c){
         ${isElectric ? '' : field('Объём двигателя (см³)', `<input type="text" id="f_volumeCm3" class="${unfilledClass(f,'volumeCm3')}" value="${formatNumInput(f.volumeCm3)}" inputmode="numeric">`, unfilledHint(f,'volumeCm3')+carriedHint(f,'volumeCm3'))}
         <div class="field">
           <label>${isElectric?'Мощность электродвигателя':'Мощность двигателя'}</label>
-          <div class="row2" style="gap:var(--sp-2);">
+          <div class="inputbox${unfilledClass(f,'power') ? ' unfilled-box' : ''}">
             <input type="text" id="f_power" class="${unfilledClass(f,'power')}" value="${formatNumInput(f.power)}" inputmode="numeric">
-            <div class="seg" id="powerUnitSeg">
+            <div class="useg" id="powerUnitSeg">
               <button data-unit="ls" class="${f.powerUnit==='ls'?'active':''}">л.с.</button>
               <button data-unit="kvt" class="${f.powerUnit==='kvt'?'active':''}">кВт</button>
             </div>
@@ -1460,7 +1523,7 @@ function showResult(route, f, opts){
         <div class="model">${f.model ? escapeHtml(f.model) : 'Без названия'}</div>
         <div class="meta">${cfg.label} · ${AGE_LABELS[f.age]} · ${(ENGINE_TYPES[f.engineType]||ENGINE_TYPES.ben).label}${f.volumeCm3?(' · '+(num(f.volumeCm3)/1000).toFixed(1)+' л'):''}${f.power?(' · '+f.power+' '+(f.powerUnit==='kvt'?'кВт':'л.с.')):''}</div>
       </div>
-      ${carLines.length ? `<div class="receipt-body" style="padding-bottom:2px;border-bottom:1px dashed var(--border);">${carLines.map(([k,v])=>`<div class="rline"><div class="k">${k}</div><div class="v" style="font-weight:400;">${escapeHtml(v)}</div></div>`).join('')}</div>` : ''}
+      ${carLines.length ? `<div class="receipt-body" style="padding-bottom:2px;border-bottom:1px dashed var(--line);">${carLines.map(([k,v])=>`<div class="rline"><div class="k">${k}</div><div class="v" style="font-weight:400;">${escapeHtml(v)}</div></div>`).join('')}</div>` : ''}
       <div class="receipt-body">
         <div class="rline"><div class="k">Цена ТС с расходами до РФ<span class="hint">${lockedRates() ? ('переведено в рубли по курсу на ' + new Date(RECALC_CTX.ratesLock.at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' (оплата инвойса), банк. комиссия учтена') : 'переведено в рубли по текущим курсам, банк. комиссия учтена'}</span></div><div class="v">${fmt(r.invoiceRub,'₽')}</div></div>
         <div class="rline"><div class="k">${r.customsLabel}${f.customsOverride?' (вручную)':''}</div><div class="v">${fmt(r.customsTotal,'₽')}</div></div>
@@ -2011,6 +2074,7 @@ function openOtherRoutePicker(h){
 // без ручного curation, поэтому без свайпа-удаления и без "Другое
 // направление" — сюда просто заглядывают посмотреть, что считали.
 function renderArchiveList(c){
+  renderTopbar();
   historySwipeOpen = null;
   const back = `<button class="btn secondary small mb-4" id="archiveBack">← Назад</button>`;
   const listHtml = state.archive.length ? state.archive.map(h=>{
@@ -2035,14 +2099,15 @@ function renderArchiveList(c){
 }
 
 function renderHistory(c){
+  renderTopbar();
   if(state.historyArchiveOpen) return renderArchiveList(c);
   const filter = state.historyFilter || 'all';
   const filtered = filter==='all' ? state.history : state.history.filter(h=>h.route===filter);
   historySwipeOpen = null;
 
-  const filterHtml = `<div class="tabs" id="histFilterSeg" style="padding:0 0 var(--sp-4); margin:0;">
+  const filterHtml = `<div class="tabs segtabs fit" id="histFilterSeg" style="margin:0 0 var(--sp-4);">
     <button class="tab ${filter==='all'?'active':''}" data-f="all">Общие</button>
-    ${Object.keys(CONFIG.routes).map(id=>`<button class="tab ${filter===id?'active':''}" data-f="${id}">${CONFIG.routes[id].label} ${ROUTE_FLAG[id]||''}</button>`).join('')}
+    ${Object.keys(CONFIG.routes).map(id=>`<button class="tab ${filter===id?'active':''}" data-f="${id}">${ROUTE_FLAG[id]||''} ${CONFIG.routes[id].label}</button>`).join('')}
   </div>`;
 
   // Папка «Архив» — только на вкладке «Общие» (см. renderArchiveList выше).
@@ -2110,19 +2175,21 @@ function renderHistory(c){
    9. Settings
 --------------------------------------------------------------------- */
 const SETTINGS_SECTIONS = [
-  {id:'admin', label:'Доступ к приложению', ownerOnly:true},
-  {id:'routes', label:'Маршруты — комиссии по умолчанию'},
-  {id:'customs', label:'Расчёт TKS'},
-  {id:'delivery', label:'Таблица доставки по РФ'},
+  // title — заголовок экрана в шапке, когда подраздел открыт (renderTopbar).
+  {id:'admin', label:'Доступ к приложению', title:'Доступ', ownerOnly:true},
+  {id:'routes', label:'Маршруты — комиссии по умолчанию', title:'Маршруты'},
+  {id:'customs', label:'Расчёт TKS', title:'Расчёт TKS'},
+  {id:'delivery', label:'Таблица доставки по РФ', title:'Доставка'},
   // Архив/выгрузка/чистка дилеров сделок — как и остальные пункты, живёт
   // здесь как обычный подраздел настроек (см. loadDealsExtraCard), а не
   // уводит на /deals: раньше уводило, и это ощущалось чужеродно рядом с
   // остальными пунктами, которые никуда не переключают.
-  {id:'dealsExtra', label:'Сделки — дополнительно', dealsOnly:true}
+  {id:'dealsExtra', label:'Сделки — дополнительно', title:'Сделки', dealsOnly:true}
 ];
 
 function renderSettingsView(c){
   const section = state.settingsSection;
+  renderTopbar();
   syncTelegramUI(); // вход/выход из подраздела настроек двигает BackButton (ЗАДАНИЕ.md Блок 10)
 
   if(!section){
@@ -2220,7 +2287,7 @@ function renderAdminUsersList(users){
   return users.map(u=>{
     const label = u.name || ('id '+u.id);
     const uname = u.username ? ' · @'+u.username : '';
-    const statusColor = u.isOwner ? 'var(--accent)' : (u.status==='approved' ? 'var(--good)' : u.status==='pending' ? '#d9b25f' : 'var(--danger)');
+    const statusColor = u.isOwner ? 'var(--accent)' : (u.status==='approved' ? 'var(--good)' : u.status==='pending' ? 'var(--warn)' : 'var(--danger)');
     const statusText = u.isOwner ? 'владелец' : (u.status==='approved' ? 'доступ открыт' : u.status==='pending' ? 'ожидает подтверждения' : 'доступ закрыт');
     const btn = u.isOwner ? '' : (u.status==='approved'
       ? `<button class="btn secondary small" data-revoke="${u.id}">Закрыть</button>`
@@ -2658,10 +2725,10 @@ async function bootGate(){
   if(!hasTelegram){ renderGate('no-telegram'); return; }
 
   const tg = window.Telegram.WebApp;
-  // #080d12 — тот же цвет, что и var(--bg) в CSS ниже и что уже стоит в
+  // #070c14 — тот же цвет, что и var(--bg) в CSS выше и что стоит в
   // deals.html; раньше здесь было #121a1b, не совпадавшее с фоном — на
   // телефоне это была видна полоса другого цвета над самим приложением.
-  try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#080d12'); tg.setBackgroundColor && tg.setBackgroundColor('#080d12'); tg.disableVerticalSwipes && tg.disableVerticalSwipes(); }catch(e){}
+  try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#070c14'); tg.setBackgroundColor && tg.setBackgroundColor('#070c14'); tg.disableVerticalSwipes && tg.disableVerticalSwipes(); }catch(e){}
   // BackButton — обработчик регистрируется один раз на весь запуск приложения
   // (повторный onClick только добавлял бы новый колбэк поверх старого, а не
   // заменял его). См. ЗАДАНИЕ.md Блок 10 — MainButton для "Рассчитать" не

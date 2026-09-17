@@ -12,12 +12,23 @@
 /* Оформление намеренно повторяет калькулятор — это один продукт, человек
    переходит сюда с главного экрана и не должен чувствовать смену приложения.
    Переменные и базовые классы скопированы из index.html: страницы
-   самостоятельные, сборщика в проекте нет и заводить его ради этого не стоит. */
+   самостоятельные, сборщика в проекте нет и заводить его ради этого не стоит.
+   Оформление «Кобальт» (ТЗ 08): глубина тоном — фон → карточка → поле. */
 :root{
-  --bg:#080d12; --panel:#0f1720; --panel-2:#141f2a; --border:#213040;
-  --text:#e6edf1; --muted:#75919e; --accent:#2f7dd1; --accent-soft:#2f7dd122;
-  --teal:#37b07c; --teal-soft:#37b07c22; --danger:#d1573f; --danger-soft:#d1573f22;
-  --warn:#d9b25f; --warn-soft:#d9b25f22; --radius:14px;
+  --bg:#070c14;
+  --bg-glow: radial-gradient(120% 60% at 50% -10%, #12306a 0%, transparent 60%);
+  --panel: rgba(255,255,255,.045);      /* карточка */
+  --panel-2: rgba(255,255,255,.07);     /* поле ввода, дорожка переключателя */
+  --panel-3: rgba(255,255,255,.12);     /* дорожка тумблера */
+  --border: rgba(255,255,255,.07);      /* обводка карточки */
+  --line: rgba(255,255,255,.08);        /* разделители строк */
+  --border-strong:#2a3b52;              /* кружки этапов, шит */
+  --text:#eef3f8; --muted:#8fa4b8; --dim:#5f748a;
+  --accent:#4a94ff; --accent-text:#8fc0ff; --accent-soft: rgba(74,148,255,.16); --on-accent:#07101d;
+  --teal:#3ec48a; --good:#3ec48a; --teal-soft: rgba(62,196,138,.14);
+  --danger:#d1573f; --danger-soft:#d1573f22;
+  --warn:#d9b25f; --warn-soft:#d9b25f22;
+  --radius:18px;   /* карточки */
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
   --tg-top-pad: 0px;
   /* Типографика — 7 ступеней, база 16px */
@@ -36,99 +47,126 @@
   --sp-5: 24px;
   --sp-6: 32px;
   /* Радиусы */
-  --r-sm:   10px;  /* поля ввода, мелкие кнопки */
-  --r-md:   12px;  /* карточки в списках */
+  --r-sm:   12px;  /* поля ввода, сегменты */
+  --r-btn:  14px;  /* кнопки */
+  --r-md:   16px;  /* строки списков (сделки) */
   --r-pill: 99px;  /* чипы, тумблеры */
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
-body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased; }
+body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums; }
+/* Кобальтовый свет сверху — тот же слой, что в калькуляторе (прибит к экрану). */
+body::before{ content:''; position:fixed; inset:0; z-index:-1; pointer-events:none; background:var(--bg-glow), var(--bg); }
 .app{ max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(64px + var(--safe-bottom)); }
 .mono{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
 .topbar{ padding:calc(14px + var(--safe-top) + var(--tg-top-pad)) 16px 10px; position:sticky; top:0; z-index:20; background:linear-gradient(180deg, var(--bg) 72%, transparent); }
-.topbar h1{ font-family:'Fraunces',serif; font-weight:600; font-size:var(--fs-xl); margin:0 0 2px; }
-.topbar .sub{color:var(--muted); font-size:var(--fs-sm);}
+.topbar h1{ font-family:'Fraunces',serif; font-weight:600; font-size:var(--fs-xl); line-height:1.1; margin:0; }
+.topbar .sub{ color:var(--muted); font-size:var(--fs-sm); margin-top:6px; display:flex; flex-wrap:wrap; align-items:center; column-gap:8px; row-gap:4px; }
+.topbar .sub > span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.topbar .sub .who{ color:var(--text); }
 .content{ padding:0 var(--sp-4) var(--sp-5); flex:1; }
 
-.tabs{ display:flex; gap:var(--sp-2); padding:var(--sp-2) 0 var(--sp-4); overflow-x:auto; scrollbar-width:none; }
-.tab{ background:var(--panel); border:1px solid var(--border); color:var(--muted); border-radius:var(--r-pill); padding:var(--sp-2) var(--sp-4); font-size:var(--fs-base); white-space:nowrap; cursor:pointer; font-family:inherit; }
-.tab.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--text); }
-.seg{ display:flex; background:var(--panel-2); border-radius:var(--r-sm); padding:var(--sp-1); border:1px solid var(--border); }
-.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:var(--sp-2) var(--sp-1); border-radius:7px; font-size:var(--fs-sm); cursor:pointer; font-family:inherit; }
-.seg button.active{ background:var(--accent); color:#fff; font-weight:600; }
+/* Вкладки — сегмент в одну строку (как маршруты в калькуляторе). */
+.tabs{ display:flex; gap:2px; background:var(--panel-2); border-radius:var(--r-sm); padding:3px; margin:0 0 var(--sp-4); overflow:hidden; }
+.tab{ flex:1 1 0; min-width:0; background:transparent; border:none; color:var(--muted); border-radius:10px; padding:8px 2px; font-size:var(--fs-sm); font-weight:500; white-space:nowrap; cursor:pointer; font-family:inherit; text-align:center; }
+.tab.active{ background:var(--accent); color:var(--on-accent); font-weight:600; }
+.seg{ display:flex; gap:2px; background:var(--panel-2); border-radius:var(--r-sm); padding:3px; border:none; }
+.seg button{ flex:1; background:transparent; border:none; color:var(--muted); padding:8px 0; border-radius:10px; font-size:var(--fs-sm); font-weight:500; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.seg button.active{ background:var(--accent); color:var(--on-accent); font-weight:600; }
 
 .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:var(--sp-4); margin-bottom:var(--sp-3); }
 .card h2{
-  background:#2f7dd122; color:#e6edf1; text-align:center; text-transform:uppercase;
+  background:linear-gradient(90deg, rgba(74,148,255,.22), rgba(74,148,255,.06)); color:#dbe8ff; text-align:center; text-transform:uppercase;
   font-size:var(--fs-sm); font-weight:600; letter-spacing:0.08em; padding:var(--sp-3) var(--sp-4);
-  margin:calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4); border-bottom:1px solid rgba(47,125,209,.45);
-  border-radius:13px 13px 0 0;
+  margin:calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) var(--sp-4); border-bottom:1px solid rgba(74,148,255,.35);
+  border-radius:calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
 }
 
-.btn{ width:100%; background:var(--accent); color:#fff; border:none; border-radius:var(--r-sm); padding:var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; font-family:inherit; }
-.btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); }
-.btn.small{ padding:var(--sp-2); font-size:var(--fs-sm); }
-.btn.danger{ background:var(--danger); }
+.btn{ width:100%; min-height:46px; background:linear-gradient(135deg,#5aa2ff,#2f6fe0); color:var(--on-accent); border:none; border-radius:var(--r-btn); padding:var(--sp-2) var(--sp-3); font-size:var(--fs-base); font-weight:600; cursor:pointer; font-family:inherit; box-shadow:0 8px 22px -10px rgba(74,148,255,.55); }
+.btn.secondary{ background:rgba(255,255,255,.06); border:none; color:var(--muted); box-shadow:none; }
+.btn.small{ min-height:36px; padding:var(--sp-1) var(--sp-2); font-size:var(--fs-sm); }
+.btn.danger{ background:var(--danger); color:#fff; box-shadow:none; }
+.btn:disabled{ opacity:.6; }
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3);}
 
 .field{margin-bottom:var(--sp-3);}
 .field label{ display:block; font-size:var(--fs-sm); color:var(--muted); margin-bottom:var(--sp-1); }
 input[type=text], input[type=tel], select, textarea{
-  width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
-  border-radius:var(--r-sm); padding:var(--sp-3) var(--sp-3); font-size:var(--fs-base); font-family:inherit; outline:none;
+  width:100%; background:var(--panel-2); border:1px solid transparent; color:var(--text);
+  border-radius:var(--r-sm); padding:5px 10px; min-height:36px; font-size:var(--fs-base); font-family:inherit; outline:none;
 }
-textarea{resize:vertical; min-height:64px;}
+select{ color-scheme:dark; }
+select option{ background:#0d1626; color:var(--text); }
+textarea{resize:vertical; min-height:64px; padding:var(--sp-2) 10px;}
 input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
 .dealrow{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-3) var(--sp-3); margin-bottom:0; cursor:pointer; touch-action:pan-y; will-change:transform; }
+/* Физик от дилера — синяя полоса слева и строка «↳ через дилера …». */
+.dealrow.via{ border-left:3px solid var(--accent); }
 .dealrow .top{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--sp-3); }
-.dealrow .num{ font-family:'IBM Plex Mono',monospace; font-size:var(--fs-sm); color:var(--accent); }
+.dealrow .num{ font-family:'IBM Plex Mono',monospace; font-size:var(--fs-sm); color:var(--accent-text); }
 .dealrow .idle{ font-size:var(--fs-xs); color:var(--muted); white-space:nowrap; }
 .dealrow .idle.warn{ color:var(--warn); }
 .dealrow .idle.bad{ color:var(--danger); }
 .dealrow .idle.good{ color:var(--teal); }
 .dealrow .name{ font-weight:600; font-size:var(--fs-base); margin-top:var(--sp-1); }
 .dealrow .car{ color:var(--muted); font-size:var(--fs-sm); margin-top:2px; }
+.dealrow .via-line{ color:var(--muted); font-size:var(--fs-sm); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dealrow .via-line b{ color:var(--accent-text); font-weight:500; }
 .dealrow .foot{ display:flex; justify-content:space-between; align-items:center; gap:var(--sp-2); margin-top:var(--sp-2); }
 .dealrow-wrap{ position:relative; border-radius:var(--r-md); overflow:hidden; margin-bottom:var(--sp-3); }
 .dealrow-wrap .dealrow{ margin-bottom:0; }
 .dealrow-del{ position:absolute; top:0; right:0; bottom:0; width:88px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:var(--fs-base); font-weight:600; cursor:pointer; }
+/* Строка полупрозрачная — «Удалить» под ней видна, пока её не сдвинули
+   свайпом; прячем до сдвига (где браузер умеет :has). */
+@supports selector(:has(a)){
+  .dealrow-del{ visibility:hidden; }
+  .dealrow-wrap:has(> .dealrow[style*="translateX(-"]) .dealrow-del{ visibility:visible; }
+}
 .folderrow{ display:flex; justify-content:space-between; align-items:center; }
 .folderrow .arrow{ color:var(--muted); font-size:var(--fs-lg); }
-.chip{ display:inline-block; font-size:var(--fs-xs); padding:var(--sp-1) var(--sp-2); border-radius:var(--r-pill); background:var(--panel-2); border:1px solid var(--border); color:var(--muted); }
-.chip.stage{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
-.chip.problem{ background:var(--danger-soft); border-color:var(--danger); color:var(--danger); }
-.chip.arch{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
+.chip{ display:inline-block; font-size:var(--fs-xs); line-height:1.3; padding:2px 8px; border-radius:var(--r-pill); background:var(--panel-2); border:none; color:var(--muted); white-space:nowrap; }
+/* .chip.stage делит имя класса со строкой этапа (.stage ниже) — сбрасываем
+   её раскладку, иначе чип растягивается на всю ширину. */
+.chip.stage{ display:inline-block; padding:2px 8px; border:none; gap:0; background:var(--accent-soft); color:var(--accent-text); }
+.chip.wip{ background:var(--accent-soft); color:var(--accent-text); }
+.chip.problem{ background:var(--danger-soft); color:var(--danger); }
+.chip.arch{ background:var(--warn-soft); color:var(--warn); }
 
-.stage{ display:flex; align-items:flex-start; gap:var(--sp-3); padding:var(--sp-3) 0; border-bottom:1px solid var(--border); }
+.stage{ display:flex; align-items:flex-start; gap:var(--sp-3); padding:8px 0; border-bottom:1px solid var(--line); }
 .stage:last-child{border-bottom:none;}
-.stage .mark{ flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:1px solid var(--border); background:var(--panel-2); color:var(--muted); font-size:var(--fs-base); display:flex; align-items:center; justify-content:center; cursor:pointer; }
-.stage .mark.done{ background:var(--teal-soft); border-color:var(--teal); color:var(--teal); }
+.stage .mark{ flex:0 0 auto; width:24px; height:24px; margin-top:1px; border-radius:50%; border:1.5px solid var(--border-strong); background:var(--panel); color:var(--muted); font-size:var(--fs-sm); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.stage .mark.done{ background:rgba(62,196,138,.14); border-color:var(--good); color:var(--good); }
 .stage .mark.skip{ background:var(--warn-soft); border-color:var(--warn); color:var(--warn); }
-.stage .mark.wip{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
-.chip.wip{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+.stage .mark.wip{ background:var(--accent-soft); border-color:var(--accent); font-size:0; }
+.stage .mark.wip::after{ content:''; width:8px; height:8px; border-radius:50%; background:var(--accent); }
 .stage .body{flex:1; min-width:0;}
 .stage .lbl{ font-size:var(--fs-base); font-weight:500; }
 .stage .meta{ font-size:var(--fs-xs); color:var(--muted); margin-top:2px; }
+.stage .meta b{ color:var(--good); font-weight:500; }
 .stage .note{ font-size:var(--fs-sm); color:var(--muted); margin-top:var(--sp-1); white-space:pre-wrap; }
 
-.kv{ display:flex; justify-content:space-between; gap:var(--sp-3); padding:var(--sp-2) 0; border-bottom:1px solid var(--border); font-size:var(--fs-base); }
+.kv{ display:flex; justify-content:space-between; gap:var(--sp-3); padding:var(--sp-2) 0; border-bottom:1px solid var(--line); font-size:var(--fs-base); }
 .kv:last-child{border-bottom:none;}
 .kv .k{ color:var(--muted); flex:0 0 auto; }
 .kv .v{ text-align:right; word-break:break-word; }
+.money{ font-family:'IBM Plex Mono',monospace; font-weight:600; white-space:nowrap; }
+.ok{ color:var(--good); }
 
-.calcitem{ padding:var(--sp-2) 0; border-bottom:1px solid var(--border); }
+.calcitem{ padding:var(--sp-2) 0; border-bottom:1px solid var(--line); }
 .calcitem:last-of-type{ border-bottom:none; }
 .calcitem-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-3); }
-.calcitem-title{ min-width:0; }
+.calcitem-title{ min-width:0; font-weight:500; }
 .calcitem-title .chip{ margin-bottom:var(--sp-1); }
-.calcitem-sum{ font-weight:600; white-space:nowrap; }
+.calcitem-title .u-hint{ font-weight:400; color:var(--dim); font-size:var(--fs-xs); margin-top:2px; }
+.calcitem-sum{ font-family:'IBM Plex Mono',monospace; font-weight:600; white-space:nowrap; }
 .calcitem-status{ margin-top:var(--sp-1); }
-.calcitem-actions{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2); }
-.calcitem-remove{ margin-left:auto; color:var(--muted); }
+.calcitem-actions{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2); align-items:center; }
+.calcitem-actions .btn, .calcitem-open{ background:rgba(255,255,255,.06); border:none; color:var(--muted); min-height:36px; font-size:var(--fs-sm); font-weight:500; border-radius:var(--r-pill); padding:var(--sp-1) var(--sp-3); }
+.calcitem-remove{ margin-left:auto; color:var(--dim) !important; }
 .calcitem-open{ width:100%; margin-top:var(--sp-2); }
 
-.logitem{ font-size:var(--fs-sm); padding:var(--sp-2) 0; border-bottom:1px solid var(--border); }
+.logitem{ font-size:var(--fs-sm); padding:var(--sp-2) 0; border-bottom:1px solid var(--line); }
 .logitem:last-child{border-bottom:none;}
 .logitem .who{ color:var(--muted); }
 
@@ -139,14 +177,14 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 
 .sheet-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; justify-content:center; z-index:50; }
 .sheet-overlay.open{display:flex;}
-.sheet{ background:var(--bg); width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border); padding:14px 16px calc(24px + var(--safe-bottom)); }
+.sheet{ background:#0d1626; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border-strong); border-bottom:none; padding:14px 16px calc(24px + var(--safe-bottom)); }
 .sheet h3{ font-family:'Fraunces',serif; font-weight:600; font-size:var(--fs-lg); margin:var(--sp-2) 0 var(--sp-3); }
 .toast{ position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:var(--sp-3) var(--sp-4); border-radius:var(--r-sm); font-size:var(--fs-base); z-index:60; opacity:0; pointer-events:none; transition:opacity .2s; max-width:88%; text-align:center; }
 .toast.show{opacity:1;}
 
 /* Нижнее меню — один в один как в калькуляторе: человек переходит между
    страницами и не должен замечать, что это разные документы. */
-.bottomnav{ position:fixed; bottom:0; left:0; right:0; z-index:30; background:rgba(8,13,18,0.92); backdrop-filter:blur(10px); border-top:1px solid var(--border); padding-bottom:var(--safe-bottom); }
+.bottomnav{ position:fixed; bottom:0; left:0; right:0; z-index:30; background:rgba(7,12,20,.9); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-top:1px solid var(--line); padding-bottom:var(--safe-bottom); }
 .bottomnav .inner{ max-width:480px; margin:0 auto; display:flex; }
 .navbtn{ flex:1; background:none; border:none; color:var(--muted); padding:var(--sp-3) var(--sp-1) var(--sp-2); font-size:var(--fs-xs); display:flex; flex-direction:column; align-items:center; gap:var(--sp-1); cursor:pointer; font-family:'Inter',sans-serif; }
 .navbtn.active{color:var(--accent);}
@@ -602,13 +640,14 @@ function dealRowsHtml(rows, opts){
     const dealer = (party && party.dealerId) ? state.parties.find(p=>p.id===party.dealerId) : null;
     return `<div class="dealrow-wrap">
       <div class="dealrow-del" data-del="${esc(d.id)}" data-delname="${esc(d.partyName)}">Удалить</div>
-      <div class="dealrow" data-id="${esc(d.id)}">
+      <div class="dealrow${dealer ? ' via' : ''}" data-id="${esc(d.id)}">
         <div class="top">
           <span class="num">${esc(d.num)}</span>
           <span class="idle ${cls}">${idleLabel}</span>
         </div>
-        <div class="name">${esc(d.partyName || 'без контрагента')}${dealer ? ` <span class="chip">через ${esc(dealer.name)}</span>` : ''}</div>
+        <div class="name">${esc(d.partyName || 'без контрагента')}</div>
         <div class="car">${esc(d.car || 'машина не указана')}${d.route ? ' · ' + (ROUTE_FLAGS[d.route]||'') + ' ' + (ROUTE_LABELS[d.route]||'') : ''}${(d.route==='japan' && d.sanctioned) ? ' <span class="chip">санкционная</span>' : ''}</div>
+        ${dealer ? `<div class="via-line">↳ через дилера <b>${esc(dealer.name)}</b></div>` : ''}
         <div class="foot">
           <span>
             <span class="chip ${stage?(wip?'wip':'stage'):''}">${esc(stage || 'этапов нет')}${stage&&wip?' · в процессе':''}</span>
@@ -1011,7 +1050,7 @@ function moneyCardHtml(d){
   const row = (label, right, meta, hint, meta2) => `
     <div class="kv" style="display:block;">
       <div style="display:flex;justify-content:space-between;gap:var(--sp-3);">
-        <span class="k">${label}</span><span style="white-space:nowrap;">${right}</span>
+        <span class="k">${label}</span><span class="money">${right}</span>
       </div>
       <div style="font-size:var(--fs-xs);color:var(--muted);text-align:right;margin-top:2px;">${meta}</div>
       ${meta2 ? `<div style="font-size:var(--fs-xs);color:var(--muted);text-align:right;margin-top:2px;">${meta2}</div>` : ''}
@@ -1019,7 +1058,7 @@ function moneyCardHtml(d){
     </div>`;
   // "поступил" без даты — этап закрыли задним числом (автоматически), даты
   // у него нет и выдумывать её не надо, как и в списке этапов.
-  const paid = m => 'поступил' + (m.at ? ' ' + fmtDate(m.at) : '');
+  const paid = m => '<span class="ok">поступил' + (m.at ? ' ' + fmtDate(m.at) : '') + '</span>';
 
   const depFixed = typeof bm.amount === 'number';
   const depVal = depFixed ? bm.amount : due.deposit;
@@ -1027,7 +1066,7 @@ function moneyCardHtml(d){
   // Вторая подпись — удержание: «Бронь — пройден» закрепляет взнос за
   // машиной, после неё он не возвращается.
   const holdMeta = bs==='skip' ? ''
-    : (hm.state==='done' ? 'удержана' + (hm.at ? ' ' + fmtDate(hm.at) : '') : 'будет удержана при отметке «Бронь»');
+    : (hm.state==='done' ? '<span class="ok">удержана' + (hm.at ? ' ' + fmtDate(hm.at) : '') + '</span>' : 'будет удержана при отметке «Бронь»');
 
   const remFixed = typeof sm.amount === 'number';
   const remVal = remFixed ? sm.amount : due.remainder;
@@ -1050,8 +1089,8 @@ function moneyCardHtml(d){
         bits.join(' · ') + (remApprox ? '<br>Доставка по РФ станет известна после пересчёта расчёта по курсам.' : '')) +
     `<div class="kv" style="align-items:flex-start;">
       <span class="k">Итого</span>
-      <span class="v" style="white-space:nowrap;">К получению ${remApprox ? 'от ' : ''}${fmtMoney(totalDue)} ₽
-        <div style="font-size:var(--fs-xs);color:${allIn ? 'var(--teal)' : 'var(--muted)'};margin-top:2px;">поступило ${fmtMoney(got)} ₽${allIn ? ' · всё получено' : ''}</div>
+      <span class="v" style="white-space:nowrap;">К получению <span class="money">${remApprox ? 'от ' : ''}${fmtMoney(totalDue)} ₽</span>
+        <div style="font-size:var(--fs-xs);color:${allIn ? 'var(--good)' : 'var(--muted)'};margin-top:2px;">поступило ${fmtMoney(got)} ₽${allIn ? ' · всё получено' : ''}</div>
       </span>
     </div>`);
 }
@@ -1061,9 +1100,13 @@ function renderDeal(){
   const c = document.getElementById('content');
   document.getElementById('title').textContent = d.num;
   const stage = currentStage(d);
-  document.getElementById('subtitle').textContent =
-    (stage ? (stage.label + (stageState(d, stage.key)==='wip' ? ' (в процессе)' : '')) : 'этапов ещё нет')
-    + ' · ' + (DEAL_TYPE_LABELS[d.type] || d.type);
+  // Под номером: «Имя · Тип · [чип этапа]»; «в процессе» показывает цвет
+  // чипа (.chip.wip), а не текст.
+  const stageChip = stage
+    ? `<span class="chip ${stageState(d, stage.key)==='wip' ? 'wip' : 'stage'}">${esc(stage.label)}</span>`
+    : `<span class="chip">этапов ещё нет</span>`;
+  document.getElementById('subtitle').innerHTML =
+    `<span class="who">${esc(d.partyName || 'без контрагента')}</span><span>·</span><span>${esc(DEAL_TYPE_LABELS[d.type] || d.type)}</span><span>·</span>${stageChip}`;
 
   const party = state.parties.find(p=>p.id===d.partyId);
 
@@ -1080,7 +1123,7 @@ function renderDeal(){
     // Предоплата» (если предоплата вообще была).
     const held = st.key==='booking' && moneyApplies(d) && stageState(d,'contract')!=='skip';
     const meta = mark.state==='done' ? ('пройден' + (mark.at ? ' ' + fmtDate(mark.at) : '')
-        + (typeof mark.amount==='number' ? ' · ' + fmtMoney(mark.amount) + ' ₽ поступило' : '')
+        + (typeof mark.amount==='number' ? ' · <b>' + fmtMoney(mark.amount) + ' ₽ поступило</b>' : '')
         + (held ? ' · предоплата удержана' : ''))
       : (mark.state==='wip' ? ('в процессе' + (mark.at ? ' с ' + fmtDate(mark.at) : ''))
       : (mark.state==='skip' ? (st.skipLabel ? st.skipLabel.toLowerCase() : (st.optional ? 'не требуется' : 'без предоплаты')) : 'не пройден'));
@@ -1105,7 +1148,7 @@ function renderDeal(){
       <div class="kv"><span class="k">Тип</span><span class="v">${esc(DEAL_TYPE_LABELS[d.type]||d.type)}</span></div>
       <div class="kv"><span class="k">Маршрут</span><span class="v">${d.route ? (ROUTE_FLAGS[d.route]||'') + ' ' + esc(ROUTE_LABELS[d.route]||d.route) : '—'}${(d.route==='japan' && d.sanctioned) ? ' <span class="chip">санкционная</span>' : ''}</span></div>
       <div class="kv"><span class="k">Что ищем</span><span class="v">${esc(d.car||'—')}${d.year?' · '+esc(d.year):''}</span></div>
-      <div class="kv"><span class="k">Бюджет</span><span class="v">${d.budget ? esc(formatMoney(d.budget))+' ₽' : '—'}</span></div>
+      <div class="kv"><span class="k">Бюджет</span><span class="v${d.budget ? ' money' : ''}">${d.budget ? esc(formatMoney(d.budget))+' ₽' : '—'}</span></div>
       <div class="kv"><span class="k">Город доставки</span><span class="v">${esc(d.deliveryCity||'—')}</span></div>
       <div class="kv"><span class="k">Ответственный</span><span class="v">${esc((d.responsible&&d.responsible.name)||'не назначен')}</span></div>
       <div class="kv"><span class="k">Создана</span><span class="v">${fmtDate(d.createdAt)}</span></div>
@@ -1792,7 +1835,7 @@ async function boot(){
     gate(`<div class="emptystate"><div class="big">Откройте через Telegram</div>Раздел работает только внутри Telegram — откройте бота и запустите мини-приложение.</div>`);
     return;
   }
-  try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#080d12'); tg.setBackgroundColor && tg.setBackgroundColor('#080d12'); }catch(e){}
+  try{ tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#070c14'); tg.setBackgroundColor && tg.setBackgroundColor('#070c14'); }catch(e){}
   try{
     // См. index.html/bootGate() — тот же приём: с Bot API 8.0 Telegram сам
     // кладёт точный отступ в --tg-content-safe-area-inset-top, наш расчёт
