@@ -5,193 +5,190 @@
 Использование: найти нужный диапазон здесь, прочитать его `sed -n 'START,ENDp' файл`, а не файл целиком.
 
 
-## index.html (2978 строк)
+## index.html (2754 строк)
 
 ### Секции
 
-- L420-662: 1. Default configuration
-- L663-695: 2. State
-- L696-765: 3. Helpers
-- L766-922: 4. Currency rates — fetch via server-side proxy, manual always wins
-- L923-931: 5. Delivery lookup
-- L932-944: 6. Route → RUB conversion chains
-- L945-975: 7. Main calculation
-- L976-2312: 8. Rendering
-- L2313-2658: 9. Settings
-- L2659-2790: 10. Rate editor sheet
-- L2791-2835: 11. Nav + boot
-- L2836-2978: 12. Доступ через Telegram — приложение работает только как Mini App.
+- L421-510: 1. Default configuration
+- L511-539: 2. State
+- L540-609: 3. Helpers
+- L610-735: 4. Currency rates — fetch via server-side proxy, manual always wins
+- L736-740: 5. Delivery lookup
+- L741-745: 6. Route → RUB conversion chains
+- L746-752: 7. Main calculation
+- L753-2088: 8. Rendering
+- L2089-2434: 9. Settings
+- L2435-2566: 10. Rate editor sheet
+- L2567-2611: 11. Nav + boot
+- L2612-2754: 12. Доступ через Telegram — приложение работает только как Mini App.
 
 ### Функции
 
-- L387-395: `saveDeliveryPrefs()`
-- L396-418: `loadDeliveryPrefsFromCloud()`
-- L529-548: `mergeRatesState()`
-- L555-566: `mergeRoutesState()`
-- L567-572: `applyStoredConfig()`
-- L585-585: `getInitData()`
-- L586-586: `getTg()`
-- L590-598: `tgHaptic()`
-- L604-607: `formHasData()`
-- L608-613: `updateClosingGuard()`
-- L622-635: `saveConfig()`
-- L636-641: `saveHistory()`
-- L646-651: `saveArchive()`
-- L652-661: `deepMerge()`
-- L668-683: `defaultForm()`
-- L703-703: `groupInt()`
-- L704-708: `fmt()`
-- L709-709: `num()`
-- L716-721: `invalidateCustomsAuto()`
-- L727-735: `computeAgeFromDate()`
-- L740-743: `applyAgeFromDate()`
-- L747-753: `formatNumInput()`
-- L754-754: `cleanNumInput()`
-- L760-760: `escapeHtml()`
-- L761-764: `openExternal()`
-- L779-784: `logRateHistory()`
-- L786-811: `applyAutoRate()`
-- L813-845: `fetchAutoRates()`
-- L854-903: `fetchCustomsQuote()`
-- L905-913: `setRawValue()`
-- L915-921: `clearManualOverride()`
-- L926-930: `deliveryPrice()`
-- L935-943: `convertToRub()`
-- L948-974: `calcDeal()`
-- L1016-1022: `rateWidgetData()`
-- L1023-1027: `isUpdatedToday()`
-- L1032-1036: `rateWidgetStatus()`
-- L1037-1049: `rateWidgetHtml()`
-- L1052-1059: `bindRateWidget()`
-- L1064-1073: `refreshRatesUI()`
-- L1078-1087: `fetchCbrReference()`
-- L1089-1095: `cbrReferenceHtml()`
-- L1097-1129: `openRatesSheet()`
-- L1134-1148: `ratesPreviewCardHtml()`
-- L1150-1168: `renderTabs()`
-- L1170-1175: `renderContent()`
-- L1177-1177: `field()`
-- L1178-1178: `removeFromArr()`
-- L1183-1185: `carriedHint()`
-- L1189-1193: `unfilledHint()`
-- L1194-1194: `unfilledClass()`
-- L1198-1204: `clearFieldHints()`
-- L1206-1208: `cityOptions()`
-- L1213-1252: `resizeImageToBase64()`
-- L1270-1326: `runListingParse()`
-- L1328-1624: `renderCalc()`
-- L1626-1642: `carDetailLines()`
-- L1647-1651: `pushArchive()`
-- L1652-1783: `showResult()`
-- L1787-1789: `fmtRate()`
-- L1798-1916: `buildKpHtml()`
-- L1921-1952: `renderKpImageBlob()`
-- L1969-2115: `shareResult()`
-- L2126-2168: `bindHistorySwipe()`
-- L2170-2186: `openClearHistoryConfirm()`
-- L2188-2210: `openOtherRoutePicker()`
-- L2217-2239: `renderArchiveList()`
-- L2241-2311: `renderHistory()`
-- L2328-2388: `renderSettingsView()`
-- L2390-2406: `openResetConfirm()`
-- L2408-2411: `fetchAdminUsers()`
-- L2412-2415: `adminAction()`
-- L2422-2449: `renderAdminUsersList()`
-- L2450-2470: `loadAdminCard()`
-- L2482-2490: `fetchDealsApi()`
-- L2491-2511: `loadDealsExtraCard()`
-- L2512-2528: `openDealsArchiveSheet()`
-- L2529-2529: `csvCellIdx()`
-- L2530-2530: `idleDaysIdx()`
-- L2531-2540: `dealsCsvIdx()`
-- L2541-2551: `partiesCsvIdx()`
-- L2552-2595: `runDealsExport()`
-- L2596-2614: `openWipeDealersConfirm()`
-- L2616-2626: `routeSettingsBlock()`
-- L2627-2636: `bindRouteSettings()`
-- L2638-2647: `deliveryTable()`
-- L2648-2657: `bindDeliveryTable()`
-- L2662-2662: `openSheet()`
-- L2663-2663: `closeSheet()`
-- L2668-2686: `openTextFieldSheet()`
-- L2732-2750: `openRateHistory()`
-- L2752-2789: `openRateEditor()`
-- L2815-2815: `toast()`
-- L2825-2832: `syncTelegramUI()`
-- L2833-2833: `renderAll()`
-- L2834-2834: `startApp()`
-- L2844-2858: `renderGate()`
-- L2860-2972: `bootGate()`
+- L388-396: `saveDeliveryPrefs()`
+- L397-419: `loadDeliveryPrefsFromCloud()`
+- L430-430: `applyStoredConfig()`
+- L443-443: `getInitData()`
+- L444-444: `getTg()`
+- L448-456: `tgHaptic()`
+- L462-465: `formHasData()`
+- L466-471: `updateClosingGuard()`
+- L480-493: `saveConfig()`
+- L494-499: `saveHistory()`
+- L504-509: `saveArchive()`
+- L516-531: `defaultForm()`
+- L547-547: `groupInt()`
+- L548-552: `fmt()`
+- L553-553: `num()`
+- L560-565: `invalidateCustomsAuto()`
+- L571-579: `computeAgeFromDate()`
+- L584-587: `applyAgeFromDate()`
+- L591-597: `formatNumInput()`
+- L598-598: `cleanNumInput()`
+- L604-604: `escapeHtml()`
+- L605-608: `openExternal()`
+- L623-628: `logRateHistory()`
+- L630-655: `applyAutoRate()`
+- L657-689: `fetchAutoRates()`
+- L698-716: `fetchCustomsQuote()`
+- L718-726: `setRawValue()`
+- L728-734: `clearManualOverride()`
+- L739-739: `deliveryPrice()`
+- L744-744: `convertToRub()`
+- L751-751: `calcDeal()`
+- L793-799: `rateWidgetData()`
+- L800-804: `isUpdatedToday()`
+- L809-813: `rateWidgetStatus()`
+- L814-826: `rateWidgetHtml()`
+- L829-836: `bindRateWidget()`
+- L841-850: `refreshRatesUI()`
+- L855-864: `fetchCbrReference()`
+- L866-872: `cbrReferenceHtml()`
+- L874-906: `openRatesSheet()`
+- L911-925: `ratesPreviewCardHtml()`
+- L927-945: `renderTabs()`
+- L947-952: `renderContent()`
+- L954-954: `field()`
+- L955-955: `removeFromArr()`
+- L960-962: `carriedHint()`
+- L966-970: `unfilledHint()`
+- L971-971: `unfilledClass()`
+- L975-981: `clearFieldHints()`
+- L983-985: `cityOptions()`
+- L990-1029: `resizeImageToBase64()`
+- L1047-1103: `runListingParse()`
+- L1105-1400: `renderCalc()`
+- L1402-1418: `carDetailLines()`
+- L1423-1427: `pushArchive()`
+- L1428-1559: `showResult()`
+- L1563-1565: `fmtRate()`
+- L1574-1692: `buildKpHtml()`
+- L1697-1728: `renderKpImageBlob()`
+- L1745-1891: `shareResult()`
+- L1902-1944: `bindHistorySwipe()`
+- L1946-1962: `openClearHistoryConfirm()`
+- L1964-1986: `openOtherRoutePicker()`
+- L1993-2015: `renderArchiveList()`
+- L2017-2087: `renderHistory()`
+- L2104-2164: `renderSettingsView()`
+- L2166-2182: `openResetConfirm()`
+- L2184-2187: `fetchAdminUsers()`
+- L2188-2191: `adminAction()`
+- L2198-2225: `renderAdminUsersList()`
+- L2226-2246: `loadAdminCard()`
+- L2258-2266: `fetchDealsApi()`
+- L2267-2287: `loadDealsExtraCard()`
+- L2288-2304: `openDealsArchiveSheet()`
+- L2305-2305: `csvCellIdx()`
+- L2306-2306: `idleDaysIdx()`
+- L2307-2316: `dealsCsvIdx()`
+- L2317-2327: `partiesCsvIdx()`
+- L2328-2371: `runDealsExport()`
+- L2372-2390: `openWipeDealersConfirm()`
+- L2392-2402: `routeSettingsBlock()`
+- L2403-2412: `bindRouteSettings()`
+- L2414-2423: `deliveryTable()`
+- L2424-2433: `bindDeliveryTable()`
+- L2438-2438: `openSheet()`
+- L2439-2439: `closeSheet()`
+- L2444-2462: `openTextFieldSheet()`
+- L2508-2526: `openRateHistory()`
+- L2528-2565: `openRateEditor()`
+- L2591-2591: `toast()`
+- L2601-2608: `syncTelegramUI()`
+- L2609-2609: `renderAll()`
+- L2610-2610: `startApp()`
+- L2620-2634: `renderGate()`
+- L2636-2748: `bootGate()`
 
 
-## deals.html (1494 строк)
+## deals.html (1495 строк)
 
 ### Секции
 
-- L184-322: 1. Этапы — перечень живёт здесь, в коде, и только здесь.
-- L323-430: 2. Утилиты и состояние
-- L431-683: 3. Экран списка
-- L684-896: 4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
-- L897-1371: 5. Карточка сделки
-- L1372-1436: 6. Профиль контакта (физик или дилер) — физики доступны через вкладку
-- L1437-1494: 8. Загрузка и гейт
+- L185-323: 1. Этапы — перечень живёт здесь, в коде, и только здесь.
+- L324-431: 2. Утилиты и состояние
+- L432-684: 3. Экран списка
+- L685-897: 4. Создание сделки: физик ищется по телефону, дилер — отдельным шагом
+- L898-1372: 5. Карточка сделки
+- L1373-1437: 6. Профиль контакта (физик или дилер) — физики доступны через вкладку
+- L1438-1495: 8. Загрузка и гейт
 
 ### Функции
 
-- L221-221: `stagesOf()`
-- L228-236: `currentStage()`
-- L237-237: `stageState()`
-- L238-241: `isArchived()`
-- L245-252: `lastMovementAt()`
-- L253-256: `idleDays()`
-- L265-267: `moneyApplies()`
-- L272-275: `moneyCalc()`
-- L279-287: `moneyParts()`
-- L292-299: `moneyDue()`
-- L304-321: `fixMoneyAmounts()`
-- L338-338: `onlyDigits()`
-- L339-342: `formatDivisionCode()`
-- L343-350: `formatSnils()`
-- L351-367: `formatPhoneRu()`
-- L370-374: `bindMask()`
-- L378-384: `formatDateDdMmYyyy()`
-- L387-390: `formatMoney()`
-- L391-394: `tsToDdMmYyyy()`
-- L398-405: `parseDdMmYyyy()`
-- L406-406: `toast()`
-- L407-407: `openSheet()`
-- L408-408: `closeSheet()`
-- L411-411: `initData()`
-- L413-421: `api()`
-- L423-429: `pluralDays()`
-- L442-483: `bindDealSwipe()`
-- L485-502: `openDeleteDealConfirm()`
-- L506-539: `dealRowsHtml()`
-- L540-554: `bindDealRows()`
-- L556-556: `activeDealsOf()`
-- L558-567: `renderList()`
-- L571-571: `selectTab()`
-- L581-601: `renderFlatDeals()`
-- L603-611: `renderArchiveList()`
-- L613-619: `pluralDealers()`
-- L623-657: `renderDealerFolders()`
-- L659-679: `renderDealerFolder()`
-- L682-682: `auth_isRestricted()`
-- L693-720: `openNewDealSheet()`
-- L727-744: `askSamePerson()`
-- L749-880: `openPartySheet()`
-- L882-895: `createDeal()`
-- L900-907: `openDeal()`
-- L912-966: `moneyCardHtml()`
-- L968-1111: `renderDeal()`
-- L1115-1178: `openStageSheet()`
-- L1180-1195: `openProblemSheet()`
-- L1197-1268: `openDealEditSheet()`
-- L1273-1289: `saveDeal()`
-- L1294-1304: `loadCalcHistory()`
-- L1306-1352: `openCalcPicker()`
-- L1355-1370: `calcFillsForDeal()`
-- L1376-1435: `openParty()`
-- L1440-1446: `reloadIndexes()`
-- L1454-1457: `gate()`
-- L1459-1488: `boot()`
+- L222-222: `stagesOf()`
+- L229-237: `currentStage()`
+- L238-238: `stageState()`
+- L239-242: `isArchived()`
+- L246-253: `lastMovementAt()`
+- L254-257: `idleDays()`
+- L266-268: `moneyApplies()`
+- L273-276: `moneyCalc()`
+- L280-288: `moneyParts()`
+- L293-300: `moneyDue()`
+- L305-322: `fixMoneyAmounts()`
+- L339-339: `onlyDigits()`
+- L340-343: `formatDivisionCode()`
+- L344-351: `formatSnils()`
+- L352-368: `formatPhoneRu()`
+- L371-375: `bindMask()`
+- L379-385: `formatDateDdMmYyyy()`
+- L388-391: `formatMoney()`
+- L392-395: `tsToDdMmYyyy()`
+- L399-406: `parseDdMmYyyy()`
+- L407-407: `toast()`
+- L408-408: `openSheet()`
+- L409-409: `closeSheet()`
+- L412-412: `initData()`
+- L414-422: `api()`
+- L424-430: `pluralDays()`
+- L443-484: `bindDealSwipe()`
+- L486-503: `openDeleteDealConfirm()`
+- L507-540: `dealRowsHtml()`
+- L541-555: `bindDealRows()`
+- L557-557: `activeDealsOf()`
+- L559-568: `renderList()`
+- L572-572: `selectTab()`
+- L582-602: `renderFlatDeals()`
+- L604-612: `renderArchiveList()`
+- L614-620: `pluralDealers()`
+- L624-658: `renderDealerFolders()`
+- L660-680: `renderDealerFolder()`
+- L683-683: `auth_isRestricted()`
+- L694-721: `openNewDealSheet()`
+- L728-745: `askSamePerson()`
+- L750-881: `openPartySheet()`
+- L883-896: `createDeal()`
+- L901-908: `openDeal()`
+- L913-967: `moneyCardHtml()`
+- L969-1112: `renderDeal()`
+- L1116-1179: `openStageSheet()`
+- L1181-1196: `openProblemSheet()`
+- L1198-1269: `openDealEditSheet()`
+- L1274-1290: `saveDeal()`
+- L1295-1305: `loadCalcHistory()`
+- L1307-1353: `openCalcPicker()`
+- L1356-1371: `calcFillsForDeal()`
+- L1377-1436: `openParty()`
+- L1441-1447: `reloadIndexes()`
+- L1455-1458: `gate()`
+- L1460-1489: `boot()`

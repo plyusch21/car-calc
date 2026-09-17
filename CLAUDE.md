@@ -37,7 +37,17 @@ bundler. Keep it that way — don't introduce React/Vue/a bundler/npm deps
 unless explicitly asked; the whole point is that it's one file you can read
 top to bottom.
 
-- `index.html` — everything: markup skeleton, all CSS, all client JS. Organized
+- `lib/calc.js` — the calculation formula and everything it needs
+  (`DEFAULT_CONFIG`, the stored-config merge, `calcDeal`, `deliveryPrice`,
+  `convertToRub`, the TKS request body `customsPayload`, and
+  `customsAutoTotal`), exposed as one global `BkCalc` and loaded by a plain
+  `<script src="/lib/calc.js?v=N">` in both `index.html` and `deals.html`
+  (no modules, no bundler). Functions never read the global `CONFIG` — the
+  config is always an argument; `index.html` keeps thin wrappers with the
+  old names (`calcDeal(route,f)` etc.). Bump `?v=N` in both html files
+  whenever this file changes. Regression check: `node tools/calc-check.js`
+  must print the reference output recorded in `tools/calc-fixture.md`.
+- `index.html` — everything else: markup skeleton, all CSS, all client JS. Organized
   in numbered sections (search for `/* ---... N. ... ---... */` comment
   headers) — config, currency rates, customs calc, rendering, history,
   settings, KP-image builder, sharing, Telegram auth/gate, boot.
