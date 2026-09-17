@@ -230,9 +230,16 @@ reached that stage, it just isn't closed yet), so it can't drift from the
 marks themselves. The optional `shipping` stage has one more state (`skip`,
 "не требуется") that deliberately doesn't count toward status. Marking a
 stage in the middle of the list as `wip` or `done` auto-marks every earlier
-*unmarked* stage as `done` with `at: 0` and no note — a date there would be
-invented, and the blank is what shows it was closed retroactively; explicit
-marks (including `skip`) are never overwritten. Marking the template's
+stage that is unmarked **or `wip`** as `done` — unmarked ones get `at: 0` and
+no note (a date there would be invented, and the blank is what shows it was
+closed retroactively), former `wip` ones keep their date and note; `done`
+and `skip` are never overwritten. The reverse also holds (ТЗ 07): lowering a
+stage's rank (`''`=0, `wip`=1, `done`/`skip`=2) deletes every mark after it,
+money amounts included, and the stage sheet warns about it beforehand.
+Import's second stage is one merged «Договор / Предоплата» under the old
+key `contract` (the old `prepay` stage is gone; `migrateStages()` folds
+`stages.prepay` and `stages.booking.amount` into `contract` on first touch —
+no server-side migration). Marking the template's
 `final` stage (`issued`, "выдан авто") archives the deal automatically.
 
 Deleting a deal is permanent and complete (`removeDeal` in `api/deals.js`):
@@ -293,10 +300,12 @@ out — the snapshot is what actually renders in the deal card.
   Несколько расчётов без брони — источника нет, блок просит забронировать.
 - Взнос равен брокерским услугам (так же, как `downPayment = broker` в
   `calcDeal`) и засчитывается в счёт брокера: после него остаются комиссия
-  агента и доставка. У «Брони» есть состояние `skip` с подписью
+  агента и доставка. Взнос **поступает** на «Договор / Предоплата»
+  (`contract`), а «Бронь — пройден» его **удерживает** (подпись «удержана»,
+  больше не возвращается). У `contract` есть состояние `skip` с подписью
   «без предоплаты» (`skipLabel` в `STAGE_TEMPLATES`) — тогда брокер целиком
   уходит в остаток.
-- **Сумма фиксируется отметкой этапа и живёт в ней же**: `stages.booking.amount`
+- **Сумма фиксируется отметкой этапа и живёт в ней же**: `stages.contract.amount`
   и `stages.settle.amount` (рубли). Отдельной сущности «платёж» нет —
   платежей ровно два. Сервер отметки этапов хранит как есть, объявлять там
   новые поля не нужно. Зафиксированная сумма не меняется, даже если расчёт
@@ -330,8 +339,11 @@ out — the snapshot is what actually renders in the deal card.
   через четвёртый аргумент `BkCalc.calcDeal`. Ручная таможня
   (`customsOverride`) — пропуск с тостом.
 - **«Таможня / Лаборатория — пройден»** → `calcs[i].frozenAt`; сервер на
-  `recalcDealCalc` отвечает 409, кнопки и ссылки в карточке нет. Снял
-  отметку — заморозка снята.
+  `recalcDealCalc` отвечает 409, кнопки и ссылки в карточке нет. Заморозка
+  следует за состоянием этапа, а не за тем, какой этап отметили: таможня,
+  закрытая каскадом, тоже замораживает; откат — снимает. Если после
+  сохранения «Оплата инвойса» не `done` (откат), у источника снимается и
+  `ratesLock` — следующая оплата зафиксирует курс заново.
 
 Ошибка ТКС прерывает пересчёт целиком (ничего не сохраняется), в карточке
 «требуется пересчёт» (живёт в `state.recalcNeeded`, не в записи). Автозакрытие

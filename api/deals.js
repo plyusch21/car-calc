@@ -167,15 +167,20 @@ function describeChanges(before, after) {
     const b = sBefore[key] || {};
     const a = sAfter[key] || {};
     if (b.state !== a.state) {
-      // У «Брони» состояние skip значит не «не требуется», а «без
-      // предоплаты» — см. skipLabel в STAGE_TEMPLATES (deals.html).
+      // У «Договор / Предоплата» состояние skip значит не «не требуется», а
+      // «без предоплаты» — см. skipLabel в STAGE_TEMPLATES (deals.html).
       const word = a.state === 'done' ? 'пройден'
-        : (a.state === 'skip' ? (key === 'booking' ? 'без предоплаты' : 'не требуется')
+        : (a.state === 'skip' ? (key === 'contract' ? 'без предоплаты' : 'не требуется')
         : (a.state === 'wip' ? 'в процессе' : 'снят'));
       // Деньги по сделке фиксируются прямо в отметке этапа (amount) — без
       // этого куска в логе поступление денег нигде не было бы видно.
-      const money = (a.state === 'done' && typeof a.amount === 'number')
+      // Взнос поступает на «Договор / Предоплата» (amount там), «Бронь» его
+      // удерживает — если предоплата вообще была.
+      let money = (a.state === 'done' && typeof a.amount === 'number')
         ? ' — поступило ' + Math.round(a.amount) + ' ₽' : '';
+      if (key === 'booking' && a.state === 'done' && sAfter.contract && sAfter.contract.state !== 'skip') {
+        money += ' — предоплата удержана';
+      }
       out.push('этап «' + str(a.label || key, 60) + '» — ' + word + money);
     } else {
       // Сумма могла дофиксироваться позже самой отметки: у сделки с

@@ -126,6 +126,7 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 .calcitem-status{ margin-top:var(--sp-1); }
 .calcitem-actions{ display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2); }
 .calcitem-remove{ margin-left:auto; color:var(--muted); }
+.calcitem-open{ width:100%; margin-top:var(--sp-2); }
 
 .logitem{ font-size:var(--fs-sm); padding:var(--sp-2) 0; border-bottom:1px solid var(--border); }
 .logitem:last-child{border-bottom:none;}
@@ -203,9 +204,8 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);}
 const STAGE_TEMPLATES = {
   import: [
     {key:'pick',     label:'Подбор'},
-    {key:'contract', label:'Договор'},
-    {key:'prepay',   label:'Предоплата'},
-    {key:'booking',  label:'Бронь', skipLabel:'Без предоплаты'},
+    {key:'contract', label:'Договор / Предоплата', skipLabel:'Без предоплаты'},
+    {key:'booking',  label:'Бронь'},
     {key:'invoice',  label:'Оплата инвойса'},
     {key:'export',   label:'Экспорт'},
     {key:'customs',  label:'Таможня / Лаборатория'},
@@ -230,6 +230,47 @@ const PARTY_KIND_LABELS = { person:'Физик', dealer:'Дилер' };
 const LEVEL_LABELS = { none:'Нет доступа', own:'Только свои сделки', read_all:'Видит все, правит свои', full:'Полный' };
 
 function stagesOf(type){ return STAGE_TEMPLATES[type] || STAGE_TEMPLATES.import; }
+
+/* ТЗ 07: «Договор» и «Предоплата» слиты в один этап под ключом contract, а
+   взнос теперь поступает на нём (раньше — на «Брони»). В старых записях
+   могут лежать stages.prepay и stages.booking.amount — переносим их на
+   contract при первом касании сделки (открытие карточки, сохранение
+   отметки); массовой миграции на сервере нет. Меняет deal.stages на месте. */
+function migrateStages(deal){
+  const s = deal && deal.stages;
+  if(!s) return deal;
+  if(s.prepay){
+    const c = s.contract || {};
+    if(s.prepay.state === 'done' && c.state !== 'done'){
+      s.contract = Object.assign({}, c, { state:'done', at: s.prepay.at || 0, note: c.note || '', label: 'Договор / Предоплата' });
+    }
+    delete s.prepay;
+  }
+  if(s.booking && typeof s.booking.amount === 'number'){
+    const c = s.contract || {};
+    if(typeof c.amount !== 'number'){
+      const next = Object.assign({}, c, { amount: s.booking.amount });
+      if(c.state !== 'done'){ next.state = 'done'; next.at = c.at || 0; next.note = c.note || ''; next.label = 'Договор / Предоплата'; }
+      s.contract = next;
+    }
+    s.booking = Object.assign({}, s.booking);
+    delete s.booking.amount;
+  }
+  // Старая «Бронь — без предоплаты»: теперь это состояние «Договора /
+  // Предоплаты», и деньги (moneyDue) смотрят только туда — без переноса
+  // брокер у таких сделок снова ждал бы взноса. Саму отметку «Брони» не
+  // трогаем (см. РЕШЕНИЯ.md, 17.09.2026); переносим, только если договор
+  // ещё не отмечен или пройден без суммы.
+  if(s.booking && s.booking.state === 'skip'){
+    const c = s.contract || {};
+    if(!c.state || (c.state === 'done' && typeof c.amount !== 'number')){
+      s.contract = Object.assign({}, c, { state:'skip', at: c.at || s.booking.at || 0, note: c.note || '', label:'Договор / Предоплата' });
+    }
+  }
+  // Подпись в отметке нужна серверу для лога — пусть там будет новое имя.
+  if(s.contract && s.contract.label !== 'Договор / Предоплата') s.contract = Object.assign({}, s.contract, { label:'Договор / Предоплата' });
+  return deal;
+}
 
 /* Статус сделки нигде не хранится и руками не ставится — он всегда
    вычисляется как самый дальний отмеченный этап. Так статус не может
@@ -318,12 +359,13 @@ function moneyParts(calc){
 }
 /* Что причитается. Взнос равен брокерским услугам (так устроен калькулятор)
    и засчитывается в счёт брокера — после взноса клиенту остаётся комиссия
-   агента и доставка. Если предоплаты не было («Бронь — без предоплаты»),
+   агента и доставка. Если предоплаты не было («Договор / Предоплата — без
+   предоплаты»),
    брокер уходит в остаток целиком. */
 function moneyDue(deal){
   const p = moneyParts(moneyCalc(deal));
   if(!p) return null;
-  const noDeposit = stageState(deal,'booking') === 'skip';
+  const noDeposit = stageState(deal,'contract') === 'skip';
   const deliveryKnown = p.delivery !== null;
   const remainder = p.agent + (deliveryKnown ? p.delivery : 0) + (noDeposit ? p.broker : 0);
   return { deposit: noDeposit ? 0 : p.broker, remainder, deliveryKnown, parts:p, noDeposit };
@@ -331,11 +373,13 @@ function moneyDue(deal){
 /* Фиксация сумм в самих отметках этапов: сумма застывает в момент отметки
    «пройден» и дальше не меняется, даже если расчёт потом пересчитают.
    Повторное сохранение отметки (правка даты или заметки) сумму не трогает.
-   Снял отметку — сумма исчезает вместе с ней. */
+   Снял отметку — сумма исчезает вместе с ней (а у этапа без отметки
+   фиксировать нечего — пропускаем). Взнос поступает на «Договор /
+   Предоплата» (ТЗ 07), «Бронь» его только удерживает. */
 function fixMoneyAmounts(deal, stages){
   if(!moneyApplies(deal)) return;
   const due = moneyDue(Object.assign({}, deal, { stages }));
-  ['booking','settle'].forEach(k=>{
+  ['contract','settle'].forEach(k=>{
     if(!stages[k]) return;
     const m = Object.assign({}, stages[k]);
     const was = (deal.stages||{})[k] || {};
@@ -344,7 +388,7 @@ function fixMoneyAmounts(deal, stages){
     else if(due){
       // Источника нет (несколько расчётов без брони) или доставка неизвестна —
       // сумму не выдумываем, она дофиксируется, когда источник появится.
-      if(k==='booking' && !due.noDeposit) m.amount = due.deposit;
+      if(k==='contract' && !due.noDeposit) m.amount = due.deposit;
       if(k==='settle' && due.deliveryKnown) m.amount = due.remainder;
     }
     stages[k] = m;
@@ -549,7 +593,10 @@ function dealRowsHtml(rows, opts){
     const norm = idleNorm(d);
     const cls = d.archived ? 'good' : (days >= norm.bad ? 'bad' : (days >= norm.warn ? 'warn' : ''));
     const idleLabel = d.archived ? 'завершена' : 'без движения ' + pluralDays(days) + (norm !== IDLE_DEFAULT ? ' · норма до ' + norm.warn : '');
-    const stage = d.stageKey ? (stagesOf(d.type).find(s=>s.key===d.stageKey) || {}).label : null;
+    // 'prepay' — индекс старой сделки, ещё не сохранённой после слияния
+    // этапов (ТЗ 07): показываем его как «Договор / Предоплата».
+    const stageKey = d.stageKey === 'prepay' ? 'contract' : d.stageKey;
+    const stage = stageKey ? (stagesOf(d.type).find(s=>s.key===stageKey) || {}).label : null;
     const wip = d.stageState === 'wip';
     const party = state.parties.find(p=>p.id===d.partyId);
     const dealer = (party && party.dealerId) ? state.parties.find(p=>p.id===party.dealerId) : null;
@@ -944,8 +991,9 @@ async function openDeal(id){
 }
 
 /* Блок «Деньги» — только показ. Сумм руками здесь не ввести и кнопок нет
-   намеренно: единственные способы что-то изменить — отметить этап («Бронь»
-   даёт взнос, «Расчёт» — остаток) и пересчитать сам расчёт. */
+   намеренно: единственные способы что-то изменить — отметить этап
+   («Договор / Предоплата» даёт взнос, «Бронь» его удерживает, «Расчёт» —
+   остаток) и пересчитать сам расчёт. */
 function moneyCardHtml(d){
   const wrap = inner => `<div class="card"><h2>Деньги</h2>${inner}</div>`;
   if(!moneyCalc(d)) return wrap(`<div class="u-hint">${(d.calcs||[]).length
@@ -953,18 +1001,20 @@ function moneyCardHtml(d){
     : 'Привяжи расчёт — взнос, брокер, комиссия и доставка возьмутся из него.'}</div>`);
 
   const due = moneyDue(d);
-  const bm = (d.stages && d.stages.booking) || {};
+  const bm = (d.stages && d.stages.contract) || {};
+  const hm = (d.stages && d.stages.booking) || {};
   const sm = (d.stages && d.stages.settle) || {};
   const bs = bm.state || '', ss = sm.state || '';
   // Подписи идут отдельными строками под суммой, а не вторым столбцом:
   // в .kv левая колонка не сжимается, и на телефоне длинная расшифровка
   // выдавливала сумму в столбик по одной букве.
-  const row = (label, right, meta, hint) => `
+  const row = (label, right, meta, hint, meta2) => `
     <div class="kv" style="display:block;">
       <div style="display:flex;justify-content:space-between;gap:var(--sp-3);">
         <span class="k">${label}</span><span style="white-space:nowrap;">${right}</span>
       </div>
       <div style="font-size:var(--fs-xs);color:var(--muted);text-align:right;margin-top:2px;">${meta}</div>
+      ${meta2 ? `<div style="font-size:var(--fs-xs);color:var(--muted);text-align:right;margin-top:2px;">${meta2}</div>` : ''}
       ${hint ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px;">${hint}</div>` : ''}
     </div>`;
   // "поступил" без даты — этап закрыли задним числом (автоматически), даты
@@ -973,7 +1023,11 @@ function moneyCardHtml(d){
 
   const depFixed = typeof bm.amount === 'number';
   const depVal = depFixed ? bm.amount : due.deposit;
-  const depMeta = bs==='done' ? paid(bm) : (bs==='skip' ? 'без предоплаты' : 'ожидается · при отметке «Бронь»');
+  const depMeta = bs==='done' ? paid(bm) : (bs==='skip' ? 'без предоплаты' : 'ожидается · при отметке «Договор / Предоплата»');
+  // Вторая подпись — удержание: «Бронь — пройден» закрепляет взнос за
+  // машиной, после неё он не возвращается.
+  const holdMeta = bs==='skip' ? ''
+    : (hm.state==='done' ? 'удержана' + (hm.at ? ' ' + fmtDate(hm.at) : '') : 'будет удержана при отметке «Бронь»');
 
   const remFixed = typeof sm.amount === 'number';
   const remVal = remFixed ? sm.amount : due.remainder;
@@ -991,7 +1045,7 @@ function moneyCardHtml(d){
 
   return wrap(
     row('Первоначальный взнос', bs==='skip' ? '—' : fmtMoney(depVal) + ' ₽', depMeta,
-        'равен брокерским услугам, засчитывается в остаток') +
+        'равен брокерским услугам, засчитывается в остаток', holdMeta) +
     row('Остаток при расчёте', (remApprox ? 'от ' : '') + fmtMoney(remVal) + ' ₽', remMeta,
         bits.join(' · ') + (remApprox ? '<br>Доставка по РФ станет известна после пересчёта расчёта по курсам.' : '')) +
     `<div class="kv" style="align-items:flex-start;">
@@ -1003,7 +1057,7 @@ function moneyCardHtml(d){
 }
 
 function renderDeal(){
-  const d = state.deal;
+  const d = migrateStages(state.deal);
   const c = document.getElementById('content');
   document.getElementById('title').textContent = d.num;
   const stage = currentStage(d);
@@ -1022,10 +1076,14 @@ function renderDeal(){
     // Зафиксированная сумма живёт в самой отметке (см. fixMoneyAmounts) —
     // показываем её прямо здесь, чтобы поступление денег было видно в списке
     // этапов, а не только в блоке «Деньги».
+    // «Бронь — пройден» удерживает взнос, поступивший на «Договор /
+    // Предоплата» (если предоплата вообще была).
+    const held = st.key==='booking' && moneyApplies(d) && stageState(d,'contract')!=='skip';
     const meta = mark.state==='done' ? ('пройден' + (mark.at ? ' ' + fmtDate(mark.at) : '')
-        + (typeof mark.amount==='number' ? ' · ' + fmtMoney(mark.amount) + ' ₽ поступило' : ''))
+        + (typeof mark.amount==='number' ? ' · ' + fmtMoney(mark.amount) + ' ₽ поступило' : '')
+        + (held ? ' · предоплата удержана' : ''))
       : (mark.state==='wip' ? ('в процессе' + (mark.at ? ' с ' + fmtDate(mark.at) : ''))
-      : (mark.state==='skip' ? (st.skipLabel ? st.skipLabel.toLowerCase() : 'не требуется') : 'не пройден'));
+      : (mark.state==='skip' ? (st.skipLabel ? st.skipLabel.toLowerCase() : (st.optional ? 'не требуется' : 'без предоплаты')) : 'не пройден'));
     return `<div class="stage">
       <div class="mark ${cls}" data-stage="${esc(st.key)}">${glyph}</div>
       <div class="body">
@@ -1078,10 +1136,11 @@ function renderDeal(){
         const dis = state.recalcBusy ? ' disabled' : '';
         const status = calcStatusHtml(d, x);
         const actions = [];
+        let openBtn = '';
         if(!x.frozenAt && state.canWrite){
           if(multi && !x.booked) actions.push(`<button class="btn secondary small compact" data-book="${i}"${dis}>сделать основным</button>`);
           if(src && x.form) actions.push(`<button class="btn secondary small compact" data-recalc="${i}"${dis}>пересчитать по курсам</button>`);
-          if(src && x.form) actions.push(`<button class="btn secondary small compact" data-open-calc="${i}"${dis}>открыть в калькуляторе</button>`);
+          if(src && x.form) openBtn = `<button class="btn secondary small calcitem-open" data-open-calc="${i}"${dis}>открыть в калькуляторе</button>`;
           if(stageState(d,'invoice') !== 'done') actions.push(`<button class="btn secondary small compact calcitem-remove" data-unlink="${i}"${dis}>убрать</button>`);
         }
         return `
@@ -1096,6 +1155,7 @@ function renderDeal(){
           </div>
           ${status ? `<div class="u-hint calcitem-status">${status}</div>` : ''}
           ${actions.length ? `<div class="calcitem-actions">${actions.join('')}</div>` : ''}
+          ${openBtn}
         </div>`;}).join('') : '<div class="u-hint">Расчёты не привязаны.</div>'}
       ${state.canWrite ? `<button class="btn secondary small mt-3" id="dLinkCalc">Привязать расчёт из истории</button>` : ''}
       ${(d.calcs||[]).length ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:var(--sp-2);">Основной расчёт — тот, что едет на импорт по этой сделке. Если расчёт один, он основной сам по себе. После отметки «Оплата инвойса» пройденной остальные удалятся сами.</div>` : ''}
@@ -1176,9 +1236,17 @@ function renderDeal(){
 /* Отметка этапа. У необязательного этапа («отправка») три состояния —
    не пройден / пройден / не требуется; у остальных два. */
 function openStageSheet(key){
-  const d = state.deal;
-  const st = stagesOf(d.type).find(s=>s.key===key);
+  const d = migrateStages(state.deal);
+  const list = stagesOf(d.type);
+  const idx = list.findIndex(s=>s.key===key);
+  const st = list[idx];
   const mark = (d.stages && d.stages[key]) || {};
+  // Сколько отметок сбросится, если этот этап понизить (часть 6 ТЗ 07).
+  const after = list.slice(idx+1).filter(s=> d.stages && d.stages[s.key] && d.stages[s.key].state).length;
+  // skip без skipLabel/optional — старая «Бронь — без предоплаты»: вариант
+  // оставляем, иначе селект молча показал бы «Не пройден» и сохранение
+  // без изменений сработало бы как откат.
+  const skipText = st.skipLabel || (st.optional ? 'Не требуется' : (mark.state==='skip' ? 'Без предоплаты (старая отметка)' : ''));
   openSheet(`
     <h3>${esc(st.label)}</h3>
     <div class="field">
@@ -1187,9 +1255,11 @@ function openStageSheet(key){
         <option value="" ${!mark.state?'selected':''}>Не пройден</option>
         <option value="wip" ${mark.state==='wip'?'selected':''}>В процессе</option>
         <option value="done" ${mark.state==='done'?'selected':''}>Пройден</option>
-        ${(st.optional || st.skipLabel)?`<option value="skip" ${mark.state==='skip'?'selected':''}>${esc(st.skipLabel || 'Не требуется')}</option>`:''}
+        ${skipText?`<option value="skip" ${mark.state==='skip'?'selected':''}>${esc(skipText)}</option>`:''}
       </select>
     </div>
+    ${(mark.state==='done' || mark.state==='wip') && after
+      ? `<div class="notice warn">Если вернуть этап в «не пройден» или «в процессе», все этапы после него сбросятся (${after} шт.)</div>` : ''}
     <div class="field"><label>Дата</label><input type="text" id="stDate" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${mark.at?tsToDdMmYyyy(mark.at):tsToDdMmYyyy(Date.now())}"></div>
     <div class="field"><label>Заметка</label><textarea id="stNote">${esc(mark.note||'')}</textarea></div>
     ${st.final?`<div class="notice warn">Отметка «${esc(st.label)}» переводит сделку в архив.</div>`:''}
@@ -1204,23 +1274,30 @@ function openStageSheet(key){
     const val = document.getElementById('stState').value;
     const dateStr = document.getElementById('stDate').value.trim();
     const note = document.getElementById('stNote').value.trim();
+    migrateStages(d);
     const prev = (d.stages && d.stages[key]) || {};
     const stages = Object.assign({}, d.stages || {});
     if(!val){ delete stages[key]; }
     else {
       const at = dateStr ? (parseDdMmYyyy(dateStr) || Date.now()) : Date.now();
       stages[key] = { state: val, at, note, label: st.label };
-      // Отметили этап в середине списка — значит всё, что до него, по факту
-      // уже позади. Проставляем такие этапы пройденными без даты и заметки:
-      // дата тут была бы выдумкой, а так видно, что этап закрыт "задним
-      // числом". Уже отмеченное (в т.ч. "не требуется") не трогаем.
-      const list = stagesOf(d.type);
-      const idx = list.findIndex(s=>s.key===key);
-      list.slice(0, Math.max(idx,0)).forEach(prev=>{
-        if(!stages[prev.key] || !stages[prev.key].state){
-          stages[prev.key] = { state:'done', at:0, note:'', label: prev.label };
-        }
+      // Отметили этап (в процессе или пройден) — значит всё, что до него, по
+      // факту уже позади, в каком бы состоянии оно ни было. Пустые этапы
+      // закрываем без даты и заметки: дата тут была бы выдумкой, а так
+      // видно, что этап закрыт "задним числом". У бывших «в процессе» дата
+      // и заметка остаются. «Пройден» и «не требуется» не трогаем.
+      list.slice(0, Math.max(idx,0)).forEach(p=>{
+        const m = stages[p.key];
+        if(!m || !m.state) stages[p.key] = { state:'done', at:0, note:'', label: p.label };
+        else if(m.state === 'wip') stages[p.key] = Object.assign({}, m, { state:'done' });
       });
+    }
+    // Откат: этап понизили (пройден/не требуется → в процессе/не пройден,
+    // в процессе → не пройден) — всё после него обнуляется, вместе с
+    // суммами денег, лежащими в этих отметках.
+    const RANK = { '':0, wip:1, done:2, skip:2 };
+    if(RANK[val||''] < RANK[prev.state||'']){
+      list.slice(idx+1).forEach(p=>{ delete stages[p.key]; });
     }
     // Деньги: у «Брони» и «Расчёта» в момент отметки «пройден» фиксируем
     // сумму из расчёта. Автозакрытые этапы сюда тоже попадают — отметил
@@ -1237,17 +1314,21 @@ function openStageSheet(key){
       const booked = d.calcs.find(x=>x.booked);
       if(booked) patch.calcs = [Object.assign({}, booked, {booked:true})];
     }
-    // Заморозка расчёта (ТЗ 04): «Таможня / Лаборатория — пройден» ставит
-    // frozenAt у расчёта-источника в том же сохранении; любое другое
-    // состояние этого этапа заморозку снимает. Повторное сохранение уже
-    // пройденного этапа (правка заметки) момент заморозки не сдвигает.
-    if(key==='customs'){
-      const src = moneyCalc(d);
-      if(src){
-        const frozenAt = val==='done' ? (src.frozenAt || Date.now()) : 0;
-        if(frozenAt !== (src.frozenAt || 0)){
-          patch.calcs = (patch.calcs || d.calcs || []).map(x => x.id===src.id ? Object.assign({}, x, { frozenAt }) : x);
-        }
+    // Заморозка расчёта (ТЗ 04, ТЗ 07): расчёт-источник заморожен, пока
+    // «Таможня / Лаборатория» в состоянии «пройден» — неважно, отметили её
+    // явно или она закрылась каскадом; откат заморозку снимает. Повторное
+    // сохранение (правка заметки) момент заморозки не сдвигает.
+    // Курс инвойса: если «Оплата инвойса» больше не пройдена (откат) —
+    // зафиксированный курс снимается, следующая отметка зафиксирует новый.
+    const src = moneyCalc(d);
+    if(src){
+      const customsDone = !!(stages.customs && stages.customs.state==='done');
+      const frozenAt = customsDone ? (src.frozenAt || Date.now()) : 0;
+      const dropLock = !!src.ratesLock && !(stages.invoice && stages.invoice.state==='done');
+      if(frozenAt !== (src.frozenAt || 0) || dropLock){
+        const upd = { frozenAt };
+        if(dropLock) upd.ratesLock = null;
+        patch.calcs = (patch.calcs || d.calcs || []).map(x => x.id===src.id ? Object.assign({}, x, upd) : x);
       }
     }
     const saved = await saveDeal(Object.assign({}, d, patch));
