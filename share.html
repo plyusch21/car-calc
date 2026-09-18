@@ -38,7 +38,7 @@ function fail(msg){
 async function dataUrlToFile(dataUrl, name){
   const res = await fetch(dataUrl);
   const blob = await res.blob();
-  return new File([blob], name, { type: blob.type || 'image/png' });
+  return new File([blob], name, { type: blob.type || 'image/jpeg' });
 }
 
 (async function(){
@@ -83,7 +83,7 @@ async function dataUrlToFile(dataUrl, name){
   btn.onclick = async ()=>{
     btn.disabled = true;
     try{
-      const file = await dataUrlToFile(payload.imageDataUrl, 'baikal-auto-kp.png');
+      const file = await dataUrlToFile(payload.imageDataUrl, 'baikal-auto-kp.jpg');
       // Только файл, без text и title: то же правило, что в самом
       // приложении — WhatsApp на iOS не принимает файл вместе с текстом,
       // поэтому текст везде идёт через буфер обмена.

@@ -178,11 +178,17 @@ Mini App gate — walk the reporter through it before guessing at fixes.
 
 `buildKpHtml(route, f, r)` renders a fixed-design HTML card (logo, header,
 3 stat boxes, numbered payment breakdown, ИТОГО bar, optional insurance
-note, optional car-parameters table, footer) matching an approved design
-mockup pixel-for-pixel (the logo is literally cropped from that mockup PNG
-and embedded as `LOGO_DATA_URI`, not redrawn). `renderKpImageBlob` turns it
-into a PNG via html2canvas at a scale chosen to stay under mobile WebView
-canvas limits (~16M px area / ~4096px per side — a fixed high scale used to
+note, optional car-parameters table, footer) in the "Cobalt" design,
+matching the approved mockup `ТЗ/14-макет-фото-кп.html` (assembly D1). The
+logo is `logo-kp.png` — white lettering on a transparent background, for
+the dark gradient hero; the old `logo.png` (blue baked-in backdrop) stays
+in the repo untouched, and the owner may later drop a designer original in
+under the `logo-kp.png` name without a code change. Smallest type on the
+card is 17 px on purpose: messengers halve the width of a 1080 px image,
+and 14 px stopped being readable after that. `renderKpImageBlob` turns it
+into a JPEG (quality 0.92 — a 5–8 MB PNG gets recompressed far harder by
+Telegram than a ~1 MB JPEG) via html2canvas at a scale chosen to stay under
+mobile WebView canvas limits (~16M px area / ~4096px per side — a fixed high scale used to
 silently fail the whole render on real phones with long receipts).
 "Параметры автомобиля" section only appears when `f.showCarDetails` is on
 (same show/hide rule as the text message); individual fields inside show

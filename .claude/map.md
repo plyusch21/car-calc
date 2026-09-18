@@ -5,125 +5,125 @@
 Использование: найти нужный диапазон здесь, прочитать его `sed -n 'START,ENDp' файл`, а не файл целиком.
 
 
-## index.html (3054 строк)
+## index.html (3064 строк)
 
 ### Секции
 
-- L625-714: 1. Default configuration
-- L715-743: 2. State
-- L744-813: 3. Helpers
-- L814-939: 4. Currency rates — fetch via server-side proxy, manual always wins
-- L940-944: 5. Delivery lookup
-- L945-949: 6. Route → RUB conversion chains
-- L950-960: 7. Main calculation
-- L961-2332: 8. Rendering
-- L2333-2729: 9. Settings
-- L2730-2861: 10. Rate editor sheet
-- L2862-2906: 11. Nav + boot
-- L2907-3054: 12. Доступ через Telegram — приложение работает только как Mini App.
+- L628-717: 1. Default configuration
+- L718-746: 2. State
+- L747-816: 3. Helpers
+- L817-942: 4. Currency rates — fetch via server-side proxy, manual always wins
+- L943-947: 5. Delivery lookup
+- L948-952: 6. Route → RUB conversion chains
+- L953-963: 7. Main calculation
+- L964-2342: 8. Rendering
+- L2343-2739: 9. Settings
+- L2740-2871: 10. Rate editor sheet
+- L2872-2916: 11. Nav + boot
+- L2917-3064: 12. Доступ через Telegram — приложение работает только как Mini App.
 
 ### Функции
 
-- L592-600: `saveDeliveryPrefs()`
-- L601-623: `loadDeliveryPrefsFromCloud()`
-- L634-634: `applyStoredConfig()`
-- L647-647: `getInitData()`
-- L648-648: `getTg()`
-- L652-660: `tgHaptic()`
-- L666-669: `formHasData()`
-- L670-675: `updateClosingGuard()`
-- L684-697: `saveConfig()`
-- L698-703: `saveHistory()`
-- L708-713: `saveArchive()`
-- L720-735: `defaultForm()`
-- L751-751: `groupInt()`
-- L752-756: `fmt()`
-- L757-757: `num()`
-- L764-769: `invalidateCustomsAuto()`
-- L775-783: `computeAgeFromDate()`
-- L788-791: `applyAgeFromDate()`
-- L795-801: `formatNumInput()`
-- L802-802: `cleanNumInput()`
-- L808-808: `escapeHtml()`
-- L809-812: `openExternal()`
-- L827-832: `logRateHistory()`
-- L834-859: `applyAutoRate()`
-- L861-893: `fetchAutoRates()`
-- L902-920: `fetchCustomsQuote()`
-- L922-930: `setRawValue()`
-- L932-938: `clearManualOverride()`
-- L943-943: `deliveryPrice()`
-- L948-948: `convertToRub()`
-- L958-958: `lockedRates()`
-- L959-959: `calcDeal()`
-- L1001-1010: `rateWidgetData()`
-- L1011-1015: `isUpdatedToday()`
-- L1020-1024: `rateWidgetStatus()`
-- L1025-1040: `rateWidgetHtml()`
-- L1044-1052: `bindRateWidget()`
-- L1057-1066: `refreshRatesUI()`
-- L1071-1080: `fetchCbrReference()`
-- L1082-1088: `cbrReferenceHtml()`
-- L1090-1122: `openRatesSheet()`
-- L1127-1141: `ratesPreviewCardHtml()`
-- L1143-1161: `renderTabs()`
-- L1165-1179: `renderTopbar()`
-- L1181-1187: `renderContent()`
-- L1189-1189: `field()`
-- L1190-1190: `removeFromArr()`
-- L1195-1197: `carriedHint()`
-- L1201-1205: `unfilledHint()`
-- L1206-1206: `unfilledClass()`
-- L1210-1216: `clearFieldHints()`
-- L1218-1220: `cityOptions()`
-- L1225-1264: `resizeImageToBase64()`
-- L1282-1338: `runListingParse()`
-- L1340-1636: `renderCalc()`
-- L1638-1655: `carDetailLines()`
-- L1660-1664: `pushArchive()`
-- L1665-1801: `showResult()`
-- L1805-1807: `fmtRate()`
-- L1816-1934: `buildKpHtml()`
-- L1939-1970: `renderKpImageBlob()`
-- L1987-2133: `shareResult()`
-- L2144-2186: `bindHistorySwipe()`
-- L2188-2204: `openClearHistoryConfirm()`
-- L2206-2228: `openOtherRoutePicker()`
-- L2235-2258: `renderArchiveList()`
-- L2260-2331: `renderHistory()`
-- L2351-2418: `renderSettingsView()`
-- L2424-2436: `themeSettingsCard()`
-- L2437-2439: `saveThemeChoice()`
-- L2440-2455: `bindThemeSettings()`
-- L2461-2477: `openResetConfirm()`
-- L2479-2482: `fetchAdminUsers()`
-- L2483-2486: `adminAction()`
-- L2493-2520: `renderAdminUsersList()`
-- L2521-2541: `loadAdminCard()`
-- L2553-2561: `fetchDealsApi()`
-- L2562-2582: `loadDealsExtraCard()`
-- L2583-2599: `openDealsArchiveSheet()`
-- L2600-2600: `csvCellIdx()`
-- L2601-2601: `idleDaysIdx()`
-- L2602-2611: `dealsCsvIdx()`
-- L2612-2622: `partiesCsvIdx()`
-- L2623-2666: `runDealsExport()`
-- L2667-2685: `openWipeDealersConfirm()`
-- L2687-2697: `routeSettingsBlock()`
-- L2698-2707: `bindRouteSettings()`
-- L2709-2718: `deliveryTable()`
-- L2719-2728: `bindDeliveryTable()`
-- L2733-2733: `openSheet()`
-- L2734-2734: `closeSheet()`
-- L2739-2757: `openTextFieldSheet()`
-- L2803-2821: `openRateHistory()`
-- L2823-2860: `openRateEditor()`
-- L2886-2886: `toast()`
-- L2896-2903: `syncTelegramUI()`
-- L2904-2904: `renderAll()`
-- L2905-2905: `startApp()`
-- L2915-2929: `renderGate()`
-- L2931-3048: `bootGate()`
+- L595-603: `saveDeliveryPrefs()`
+- L604-626: `loadDeliveryPrefsFromCloud()`
+- L637-637: `applyStoredConfig()`
+- L650-650: `getInitData()`
+- L651-651: `getTg()`
+- L655-663: `tgHaptic()`
+- L669-672: `formHasData()`
+- L673-678: `updateClosingGuard()`
+- L687-700: `saveConfig()`
+- L701-706: `saveHistory()`
+- L711-716: `saveArchive()`
+- L723-738: `defaultForm()`
+- L754-754: `groupInt()`
+- L755-759: `fmt()`
+- L760-760: `num()`
+- L767-772: `invalidateCustomsAuto()`
+- L778-786: `computeAgeFromDate()`
+- L791-794: `applyAgeFromDate()`
+- L798-804: `formatNumInput()`
+- L805-805: `cleanNumInput()`
+- L811-811: `escapeHtml()`
+- L812-815: `openExternal()`
+- L830-835: `logRateHistory()`
+- L837-862: `applyAutoRate()`
+- L864-896: `fetchAutoRates()`
+- L905-923: `fetchCustomsQuote()`
+- L925-933: `setRawValue()`
+- L935-941: `clearManualOverride()`
+- L946-946: `deliveryPrice()`
+- L951-951: `convertToRub()`
+- L961-961: `lockedRates()`
+- L962-962: `calcDeal()`
+- L1006-1015: `rateWidgetData()`
+- L1016-1020: `isUpdatedToday()`
+- L1025-1029: `rateWidgetStatus()`
+- L1030-1045: `rateWidgetHtml()`
+- L1049-1057: `bindRateWidget()`
+- L1062-1071: `refreshRatesUI()`
+- L1076-1085: `fetchCbrReference()`
+- L1087-1093: `cbrReferenceHtml()`
+- L1095-1127: `openRatesSheet()`
+- L1132-1146: `ratesPreviewCardHtml()`
+- L1148-1166: `renderTabs()`
+- L1170-1184: `renderTopbar()`
+- L1186-1192: `renderContent()`
+- L1194-1194: `field()`
+- L1195-1195: `removeFromArr()`
+- L1200-1202: `carriedHint()`
+- L1206-1210: `unfilledHint()`
+- L1211-1211: `unfilledClass()`
+- L1215-1221: `clearFieldHints()`
+- L1223-1225: `cityOptions()`
+- L1230-1269: `resizeImageToBase64()`
+- L1287-1343: `runListingParse()`
+- L1345-1641: `renderCalc()`
+- L1643-1660: `carDetailLines()`
+- L1665-1669: `pushArchive()`
+- L1670-1806: `showResult()`
+- L1810-1812: `fmtRate()`
+- L1821-1941: `buildKpHtml()`
+- L1946-1980: `renderKpImageBlob()`
+- L1997-2143: `shareResult()`
+- L2154-2196: `bindHistorySwipe()`
+- L2198-2214: `openClearHistoryConfirm()`
+- L2216-2238: `openOtherRoutePicker()`
+- L2245-2268: `renderArchiveList()`
+- L2270-2341: `renderHistory()`
+- L2361-2428: `renderSettingsView()`
+- L2434-2446: `themeSettingsCard()`
+- L2447-2449: `saveThemeChoice()`
+- L2450-2465: `bindThemeSettings()`
+- L2471-2487: `openResetConfirm()`
+- L2489-2492: `fetchAdminUsers()`
+- L2493-2496: `adminAction()`
+- L2503-2530: `renderAdminUsersList()`
+- L2531-2551: `loadAdminCard()`
+- L2563-2571: `fetchDealsApi()`
+- L2572-2592: `loadDealsExtraCard()`
+- L2593-2609: `openDealsArchiveSheet()`
+- L2610-2610: `csvCellIdx()`
+- L2611-2611: `idleDaysIdx()`
+- L2612-2621: `dealsCsvIdx()`
+- L2622-2632: `partiesCsvIdx()`
+- L2633-2676: `runDealsExport()`
+- L2677-2695: `openWipeDealersConfirm()`
+- L2697-2707: `routeSettingsBlock()`
+- L2708-2717: `bindRouteSettings()`
+- L2719-2728: `deliveryTable()`
+- L2729-2738: `bindDeliveryTable()`
+- L2743-2743: `openSheet()`
+- L2744-2744: `closeSheet()`
+- L2749-2767: `openTextFieldSheet()`
+- L2813-2831: `openRateHistory()`
+- L2833-2870: `openRateEditor()`
+- L2896-2896: `toast()`
+- L2906-2913: `syncTelegramUI()`
+- L2914-2914: `renderAll()`
+- L2915-2915: `startApp()`
+- L2925-2939: `renderGate()`
+- L2941-3058: `bootGate()`
 
 
 ## deals.html (2006 строк)

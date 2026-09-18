@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="/lib/calc.js?v=1"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script>
 /* Тема оформления (ТЗ 09). Стоит до <style>, чтобы data-theme на <html>
    оказался на месте до первой отрисовки — без вспышки тёмного у тех, кто
@@ -372,57 +372,60 @@ input:disabled{ color:var(--muted); }
 .src-line b{color:var(--text);}
 
 /* -----------------------------------------------------------------------
-   Фото-КП клиенту — рисуется офф-скрин и превращается в PNG (html2canvas).
+   Фото-КП клиенту — рисуется офф-скрин и превращается в JPEG (html2canvas).
+   Дизайн «Кобальт», макет ТЗ/14-макет-фото-кп.html (сборка D1).
    Цвета захардкожены (не через переменные темы приложения): картинка одна
    и та же независимо от того, тёмная тема сейчас в калькуляторе или нет.
+   Ширина 1080 px, мелкий текст не меньше 17 px — мессенджеры ужимают
+   картинку примерно вдвое по ширине, и 14 px после сжатия не читались.
 ----------------------------------------------------------------------- */
-.kp-card{ width:1080px; background:#f7f9fc; font-family:'Inter',sans-serif; color:#1a2233; }
-.kp-header{ background:#255aa1; padding:40px 48px; display:flex; align-items:center; justify-content:space-between; gap:26px; }
+.kp-card{ width:1080px; font-family:'Inter',sans-serif; background:#ebebee; color:#15171e; }
+.kp-hero{ background:linear-gradient(160deg,#0d1626 0%,#12306a 70%,#1a4db5 100%); padding-bottom:36px; }
+.kp-header{ padding:40px 48px 28px; display:flex; align-items:center; justify-content:space-between; gap:26px; border-bottom:3px solid rgba(102,179,66,.75); }
 .kp-header-left{ display:flex; align-items:center; gap:26px; }
 .kp-logo{ height:64px; display:block; }
-.kp-header-div{ width:2px; align-self:stretch; background:rgba(255,255,255,.3); }
-.kp-h-title{ color:#fff; font-size:35px; font-weight:800; }
-.kp-h-route{ color:#fff; font-size:27px; font-weight:700; white-space:nowrap; }
-.kp-model{ padding:30px 48px 0; }
-.kp-model-label{ color:#8a93a6; font-size:15px; font-weight:700; letter-spacing:.03em; }
-.kp-model-name{ color:#1a2233; font-size:34px; font-weight:800; margin-top:6px; line-height:1.2; }
+.kp-header-div{ width:2px; align-self:stretch; background:rgba(255,255,255,.22); }
+.kp-h-title{ color:#eef3f8; font-size:36px; font-weight:800; }
+.kp-h-route{ color:#fff; background:rgba(255,255,255,.14); padding:10px 20px; border-radius:99px; font-size:24px; font-weight:700; white-space:nowrap; }
+.kp-model{ padding:32px 48px 0; }
+.kp-model-label{ color:#8fc0ff; font-size:16px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+.kp-model-name{ color:#fff; font-size:46px; font-weight:800; margin-top:6px; line-height:1.2; }
 .kp-stats{ display:flex; gap:16px; padding:28px 48px 0; }
-.kp-stat{ flex:1; background:#fff; border-radius:14px; padding:20px 22px; text-align:center; }
-.kp-stat-l{ color:#8a93a6; font-size:15px; font-weight:700; letter-spacing:.03em; }
-.kp-stat-v{ color:#1a2233; font-size:28px; font-weight:800; margin-top:8px; }
+.kp-stat{ flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); border-radius:14px; padding:20px 22px; text-align:center; }
+.kp-stat-l{ color:rgba(255,255,255,.7); font-size:16px; font-weight:600; letter-spacing:.03em; }
+.kp-stat-v{ color:#fff; font-size:30px; font-weight:700; margin-top:8px; font-variant-numeric:tabular-nums; }
 .kp-section{ padding:32px 48px 0; }
-.kp-h2{ font-size:26px; font-weight:800; margin-bottom:16px; }
-.kp-card-white{ background:#fff; border-radius:18px; padding:6px 30px; }
-.kp-row{ display:flex; align-items:flex-start; gap:20px; padding:26px 0; border-bottom:1px solid #e7eaf0; }
-.kp-row-last{ border-bottom:none; }
-.kp-badge{ flex:0 0 auto; width:46px; height:46px; border-radius:11px; background:#eaf1fa; color:#255aa1; font-weight:800; font-size:20px; display:flex; align-items:center; justify-content:center; }
+.kp-h2{ font-size:27px; font-weight:700; margin-bottom:16px; }
+.kp-card-white{ background:#fff; border-radius:18px; padding:6px 30px; box-shadow:0 2px 4px rgba(20,22,30,.06), 0 18px 34px -18px rgba(20,22,30,.45); }
+.kp-row{ display:flex; align-items:flex-start; gap:20px; padding:26px 0; position:relative; }
+.kp-row:not(.kp-row-last)::before{ content:''; position:absolute; left:22px; top:72px; bottom:-26px; width:2px; background:#c9d6f5; }
+.kp-badge{ flex:0 0 auto; width:46px; height:46px; border-radius:50%; background:#fff; border:3px solid #1f56c9; color:#1f56c9; font-weight:800; font-size:21px; display:flex; align-items:center; justify-content:center; position:relative; }
 .kp-row-body{ flex:1; min-width:0; }
-.kp-row-title{ font-weight:700; font-size:21px; }
-.kp-row-sub{ color:#8a93a6; font-size:16px; margin-top:3px; }
-.kp-row-amt{ font-weight:800; font-size:23px; white-space:nowrap; padding-top:2px; }
-.kp-sub-items{ margin-top:14px; display:flex; flex-direction:column; gap:9px; }
-.kp-sub-item{ display:flex; justify-content:space-between; gap:16px; font-size:16px; color:#4a5568; }
-.kp-sub-item b{ color:#1a2233; font-weight:700; white-space:nowrap; }
-.kp-total{ margin:24px 48px 0; background:#255aa1; border-radius:18px; padding:26px 30px; }
+.kp-row-title{ font-weight:600; font-size:22px; }
+.kp-row-sub{ color:#444a57; font-size:18px; margin-top:4px; }
+.kp-row-amt{ font-weight:700; font-size:25px; white-space:nowrap; padding-top:2px; font-variant-numeric:tabular-nums; }
+.kp-sub-items{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
+.kp-sub-item{ display:flex; justify-content:space-between; gap:16px; font-size:18px; color:#444a57; }
+.kp-sub-item b{ color:#15171e; font-weight:600; white-space:nowrap; }
+.kp-total{ margin:24px 48px 0; background:linear-gradient(135deg,#12306a,#1f56c9); border-radius:18px; padding:28px 30px; box-shadow:0 18px 34px -18px rgba(31,86,201,.7); }
 .kp-total-row{ display:flex; align-items:center; justify-content:space-between; gap:20px; }
-.kp-total-label{ color:#fff; font-size:27px; font-weight:800; letter-spacing:.02em; }
-.kp-total-note{ color:#cfe0f5; font-size:14.5px; margin-top:6px; }
+.kp-total-label{ color:#fff; font-size:28px; font-weight:800; letter-spacing:.02em; }
+.kp-total-note{ color:rgba(255,255,255,.72); font-size:17px; margin-top:6px; }
 .kp-total-right{ text-align:right; flex:0 0 auto; }
-.kp-total-amt{ color:#fff; font-size:42px; font-weight:800; white-space:nowrap; }
-.kp-badge-pill{ margin-top:8px; display:inline-block; background:#173d6f; color:#fff; font-size:14px; font-weight:700; padding:8px 16px; border-radius:99px; white-space:nowrap; }
-.kp-insurance{ margin:20px 48px 0; background:#fdf6e6; border-left:5px solid #9c6f1a; border-radius:14px; padding:20px 26px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
-.kp-ins-title{ color:#8a5a12; font-weight:700; font-size:17px; }
-.kp-ins-sub{ color:#96854f; font-size:14px; margin-top:4px; line-height:1.5; }
-.kp-ins-amt{ color:#1a2233; font-weight:800; font-size:22px; white-space:nowrap; }
-.kp-params .kp-prow{ padding:18px 0; border-bottom:1px solid #e7eaf0; display:flex; align-items:baseline; justify-content:space-between; gap:16px; }
+.kp-total-amt{ color:#fff; font-size:46px; font-weight:800; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.kp-badge-pill{ margin-top:8px; display:inline-block; background:rgba(255,255,255,.18); color:#fff; font-size:16px; font-weight:700; padding:8px 16px; border-radius:99px; white-space:nowrap; }
+.kp-insurance{ margin:20px 48px 0; background:#fff7e6; border-left:5px solid #c98a1f; border-radius:14px; padding:20px 26px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.kp-ins-title{ color:#8a5a12; font-weight:700; font-size:19px; }
+.kp-ins-sub{ color:#8f7a4a; font-size:17px; margin-top:4px; line-height:1.5; }
+.kp-ins-amt{ color:#15171e; font-weight:800; font-size:24px; white-space:nowrap; }
+.kp-params .kp-prow{ padding:18px 0; border-bottom:1px solid #dcdde3; display:flex; align-items:baseline; justify-content:space-between; gap:16px; }
 .kp-params .kp-prow:last-child{ border-bottom:none; }
 .kp-prow-2{ display:flex; gap:40px; }
 .kp-prow-2>div{ flex:1; display:flex; align-items:baseline; justify-content:space-between; gap:16px; }
-.kp-plabel{ color:#5c6a82; font-size:16px; font-weight:700; }
-.kp-pval{ font-weight:700; font-size:17px; text-align:right; }
-.kp-pval-model{ font-size:23px; font-weight:800; color:#255aa1; }
+.kp-plabel{ color:#33394a; font-size:18px; font-weight:600; }
+.kp-pval{ font-weight:600; font-size:19px; text-align:right; }
 .kp-pval-wrap{ text-align:right; font-weight:600; max-width:640px; line-height:1.5; }
-.kp-footer{ margin-top:36px; background:#255aa1; color:#cfe0f5; font-size:16px; text-align:center; line-height:1.6; padding:26px 48px; }
+.kp-footer{ margin-top:36px; background:#0d1626; color:#8fa4b8; font-size:17px; text-align:center; line-height:1.6; padding:26px 48px; }
 
 /* Утилитарные классы — шкала отступов/шрифтов, см. tools/mapgen.sh note in CLAUDE.md */
 .mt-2{margin-top:var(--sp-2);}   .mb-2{margin-bottom:var(--sp-2);}
@@ -983,17 +986,19 @@ const ROUTE_PREPOSITIONAL = { china:'Китае', japan:'Японии', korea:'�
 const RATE_STAT_LABEL = {
   china:'КУРС ЮАНЯ (ВТБ)', japan:'КУРС ЙЕНЫ (АТБ)', korea:'КУРС ВОНЫ (USDT)', eaeu:'КУРС USD'
 };
-// Логотип компании для КП-картинки клиенту — вырезан из готового макета
-// (BAIKAL AUTO, точный фон #255AA1 под шапку картинки). Раньше был встроен
-// прямо в index.html строкой на 157 КБ (base64) — грузился при КАЖДОМ
-// заходе, даже если КП в этот раз не понадобится вовсе. Вынесен в
-// отдельный logo.png; браузер запрашивает его сам, только когда
-// buildKpHtml() вставляет <img src="logo.png"> в разметку КП — то есть
+// Логотип компании для КП-картинки клиенту — версия для тёмной шапки
+// «Кобальт» (ТЗ 14): белые буквы и зелёный Байкал на ПРОЗРАЧНОМ фоне, без
+// впечатанной подложки (у старого logo.png она была — синяя #255AA1, под
+// прежнюю шапку; сам logo.png остаётся в репозитории нетронутым). Раньше
+// логотип был встроен прямо в index.html строкой на 157 КБ (base64) —
+// грузился при КАЖДОМ заходе, даже если КП в этот раз не понадобится
+// вовсе. Вынесен в отдельный файл; браузер запрашивает его сам, только когда
+// buildKpHtml() вставляет <img src="logo-kp.png"> в разметку КП — то есть
 // лениво, непосредственно перед первым рендером КП, а не раньше.
 // renderKpImageBlob ниже уже ждёт img.complete/onload перед рендером —
 // с реальным URL (в отличие от мгновенного data:) это ожидание наконец
 // делает то, для чего написано.
-const LOGO_URL = 'logo.png';
+const LOGO_URL = 'logo-kp.png';
 
 // Курс, который показываем в новом блоке над «Автозаполнением» на экране
 // расчёта — по направлению. Для Кореи это тот же расчётный курс (USDT/₽ ÷
@@ -1725,7 +1730,7 @@ function showResult(route, f, opts){
   // (замечено на WhatsApp). Стартуя рендер заранее, к моменту клика картинка
   // обычно уже готова, и navigator.share() вызывается почти сразу за ним.
   const kpFilePromise = renderKpImageBlob(route, f, r)
-    .then(blob => blob ? new File([blob], 'baikal-auto-kp.png', {type:'image/png'}) : null)
+    .then(blob => blob ? new File([blob], 'baikal-auto-kp.jpg', {type:'image/jpeg'}) : null)
     .catch(()=>null);
 
   // После отправки/сохранения форма чистится, КРОМЕ этих полей — обычно
@@ -1890,6 +1895,7 @@ function buildKpHtml(route, f, r){
 
   return `
     <div class="kp-card">
+      <div class="kp-hero">
       <div class="kp-header">
         <div class="kp-header-left">
           <img class="kp-logo" src="${LOGO_URL}" alt="">
@@ -1903,6 +1909,7 @@ function buildKpHtml(route, f, r){
         <div class="kp-stat"><div class="kp-stat-l">ДАТА РАСЧЁТА</div><div class="kp-stat-v">${dateStr}</div></div>
         <div class="kp-stat"><div class="kp-stat-l">${RATE_STAT_LABEL[route]}</div><div class="kp-stat-v">${fmtRate(r.effectiveRate)} ₽</div></div>
         <div class="kp-stat"><div class="kp-stat-l">ЦЕНА АВТО</div><div class="kp-stat-v">${suf}${groupInt(Math.round(r.nativeTotal).toString())}</div></div>
+      </div>
       </div>
       <div class="kp-section">
         <div class="kp-h2">Разбивка платежей</div>
@@ -1959,8 +1966,11 @@ async function renderKpImageBlob(route, f, r, maxScale){
     const MAX_SIDE = 4096, MAX_AREA = 16777216;
     let scale = Math.min(maxScale||6, MAX_SIDE/w, MAX_SIDE/h, Math.sqrt(MAX_AREA/(w*h)));
     scale = Math.max(scale, 1);
-    const canvas = await html2canvas(card, { scale, backgroundColor:'#f7f9fc', letterRendering:true });
-    return await new Promise(res=> canvas.toBlob(res, 'image/png'));
+    // letterRendering убран (ТЗ 14): html2canvas с ним рисует каждую букву
+    // отдельно, кернинг гуляет и текст выглядит рваным. JPEG вместо PNG —
+    // PNG в 5–8 МБ мессенджеры пережимают жёстче, чем JPEG в ~1 МБ.
+    const canvas = await html2canvas(card, { scale, backgroundColor:'#ebebee' });
+    return await new Promise(res=> canvas.toBlob(res, 'image/jpeg', 0.92));
   } catch(e){
     console.error('renderKpImageBlob failed', e);
     return null;
