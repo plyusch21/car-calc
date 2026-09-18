@@ -19,6 +19,14 @@
 (function(){
   var KEY = 'bk_theme_v1', BG = { dark:'#070c14', light:'#ebebee' }, memMode = null;
   function tg(){ return window.Telegram && window.Telegram.WebApp; }
+  function getInitData(){ var t = tg(); return (t && t.initData) || ''; }
+  // Поля авторизации (ТЗ 15): внутри Telegram — initData, вне его — сессия
+  // из localStorage (bk_session_v1). Копия общей authFields() ниже по файлу.
+  function authFields(){
+    var d = getInitData(); if(d) return { initData:d };
+    var sess = ''; try{ sess = localStorage.getItem('bk_session_v1') || ''; }catch(e){}
+    return { session:sess };
+  }
   function mode(){
     try{ var v = JSON.parse(localStorage.getItem(KEY)); if(v && /^(dark|light|auto)$/.test(v.mode)) return v.mode; }catch(e){}
     return memMode || 'dark';
@@ -33,7 +41,7 @@
   function apply(){
     var th = effective(), t = tg();
     document.documentElement.setAttribute('data-theme', th);
-    try{ if(t && t.initData){ t.setHeaderColor && t.setHeaderColor(BG[th]); t.setBackgroundColor && t.setBackgroundColor(BG[th]); } }catch(e){}
+    try{ if(t && getInitData()){ t.setHeaderColor && t.setHeaderColor(BG[th]); t.setBackgroundColor && t.setBackgroundColor(BG[th]); } }catch(e){}
     return th;
   }
   function setMode(m){
@@ -44,8 +52,8 @@
   // Выбор уходит на сервер (api/state.js, saveTheme). Промис отклоняется
   // при ошибке — страница показывает тост, локальный выбор остаётся.
   function save(m){
-    var t = tg(), opt = { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ initData:(t && t.initData) || '', action:'saveTheme', theme:m }) };
+    var opt = { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(Object.assign({ action:'saveTheme', theme:m }, authFields())) };
     try{ opt.signal = AbortSignal.timeout(15000); }catch(e){}
     return fetch('/api/state', opt).then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); });
   }
@@ -662,15 +670,21 @@ function openSheet(html){ document.getElementById('sheetBody').innerHTML = html;
 function closeSheet(){ document.getElementById('sheetOverlay').classList.remove('open'); }
 document.getElementById('sheetOverlay').onclick = (e)=>{ if(e.target.id==='sheetOverlay') closeSheet(); };
 
-function initData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
+function getInitData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
+function inTelegram(){ return !!getInitData(); }
+// Сессия входа вне Telegram (ТЗ 15) — выдаётся только на главной (/),
+// здесь лишь читается; см. index.html authFields() и api/_lib/session.js.
+function getSession(){ try{ return localStorage.getItem('bk_session_v1') || ''; }catch(e){ return ''; } }
+// Единственный источник полей авторизации для любого запроса к серверу.
+function authFields(){ const d = getInitData(); return d ? { initData:d } : { session:getSession() }; }
 
 async function api(action, payload){
   const res = await fetch('/api/deals', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(Object.assign({ initData: initData(), action }, payload || {}))
+    body: JSON.stringify(Object.assign(authFields(), { action }, payload || {}))
   });
   const data = await res.json();
-  if(data.error) throw new Error(data.error);
+  if(data.error){ const err = new Error(data.error); err.http = res.status; throw err; }
   return data;
 }
 
@@ -1659,7 +1673,7 @@ async function loadCalcState(){
   if(state.calcConfig && state.calcHistory) return state;
   const res = await fetch('/api/state', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ initData: initData(), action:'get' })
+    body: JSON.stringify(Object.assign(authFields(), { action:'get' }))
   });
   const data = await res.json();
   if(data.error) throw new Error(data.error);
@@ -1728,7 +1742,7 @@ async function recalcBookedCalc(deal, mode, atTs){
       if(historic){
         const res = await fetch('/api/state', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ initData: initData(), action:'getRatesAt', at: atTs })
+          body: JSON.stringify(Object.assign(authFields(), { action:'getRatesAt', at: atTs }))
         });
         const data = await res.json();
         if(data.error) throw new Error(data.error);
@@ -1748,7 +1762,7 @@ async function recalcBookedCalc(deal, mode, atTs){
     if(!form.customsOverride){
       let data;
       try{
-        const payload = Object.assign({ initData: initData() }, BkCalc.customsPayload(cfg, route, form));
+        const payload = Object.assign(authFields(), BkCalc.customsPayload(cfg, route, form));
         const res = await fetch(cfg.customsProxyUrl || '/api/customs', {
           method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload),
           signal: AbortSignal.timeout(25000) // как в калькуляторе: сервер сам ждёт TKS 8с + резерв alta.ru
@@ -1965,15 +1979,21 @@ function gate(html){
   document.getElementById('content').innerHTML = html;
 }
 
+// Вне Telegram без сессии — на главную: вход (Telegram OpenID Connect,
+// ТЗ 15) делается только там, чтобы не дублировать OAuth-логику.
+function gateLogin(){
+  gate(`<div class="emptystate"><div class="big">Войдите в калькулятор</div>Вход выполняется на главной странице приложения.<br><a class="btn secondary mt-4" href="/" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none;max-width:320px;">Перейти ко входу</a></div>`);
+}
+
 async function boot(){
   const tg = window.Telegram && window.Telegram.WebApp;
-  if(!tg || !tg.initData){
-    gate(`<div class="emptystate"><div class="big">Откройте через Telegram</div>Раздел работает только внутри Telegram — откройте бота и запустите мини-приложение.</div>`);
-    return;
+  if(!inTelegram()){
+    // Обычный браузер: работаем с сессией; --tg-top-pad остаётся 0px.
+    if(!getSession()){ gateLogin(); return; }
   }
   // Шапка и фон Telegram — в цвет var(--bg) текущей темы (BkTheme в <head>, ТЗ 09).
-  try{ tg.ready(); tg.expand(); BkTheme.apply(); }catch(e){}
-  try{
+  if(inTelegram()) try{ tg.ready(); tg.expand(); BkTheme.apply(); }catch(e){}
+  if(inTelegram()) try{
     // См. index.html/bootGate() — тот же приём: с Bot API 8.0 Telegram сам
     // кладёт точный отступ в --tg-content-safe-area-inset-top, наш расчёт
     // остаётся только запасным путём для клиентов без этой переменной.
@@ -1990,6 +2010,9 @@ async function boot(){
   try{
     await reloadIndexes();
   }catch(e){
+    // Вне Telegram 401 — сессия истекла или доступ не подтверждён: вход и
+    // статус показывает главная, сюда только ссылка на неё.
+    if(!inTelegram() && e.http === 401){ gateLogin(); return; }
     gate(`<div class="emptystate"><div class="big">Нет доступа</div>${esc(e.message)}<br><button class="btn secondary mt-4" id="retry">Повторить</button></div>`);
     const r = document.getElementById('retry'); if(r) r.onclick = ()=> location.reload();
     return;

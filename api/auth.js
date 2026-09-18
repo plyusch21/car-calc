@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const result = await authenticate(body.initData);
+    const result = await authenticate(body.initData, body.session);
     if (!result.ok) {
       res.status(401).send(JSON.stringify({ status: 'error', error: result.error }));
       return;

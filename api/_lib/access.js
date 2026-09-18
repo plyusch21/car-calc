@@ -13,20 +13,49 @@
  * empty) is auto-approved as the owner — expected to be whoever sets
  * this up and opens it first to test it. Everyone after that starts as
  * "pending" until the owner approves them from Settings.
+ *
+ * Два способа подтвердить личность (ТЗ 15), оба дают один и тот же
+ * Telegram user id и проходят одну и ту же логику ниже:
+ *   1) initData мини-приложения (подпись бота, verifyInitData) — как было;
+ *   2) сессия приложения (api/_lib/session.js), выданная api/login.js
+ *      после входа через Telegram OpenID Connect в обычном браузере.
+ * Сначала initData (если есть и валиден), иначе сессия; нет ни того, ни
+ * другого — прежняя ошибка, вызывающие отвечают 401.
  */
 
 const { kv } = require('./kv');
 const { verifyInitData } = require('./telegram');
+const { verifySession } = require('./session');
 const { sendOwnerMessage, escapeTg } = require('./notify');
 
-async function authenticate(initData) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) return { ok: false, error: 'TELEGRAM_BOT_TOKEN не настроен на сервере' };
+async function authenticate(initData, session) {
+  let user = null;
+  let error = '';
+  if (initData) {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) return { ok: false, error: 'TELEGRAM_BOT_TOKEN не настроен на сервере' };
+    const verified = verifyInitData(initData, botToken);
+    if (verified) user = verified.user;
+    else error = 'Не удалось подтвердить данные Telegram (устарели или не совпадает подпись)';
+  }
+  if (!user && session) {
+    const s = verifySession(session);
+    if (s) {
+      // В сессии имя одной строкой (как в id_token); first/last нужны только
+      // чтобы результат совпадал по форме с путём через initData.
+      const sp = s.name.indexOf(' ');
+      user = {
+        id: s.uid,
+        first_name: sp > 0 ? s.name.slice(0, sp) : s.name,
+        last_name: sp > 0 ? s.name.slice(sp + 1) : '',
+        username: s.username
+      };
+    } else {
+      error = 'Сессия недействительна или истекла — войдите заново';
+    }
+  }
+  if (!user) return { ok: false, error: error || 'Не удалось подтвердить данные Telegram (устарели или не совпадает подпись)' };
 
-  const verified = verifyInitData(initData, botToken);
-  if (!verified) return { ok: false, error: 'Не удалось подтвердить данные Telegram (устарели или не совпадает подпись)' };
-
-  const { user } = verified;
   const uid = String(user.id);
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ');
   const username = user.username || '';

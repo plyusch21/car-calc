@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const auth = await authenticate(body.initData);
+    const auth = await authenticate(body.initData, body.session);
     if (!auth.ok) { res.status(401).send(JSON.stringify({ error: auth.error })); return; }
     if (!auth.record.isOwner) { res.status(401).send(JSON.stringify({ error: 'Доступ к этому разделу — только у владельца' })); return; }
 

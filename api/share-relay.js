@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
       // 12 случайных байт не подобрать, и читается он один раз (см.
       // ЗАДАНИЕ.md Блок 7 и комментарий в шапке файла).
       const { authenticate } = require('./_lib/access');
-      const auth = await authenticate(body.initData);
+      const auth = await authenticate(body.initData, body.session);
       if (!auth.ok || auth.record.status !== 'approved') {
         res.status(401).send(JSON.stringify({ error: auth.ok ? 'доступ не подтверждён' : auth.error }));
         return;

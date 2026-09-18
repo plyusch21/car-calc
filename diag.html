@@ -40,9 +40,13 @@
 
 <script>
 const log = document.getElementById('log');
-// initData есть, только если /diag открыт переходом внутри Mini App —
-// /api/parse-listing без него отвечает 401.
-function initData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
+// Вход: initData есть, только если /diag открыт переходом внутри Mini App;
+// вне Telegram — сессия из localStorage (bk_session_v1, ТЗ 15), выданная на
+// главной. /api/parse-listing без того и другого отвечает 401.
+function getInitData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
+function getSession(){ try{ return localStorage.getItem('bk_session_v1') || ''; }catch(e){ return ''; } }
+function authFields(){ const d = getInitData(); return d ? { initData:d } : { session:getSession() }; }
+function hasLogin(){ return !!(getInitData() || getSession()); }
 function write(line, cls){
   const d = document.createElement('div');
   if(cls) d.className = cls;
@@ -73,7 +77,7 @@ document.getElementById('btnInfo').onclick = ()=>{
   // есть и в обычном браузере — там у него platform 'unknown'.
   const inTg = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.platform !== 'unknown');
   write('В Telegram WebView: ' + inTg);
-  write('Вход через Telegram (initData): ' + (initData() ? 'есть' : 'нет'));
+  write('Вход: ' + (getInitData() ? 'Mini App' : (getSession() ? 'сессия' : 'нет')), hasLogin() ? 'ok' : 'bad');
   if(inTg){
     write('Telegram platform: ' + window.Telegram.WebApp.platform);
     write('Telegram version: ' + window.Telegram.WebApp.version);
@@ -197,7 +201,7 @@ document.getElementById('btnSheet').onclick = async ()=>{
     const res = await fetch('/api/parse-listing', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ image: prepared.base64, mimeType: 'image/jpeg', initData: initData() })
+      body: JSON.stringify(Object.assign({ image: prepared.base64, mimeType: 'image/jpeg' }, authFields()))
     });
     data = await res.json();
   }catch(e){ write('Сеть/сервер: ' + e.message, 'bad'); return; }
@@ -251,7 +255,7 @@ document.getElementById('btnFreeform').onclick = async ()=>{
     const res = await fetch('/api/parse-listing', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ image: prepared.base64, mimeType: 'image/jpeg', debugFreeform: true, initData: initData() })
+      body: JSON.stringify(Object.assign({ image: prepared.base64, mimeType: 'image/jpeg', debugFreeform: true }, authFields()))
     });
     data = await res.json();
   }catch(e){ write('Сеть/сервер: ' + e.message, 'bad'); return; }
@@ -268,7 +272,7 @@ document.getElementById('btnChe168').onclick = async ()=>{
   clear();
   const url = document.getElementById('che168Url').value.trim();
   if(!url){ write('Сначала вставьте ссылку на объявление che168', 'bad'); return; }
-  if(!initData()){ write('Нет входа через Telegram — откройте эту страницу из приложения', 'bad'); return; }
+  if(!hasLogin()){ write('Нет входа — откройте эту страницу из приложения (Настройки → Доступ → Диагностика)', 'bad'); return; }
   write('Запрашиваю с сервера: ' + url);
   const started = Date.now();
   let data;
@@ -276,7 +280,7 @@ document.getElementById('btnChe168').onclick = async ()=>{
     const res = await fetch('/api/parse-listing', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ debugChe168Url: url, initData: initData() })
+      body: JSON.stringify(Object.assign({ debugChe168Url: url }, authFields()))
     });
     data = await res.json();
   }catch(e){ write('Сеть/сервер: ' + e.message, 'bad'); return; }

@@ -80,6 +80,9 @@ top to bottom.
 - `api/auth.js`, `api/admin.js`, `api/state.js` — Telegram `initData`
   verification (`api/_lib/telegram.js`), the access-approval system
   (`api/_lib/access.js`), and cross-device config/history sync via KV.
+- `api/login.js` + `api/_lib/session.js` — "Войти через Telegram" for
+  the ordinary-browser case (Telegram OpenID Connect → app session), see
+  Access below.
 - `api/share-relay.js` — short-lived (10 min, one-time-read) KV-backed
   handoff used only by the Android "no Web Share API inside Telegram's
   WebView" workaround (see Sharing below).
@@ -104,14 +107,66 @@ in the merge whitelist — the default should be "no, comes from code."**
 
 ### Access
 
-Telegram `initData` is the only trust signal — verified server-side
-(`verifyInitData` in `api/_lib/telegram.js`), never trust `initDataUnsafe`
-client-side data for access decisions. First person ever to open the app
-becomes the owner automatically; everyone else needs owner approval
-(Settings → Доступ к приложению). The app refuses to render at all without
-valid `initData` — see the gate in `index.html` (search "Доступ через
-Telegram" in `renderGate`) — this is also why `diag.html`/`share.html`
-exist as separate ungated static pages (see below).
+Two ways to prove who the visitor is, both resolving to the **same
+Telegram user id** and the same `access` HASH record (ТЗ 15):
+
+1. **Inside Telegram** — Mini App `initData`, verified server-side
+   (`verifyInitData` in `api/_lib/telegram.js`); never trust
+   `initDataUnsafe` client-side data for access decisions.
+2. **In an ordinary browser** (Safari/Chrome/"add to Home Screen") —
+   "Войти через Telegram": Telegram OpenID Connect
+   (https://core.telegram.org/widgets/login), authorization code + PKCE
+   S256, **full-page redirect** to `oauth.telegram.org/auth` and back to
+   `/?code=…&state=…` (no popup — unreliable in a Home-Screen web app on
+   iPhone). `api/login.js`: `start` stores `state`→`code_verifier` in KV
+   (`login:<state>`, 10 min, read once with GETDEL) and returns the auth
+   URL; `callback` exchanges the code at the token endpoint (Basic client
+   auth), verifies the `id_token` fully with `node:crypto` (JWKS signature
+   RS256/ES256/EdDSA/ES256K by header `alg`/`kid`, JWKS cached 1 h in
+   function memory, `iss`, `aud`, `exp`), takes `uid = sub` (the numeric
+   Telegram user id — same as `user.id` in `initData`), `name`,
+   `preferred_username`, and issues an **app session**:
+   `base64url(JSON{uid,name,username,iat,exp}).base64url(HMAC-SHA256 by
+   SESSION_SECRET)`, 90 days (`api/_lib/session.js`). Stored client-side in
+   `localStorage` `bk_session_v1`. No server-side session list: "Выйти"
+   just clears the string; to revoke one person set them to `revoked` in
+   Settings → Доступ (checked on every request); to revoke everyone at
+   once rotate `SESSION_SECRET`. `redirect_uri` is the constant
+   `https://car-calc-eight.vercel.app/` (must match BotFather's Redirect
+   URIs exactly, trailing slash included) — site login therefore only
+   works on production, not on preview deployments; the Mini App path is
+   unaffected there. Env vars: `TELEGRAM_LOGIN_CLIENT_ID`,
+   `TELEGRAM_LOGIN_CLIENT_SECRET` (BotFather → Login Widget → OpenID
+   Connect), `SESSION_SECRET`.
+
+`authenticate(initData, session)` in `api/_lib/access.js` is the single
+place identity becomes `{uid, user, record}`: `initData` first (if present
+and valid), else `session`; both then run the same access logic
+(pending auto-request, owner notification, name refresh). **Every API
+handler calls it with both arguments** (`authenticate(body.initData,
+body.session)`). First person ever to open the app becomes the owner
+automatically; everyone else needs owner approval (Settings → Доступ к
+приложению).
+
+**Client rule: every request to the server goes through `authFields()`**
+— `{initData}` inside Telegram, `{session}` outside — spread into the
+JSON body (`...authFields()`), in `index.html`, `deals.html` and
+`diag.html` alike; the `BkTheme` script in `<head>` has its own copy
+because it runs before the shared one is declared. Never read
+`Telegram.WebApp.initData` anywhere else. The gate (`bootGate` /
+`renderGate` in `index.html`) shows the login screen when there is neither
+`initData` nor a session, finishes the OAuth callback from the URL
+(`finishLoginFromUrl`, then `history.replaceState` to drop the params),
+and on a 401 from `/api/auth` outside Telegram clears the session and
+shows the login screen again (expired or `SESSION_SECRET` rotated) instead
+of the generic error. Login happens only on `/`; `deals.html` without a
+session shows "Войдите в калькулятор" with a link to `/`. Outside
+Telegram everything bound to `Telegram.WebApp` is a no-op by
+`inTelegram()`: `--tg-top-pad` stays `0px`, no BackButton (sheets get a ✕
+in their header, settings subsections have "← Назад"), `openExternal()`
+is `window.open`, `tgHaptic`/CloudStorage are skipped, and the share-relay
+path (`/share`) is only taken inside Telegram. Settings → «Аккаунт» shows
+the name, the login method, and «Выйти» (outside Telegram only).
 
 ## The calculation
 

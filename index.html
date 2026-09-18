@@ -20,6 +20,16 @@
 (function(){
   var KEY = 'bk_theme_v1', BG = { dark:'#070c14', light:'#ebebee' }, memMode = null;
   function tg(){ return window.Telegram && window.Telegram.WebApp; }
+  function getInitData(){ var t = tg(); return (t && t.initData) || ''; }
+  // Поля авторизации для запроса к серверу (ТЗ 15): внутри Telegram —
+  // initData мини-приложения, вне его — сессия из localStorage (bk_session_v1,
+  // выдаёт /api/login). Копия общей authFields() ниже по файлу: этот скрипт
+  // выполняется раньше неё.
+  function authFields(){
+    var d = getInitData(); if(d) return { initData:d };
+    var sess = ''; try{ sess = localStorage.getItem('bk_session_v1') || ''; }catch(e){}
+    return { session:sess };
+  }
   function mode(){
     try{ var v = JSON.parse(localStorage.getItem(KEY)); if(v && /^(dark|light|auto)$/.test(v.mode)) return v.mode; }catch(e){}
     return memMode || 'dark';
@@ -30,11 +40,12 @@
     try{ return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; }catch(e){ return 'dark'; }
   }
   function effective(){ var m = mode(); return m === 'auto' ? systemTheme() : m; }
-  // Ставит тему на страницу и красит шапку/фон Telegram в --bg этой темы.
+  // Ставит тему на страницу и красит шапку/фон Telegram в --bg этой темы
+  // (только внутри Telegram — в обычном браузере красить нечего).
   function apply(){
     var th = effective(), t = tg();
     document.documentElement.setAttribute('data-theme', th);
-    try{ if(t && t.initData){ t.setHeaderColor && t.setHeaderColor(BG[th]); t.setBackgroundColor && t.setBackgroundColor(BG[th]); } }catch(e){}
+    try{ if(t && getInitData()){ t.setHeaderColor && t.setHeaderColor(BG[th]); t.setBackgroundColor && t.setBackgroundColor(BG[th]); } }catch(e){}
     return th;
   }
   function setMode(m){
@@ -45,8 +56,8 @@
   // Выбор уходит на сервер (api/state.js, saveTheme). Промис отклоняется
   // при ошибке — страница показывает тост, локальный выбор остаётся.
   function save(m){
-    var t = tg(), opt = { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ initData:(t && t.initData) || '', action:'saveTheme', theme:m }) };
+    var opt = { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(Object.assign({ action:'saveTheme', theme:m }, authFields())) };
     try{ opt.signal = AbortSignal.timeout(15000); }catch(e){}
     return fetch('/api/state', opt).then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); });
   }
@@ -321,6 +332,10 @@ input:disabled{ color:var(--muted); }
 .sheet-overlay.open{display:flex;}
 .sheet{ background:#0d1626; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0; border:1px solid var(--border-strong); border-bottom:none; padding:10px 16px calc(24px + var(--safe-bottom)); }
 .sheet-handle{width:36px; height:4px; background:var(--border-strong); border-radius:2px; margin:var(--sp-2) auto var(--sp-4);}
+/* Кнопка ✕ в шапке листа — только вне Telegram (ТЗ 15): там нет нативной
+   кнопки «назад», а не у каждого листа есть своя кнопка закрытия. */
+.sheet-top{ position:relative; }
+.sheet-close{ position:absolute; right:-4px; top:-2px; width:32px; height:32px; padding:0; border:none; border-radius:16px; background:rgba(255,255,255,.06); color:var(--muted); font-size:15px; line-height:32px; cursor:pointer; font-family:'Inter',sans-serif; }
 .sheet h3{font-family:'Fraunces',serif; font-size:var(--fs-lg); margin:var(--sp-1) 0 var(--sp-4);}
 .sub-h{font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:var(--sp-4) 0 var(--sp-2);}
 .sub-h:first-child{margin-top:2px;}
@@ -333,6 +348,13 @@ input:disabled{ color:var(--muted); }
 
 .emptystate{ text-align:center; padding:50px var(--sp-5); color:var(--muted); }
 .emptystate .big{font-family:'Fraunces',serif; font-size:var(--fs-md); color:var(--text); margin-bottom:var(--sp-2);}
+/* Экран входа вне Telegram (ТЗ 15): логотип, название, одна кнопка. */
+.login-gate{ padding-top:calc(60px + var(--safe-top)); }
+.login-gate .login-logo{ width:150px; max-width:60%; height:auto; display:block; margin:0 auto var(--sp-4); }
+.login-gate .big{ font-size:var(--fs-lg); }
+.login-gate .btn{ max-width:320px; margin-left:auto; margin-right:auto; }
+.login-gate .login-err{ color:var(--danger, #ff6b6b); font-size:var(--fs-sm); min-height:1.2em; margin-top:var(--sp-2); }
+.login-gate .login-note{ font-size:var(--fs-xs); margin-top:var(--sp-3); }
 
 .histcard-wrap{ position:relative; border-radius:var(--r-md); overflow:hidden; margin-bottom:var(--sp-3); }
 .histcard-wrap .histcard{ margin-bottom:0; }
@@ -507,6 +529,10 @@ input:disabled{ color:var(--muted); }
 [data-theme="light"] .navbtn.active{ color:var(--accent); }
 [data-theme="light"] .sheet{ background:#fff; border-color:#e3e3e8; box-shadow:0 -10px 30px -20px rgba(0,0,0,.35); }
 [data-theme="light"] .sheet-handle{ background:#c5cbd6; }
+[data-theme="light"] .sheet-close{ background:#f0f0f3; color:#33394a; }
+/* Логотип logo-kp.png — белые буквы без фона; в светлой теме ему нужна
+   кобальтовая плашка (как шапка фото-КП), иначе его не видно. */
+[data-theme="light"] .login-gate .login-logo{ background:linear-gradient(135deg,#1f56c9,#163f95); border-radius:16px; padding:14px 18px; box-sizing:content-box; }
 /* Меню «Тема оформления» стоит внутри карточки — вторая тень там лишняя. */
 [data-theme="light"] .card .settings-menu{ box-shadow:none; border:1px solid #e6e6ea; }
 </style>
@@ -596,12 +622,16 @@ function saveDeliveryPrefs(city, bodyTypeIdx){
   const prefs = { city, bodyTypeIdx };
   SAVED_DELIVERY_PREFS = prefs;
   Store.set('delivery_prefs_v1', prefs);
+  // Вне Telegram (ТЗ 15) CloudStorage нет — скрипт Telegram пишет об этом
+  // ошибку в консоль, поэтому даже не пробуем; остаётся localStorage.
+  if(!inTelegram()) return;
   try{
     const cs = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage;
     if(cs && cs.setItem) cs.setItem('delivery_prefs_v1', JSON.stringify(prefs));
   }catch(e){}
 }
 function loadDeliveryPrefsFromCloud(){
+  if(!inTelegram()) return;
   try{
     const cs = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage;
     if(!cs || !cs.getItem) return;
@@ -649,13 +679,25 @@ let ACCESS = null;
 let RECALC_CTX = null;
 function getInitData(){ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
 function getTg(){ return window.Telegram && window.Telegram.WebApp; }
+// Внутри Telegram — есть initData; в обычном браузере (Safari/Chrome/«на
+// экран Домой», ТЗ 15) объект Telegram.WebApp есть, но initData пустой.
+function inTelegram(){ return !!getInitData(); }
+// Сессия приложения для входа вне Telegram — выдаёт /api/login после входа
+// через Telegram OpenID Connect, 90 дней (см. api/_lib/session.js).
+const SESSION_KEY = 'bk_session_v1';
+function getSession(){ try{ return localStorage.getItem(SESSION_KEY) || ''; }catch(e){ return ''; } }
+function setSession(s){ try{ if(s) localStorage.setItem(SESSION_KEY, s); else localStorage.removeItem(SESSION_KEY); }catch(e){} }
+// Единственный источник полей авторизации для ЛЮБОГО запроса к серверу:
+// {initData} внутри Telegram, {session} вне его. Ни одного fetch к /api без
+// ...authFields() — сервер (authenticate в api/_lib/access.js) принимает оба.
+function authFields(){ const d = getInitData(); return d ? { initData:d } : { session:getSession() }; }
 // Нативная обратная связь (ЗАДАНИЕ.md Блок 10) — тонкая обёртка, т.к. вне
 // настоящего Telegram-клиента HapticFeedback отсутствует и не должен ронять
 // остальной код.
 function tgHaptic(kind, style){
   try{
     const tg = getTg();
-    if(!tg || !tg.HapticFeedback) return;
+    if(!tg || !tg.HapticFeedback || !inTelegram()) return;
     if(kind==='notification') tg.HapticFeedback.notificationOccurred(style||'success');
     else if(kind==='selection') tg.HapticFeedback.selectionChanged();
     else tg.HapticFeedback.impactOccurred(style||'light');
@@ -690,7 +732,7 @@ function saveConfig(){
     clearTimeout(configSyncTimer);
     configSyncTimer = setTimeout(async ()=>{
       try{
-        const res = await fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveConfig', config:CONFIG, configVersion:CONFIG_VERSION})});
+        const res = await fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action:'saveConfig', config:CONFIG, configVersion:CONFIG_VERSION})});
         const data = await res.json();
         if(res.ok && data.ok){ CONFIG_VERSION = data.configVersion; }
         else if(res.status===409){ toast(data.error || 'Настройки изменил кто-то другой — перезагрузите приложение'); }
@@ -701,7 +743,7 @@ function saveConfig(){
 function saveHistory(){
   Store.set('history_v2', state.history);
   if(ACCESS && ACCESS.status==='approved'){
-    fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveHistory', history:state.history})}).catch(()=>{});
+    fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action:'saveHistory', history:state.history})}).catch(()=>{});
   }
 }
 // Архив — отдельный от истории ключ (см. api/state.js): сюда автоматически,
@@ -711,7 +753,7 @@ function saveHistory(){
 function saveArchive(){
   Store.set('archive_v1', state.archive);
   if(ACCESS && ACCESS.status==='approved'){
-    fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'saveArchive', archive:state.archive})}).catch(()=>{});
+    fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action:'saveArchive', archive:state.archive})}).catch(()=>{});
   }
 }
 
@@ -810,7 +852,10 @@ const GROUPED_NUM_FIELDS = ['carPrice','extraCosts','volumeCm3','power','mileage
 // атрибута — именно тот баг, который и правит это место (ЗАДАНИЕ.md Блок 10).
 function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function openExternal(url){
-  if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink){ window.Telegram.WebApp.openLink(url); }
+  // openLink есть у объекта и в обычном браузере (скрипт подключён всегда),
+  // но работает только внутри Telegram — вне его обычная новая вкладка.
+  const tg = getTg();
+  if(tg && tg.openLink && inTelegram()){ tg.openLink(url); }
   else{ window.open(url, '_blank'); }
 }
 
@@ -830,7 +875,7 @@ const RATE_SPIKE_PCT = 15;
 function logRateHistory(id, r){
   if(!(ACCESS && ACCESS.status==='approved')) return;
   fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-    initData:getInitData(), action:'logRate', rateId:id, entry:{raw:r.autoRaw, value:r.value, source:'auto'}
+    ...authFields(), action:'logRate', rateId:id, entry:{raw:r.autoRaw, value:r.value, source:'auto'}
   })}).catch(()=>{});
 }
 
@@ -905,8 +950,8 @@ const CUSTOMS_AGE_CODE = BkCalc.CUSTOMS_AGE_CODE;
 async function fetchCustomsQuote(route, f){
   // Тело запроса (цена в валюте сделки без комиссии банка, каталожная
   // стоимость, объём/мощность по типу двигателя) собирает lib/calc.js —
-  // см. BkCalc.customsPayload; здесь к нему добавляется только initData.
-  const payload = Object.assign({ initData: getInitData() }, BkCalc.customsPayload(CONFIG, route, f));
+  // см. BkCalc.customsPayload; здесь к нему добавляются только поля авторизации.
+  const payload = Object.assign(authFields(), BkCalc.customsPayload(CONFIG, route, f));
 
   const res = await fetch(CONFIG.customsProxyUrl, {
     method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload),
@@ -1287,7 +1332,7 @@ const UNFILLED_LABELS = {
 async function runListingParse(payload, f, route){
   try{
     const res = await fetch(CONFIG.parseListingUrl, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...payload, initData:getInitData()}),
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...payload, ...authFields()}),
       signal: AbortSignal.timeout(30000) // фото + разбор ИИ (Gemini/GigaChat) может идти небыстро
     });
     const data = await res.json();
@@ -1787,7 +1832,7 @@ function showResult(route, f, opts){
         // оплатой инвойса, если они есть, иначе сегодняшняя. Расчёт,
         // замороженный оплатой таможни, сервер не примет (409) — текст
         // ошибки показываем как есть, это правильный исход.
-        body: JSON.stringify({ initData:getInitData(), action:'recalcDealCalc', dealId:ctx.dealId, calcId:ctx.calcId, mode:'full', total:r.total, form:f, parts:{ broker:r.broker, agent:r.agent, delivery:r.delivery },
+        body: JSON.stringify({ ...authFields(), action:'recalcDealCalc', dealId:ctx.dealId, calcId:ctx.calcId, mode:'full', total:r.total, form:f, parts:{ broker:r.broker, agent:r.agent, delivery:r.delivery },
           ratesDate: new Date(ctx.ratesLock && ctx.ratesLock.at ? ctx.ratesLock.at : Date.now()).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) })
       });
       const data = await res.json();
@@ -2103,8 +2148,11 @@ async function shareResult(route, f, r, kpFilePromise){
   //    сам мини-апп при этом не закрывается. Картинку туда передаём через
   //    короткоживущее хранилище (api/share-relay.js), потому что blob из
   //    памяти одного приложения не виден другому.
-  const tg = window.Telegram && window.Telegram.WebApp;
-  if(tg && tg.openLink){
+  //    Вне Telegram (Safari/Chrome, ТЗ 15) этот путь не нужен: openLink там
+  //    не работает, а navigator.share выше уже отработал или его нет —
+  //    тогда сразу путь 4.
+  const tg = getTg();
+  if(tg && tg.openLink && inTelegram()){
     try{
       const relayBlob = await renderKpImageBlob(route, f, r, 2);
       if(relayBlob){
@@ -2114,7 +2162,7 @@ async function shareResult(route, f, r, kpFilePromise){
           rd.onerror = rej;
           rd.readAsDataURL(relayBlob);
         });
-        const putRes = await fetch('/api/share-relay', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ initData:getInitData(), action:'put', imageDataUrl:dataUrl, text, title }) });
+        const putRes = await fetch('/api/share-relay', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...authFields(), action:'put', imageDataUrl:dataUrl, text, title }) });
         const putData = await putRes.json();
         if(putData.id){
           tg.openLink(location.origin + '/share?id=' + putData.id);
@@ -2347,6 +2395,8 @@ const SETTINGS_SECTIONS = [
   // title — заголовок экрана в шапке, когда подраздел открыт (renderTopbar).
   // Тема — личная настройка устройства (BkTheme в <head>), видна всем.
   {id:'theme', label:'Тема оформления', title:'Тема оформления'},
+  // Кто вошёл и как (ТЗ 15); «Выйти» — только вне Telegram.
+  {id:'account', label:'Аккаунт', title:'Аккаунт'},
   {id:'admin', label:'Доступ к приложению', title:'Доступ', ownerOnly:true},
   {id:'routes', label:'Маршруты — комиссии по умолчанию', title:'Маршруты'},
   {id:'customs', label:'Расчёт TKS', title:'Расчёт TKS'},
@@ -2384,9 +2434,12 @@ function renderSettingsView(c){
 
   if(section==='theme'){
     body = themeSettingsCard();
+  } else if(section==='account'){
+    body = accountSettingsCard();
   } else if(section==='admin' && ACCESS && ACCESS.isOwner){
-    // Переход на /diag внутри Mini App — только так у страницы есть initData
-    // (как у /deals); без него её серверные проверки отвечают 401.
+    // Переход на /diag в том же окне: внутри Mini App у страницы есть
+    // initData, вне Telegram — та же сессия в localStorage (как у /deals);
+    // без того и другого её серверные проверки отвечают 401.
     body = `<div class="card" id="adminCard"><h2>Доступ к приложению</h2><div class="u-hint">Загрузка…</div></div>
       <button class="btn secondary small" type="button" onclick="location.href='/diag'">Диагностика</button>`;
   } else if(section==='routes'){
@@ -2415,6 +2468,7 @@ function renderSettingsView(c){
   document.getElementById('settingsBack').onclick = ()=>{ state.settingsSection = null; renderSettingsView(c); };
 
   if(section==='theme') bindThemeSettings(c);
+  if(section==='account'){ const lo = document.getElementById('logoutBtn'); if(lo) lo.onclick = logout; }
   if(section==='admin' && ACCESS && ACCESS.isOwner) loadAdminCard();
   if(section==='dealsExtra') loadDealsExtraCard();
   if(section==='routes') bindRouteSettings();
@@ -2442,6 +2496,16 @@ function themeSettingsCard(){
       <div class="switch ${auto ? 'on' : ''}" id="themeAutoToggle"><div class="knob"></div></div>
     </div>
     <div class="settings-menu theme-list${auto ? ' auto' : ''}">${row('dark', 'Тёмная')}${row('light', 'Светлая')}</div>
+  </div>`;
+}
+// Раздел «Аккаунт» (ТЗ 15): имя, способ входа, «Выйти» вне Telegram.
+function accountSettingsCard(){
+  const name = (ACCESS && ACCESS.name) || 'без имени';
+  const how = inTelegram() ? 'Telegram Mini App' : 'через сайт';
+  return `<div class="card">
+    <h2>Аккаунт</h2>
+    <div class="toggle-row"><div><div class="t">${escapeHtml(name)}</div><div class="h">Вход: ${how}${ACCESS && ACCESS.isOwner ? ' · владелец' : ''}</div></div></div>
+    ${inTelegram() ? '' : `<button class="btn secondary mt-3" id="logoutBtn">Выйти</button>`}
   </div>`;
 }
 function saveThemeChoice(){
@@ -2487,11 +2551,11 @@ function openResetConfirm(){
 }
 
 async function fetchAdminUsers(){
-  const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action:'list'})});
+  const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action:'list'})});
   return res.json();
 }
 async function adminAction(action, targetId){
-  const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData:getInitData(), action, targetId})});
+  const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action, targetId})});
   return res.json();
 }
 const DEALS_LEVEL_LABELS = {
@@ -2540,7 +2604,7 @@ async function loadAdminCard(){
     cardEl.querySelectorAll('.deals-level').forEach(sel=> sel.onchange = async ()=>{
       sel.disabled = true;
       const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({initData:getInitData(), action:'setDealsLevel', targetId:sel.dataset.uid, level:sel.value})});
+        body: JSON.stringify({...authFields(), action:'setDealsLevel', targetId:sel.dataset.uid, level:sel.value})});
       const data = await res.json();
       sel.disabled = false;
       toast(data.error ? ('Не вышло: '+data.error) : 'Уровень доступа сохранён');
@@ -2563,7 +2627,7 @@ let DEALS_EXTRA = null;
 async function fetchDealsApi(action, payload){
   const res = await fetch('/api/deals', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(Object.assign({initData:getInitData(), action}, payload||{}))
+    body: JSON.stringify(Object.assign({...authFields(), action}, payload||{}))
   });
   const data = await res.json();
   if(data.error) throw new Error(data.error);
@@ -2740,7 +2804,15 @@ function bindDeliveryTable(){
 /* ---------------------------------------------------------------------
    10. Rate editor sheet
 --------------------------------------------------------------------- */
-function openSheet(html){ document.getElementById('sheetBody').innerHTML = `<div class="sheet-handle"></div>` + html; document.getElementById('sheetOverlay').classList.add('open'); syncTelegramUI(); }
+function openSheet(html){
+  // Вне Telegram нет BackButton — в шапке каждого листа есть ✕, чтобы
+  // лист без своей кнопки «Отмена/Закрыть» (курсы, история курса) не был тупиком.
+  const closeX = inTelegram() ? '' : `<button class="sheet-close" id="sheetCloseX" type="button" aria-label="Закрыть">✕</button>`;
+  document.getElementById('sheetBody').innerHTML = `<div class="sheet-top"><div class="sheet-handle"></div>${closeX}</div>` + html;
+  document.getElementById('sheetOverlay').classList.add('open');
+  const x = document.getElementById('sheetCloseX'); if(x) x.onclick = closeSheet;
+  syncTelegramUI();
+}
 function closeSheet(){ document.getElementById('sheetOverlay').classList.remove('open'); syncTelegramUI(); }
 
 // «Состояние»/«Примечания» открывают этот шит вместо однострочного поля —
@@ -2816,7 +2888,7 @@ async function openRateHistory(ids){
   try{
     const results = await Promise.all(ids.map(id => fetch('/api/state', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({initData:getInitData(), action:'getRateHistory', rateId:id})
+      body: JSON.stringify({...authFields(), action:'getRateHistory', rateId:id})
     }).then(r=>r.json()).then(data=>({id, history: data.history||[]}))));
     const body = document.getElementById('rateHistoryBody');
     const anyHistory = results.some(r => r.history.length);
@@ -2915,51 +2987,113 @@ function renderAll(){ renderTabs(); renderContent(); syncTelegramUI(); }
 function startApp(){ renderAll(); fetchAutoRates(); }
 
 /* ---------------------------------------------------------------------
-   12. Доступ через Telegram — приложение работает только как Mini App.
-   Без initData (открыто не из Telegram) нет способа безопасно узнать,
-   кто это — поэтому доступ вообще не выдаём, а не просто "работаем как
-   гость". См. api/_lib/access.js: первый, кто когда-либо откроет
-   приложение, автоматически становится владельцем и может открывать/
-   закрывать доступ остальным во вкладке «Настройки».
+   12. Доступ — два способа подтвердить, кто это (ТЗ 15):
+   • внутри Telegram — initData мини-приложения (как и раньше);
+   • в обычном браузере (Safari/Chrome/«на экран Домой») — вход кнопкой
+     «Войти через Telegram»: Telegram OpenID Connect, переход всей страницы
+     на oauth.telegram.org и обратно на /?code=…&state=…, сервер
+     (api/login.js) обменивает код на id_token и выдаёт сессию на 90 дней
+     (localStorage bk_session_v1). Это тот же Telegram user id, что и в
+     мини-приложении — те же доступы, тема, история, сделки.
+   Без того и другого доступ не выдаём вовсе. См. api/_lib/access.js:
+   первый, кто когда-либо откроет приложение, автоматически становится
+   владельцем и может открывать/закрывать доступ остальным в «Настройках».
 --------------------------------------------------------------------- */
+function logout(){
+  // Серверного списка сессий нет — «Выйти» просто стирает строку и
+  // перезапускает страницу, bootGate() покажет экран входа.
+  setSession('');
+  location.replace(location.pathname);
+}
+async function startLogin(btn, errEl){
+  if(btn){ btn.disabled = true; btn.textContent = 'Открываю Telegram…'; }
+  try{
+    const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'start'}), signal:AbortSignal.timeout(15000)});
+    const d = await r.json();
+    if(!r.ok || !d.url) throw new Error(d.error || 'Сервер не дал адрес входа');
+    // Переход всей страницы, не window.open: в приложении «с экрана Домой»
+    // на iPhone всплывающие окна ненадёжны, переход туда-обратно работает.
+    location.href = d.url;
+  }catch(e){
+    if(btn){ btn.disabled = false; btn.textContent = 'Повторить'; }
+    if(errEl) errEl.textContent = (e && e.name === 'TimeoutError') ? 'Сервер не отвечает' : ((e && e.message) || 'Нет связи с сервером');
+  }
+}
 function renderGate(kind, info){
   info = info || {};
   document.getElementById('routeTabs').style.display = 'none';
   const bn = document.querySelector('.bottomnav'); if(bn) bn.style.display = 'none';
   const c = document.getElementById('content');
-  if(kind === 'no-telegram'){
-    c.innerHTML = `<div class="emptystate"><div class="big">Откройте через Telegram</div>Это приложение работает только внутри Telegram — откройте вашего бота и нажмите кнопку меню (или ссылку на мини-приложение).</div>`;
+  // Вне Telegram на экранах «ожидает»/«ошибка» есть «Выйти», чтобы можно
+  // было войти другим аккаунтом; внутри мини-приложения выходить некуда.
+  const logoutBtn = inTelegram() ? '' : `<button class="btn secondary small mt-3" id="gateLogoutBtn">Выйти</button>`;
+  if(kind === 'login'){
+    c.innerHTML = `<div class="emptystate login-gate">
+      <img class="login-logo" src="${LOGO_URL}" alt="">
+      <div class="big">Байкал Авто · Калькулятор</div>
+      <button class="btn primary mt-4" id="loginBtn">Войти через Telegram</button>
+      <div class="login-err" id="loginErr">${escapeHtml(info.error || '')}</div>
+      <div class="login-note">Вход для сотрудников. Доступ выдаёт владелец.</div>
+    </div>`;
+    const btn = document.getElementById('loginBtn'), err = document.getElementById('loginErr');
+    if(info.error) btn.textContent = 'Повторить';
+    btn.onclick = ()=> startLogin(btn, err);
   } else if(kind === 'pending'){
-    c.innerHTML = `<div class="emptystate"><div class="big">Доступ ожидает подтверждения</div>${info.name?('Здравствуйте, '+info.name+'. '):''}Владелец увидит запрос во вкладке «Настройки» и откроет доступ. Загляните чуть позже.<br><button class="btn secondary mt-4" id="recheckBtn">Проверить ещё раз</button></div>`;
+    c.innerHTML = `<div class="emptystate"><div class="big">Доступ ожидает подтверждения</div>${info.name?('Здравствуйте, '+escapeHtml(info.name)+'. '):''}Владелец увидит запрос во вкладке «Настройки» и откроет доступ. Загляните чуть позже.<br><button class="btn secondary mt-4" id="recheckBtn">Проверить ещё раз</button>${logoutBtn}</div>`;
     document.getElementById('recheckBtn').onclick = ()=> location.reload();
   } else {
-    c.innerHTML = `<div class="emptystate"><div class="big">Не удалось проверить доступ</div>${info.error || 'Неизвестная ошибка'}<br><button class="btn secondary mt-4" id="recheckBtn">Повторить</button></div>`;
+    c.innerHTML = `<div class="emptystate"><div class="big">Не удалось проверить доступ</div>${escapeHtml(info.error || 'Неизвестная ошибка')}<br><button class="btn secondary mt-4" id="recheckBtn">Повторить</button>${logoutBtn}</div>`;
     document.getElementById('recheckBtn').onclick = ()=> location.reload();
   }
+  const lo = document.getElementById('gateLogoutBtn'); if(lo) lo.onclick = logout;
+}
+
+// Возврат с oauth.telegram.org: /?code=…&state=… (или ?error=… — отказ).
+// Параметры сразу убираем из адреса, чтобы обновление страницы не
+// пыталось повторить одноразовый обмен кода.
+async function finishLoginFromUrl(){
+  const q = new URLSearchParams(location.search);
+  const code = q.get('code'), st = q.get('state'), oauthErr = q.get('error');
+  if(!code && !oauthErr) return null;
+  try{ history.replaceState(null, '', location.pathname + location.hash); }catch(e){}
+  if(oauthErr) return { error: oauthErr === 'access_denied' ? 'Вход отменён в Telegram' : ('Telegram не подтвердил вход (' + oauthErr + ')') };
+  if(!st) return { error: 'Неполный ответ от Telegram — попробуйте войти ещё раз' };
+  try{
+    const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'callback', code, state:st}), signal:AbortSignal.timeout(20000)});
+    const d = await r.json();
+    if(!r.ok || !d.session) return { error: d.error || 'Не удалось войти' };
+    setSession(d.session);
+    return { ok:true };
+  }catch(e){ return { error: 'Нет связи с сервером' }; }
 }
 
 async function bootGate(){
-  const hasTelegram = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
-  if(!hasTelegram){ renderGate('no-telegram'); return; }
-
-  const tg = window.Telegram.WebApp;
-  // Шапка и фон Telegram — в цвет var(--bg) текущей темы (BkTheme.apply в
-  // <head>, ТЗ 09); если они не совпадают с фоном, на телефоне над самим
-  // приложением видна полоса другого цвета.
-  try{ tg.ready(); tg.expand(); BkTheme.apply(); tg.disableVerticalSwipes && tg.disableVerticalSwipes(); }catch(e){}
-  // BackButton — обработчик регистрируется один раз на весь запуск приложения
-  // (повторный onClick только добавлял бы новый колбэк поверх старого, а не
-  // заменял его). См. ЗАДАНИЕ.md Блок 10 — MainButton для "Рассчитать" не
-  // прижился (см. комментарий у syncTelegramUI) и был убран.
-  try{
-    if(tg.BackButton) tg.BackButton.onClick(()=>{
-      const overlay = document.getElementById('sheetOverlay');
-      if(overlay && overlay.classList.contains('open')){ closeSheet(); return; }
-      if(state.view==='settings' && state.settingsSection){ state.settingsSection = null; renderSettingsView(document.getElementById('content')); return; }
-    });
-  }catch(e){}
+  const tg = getTg();
+  if(inTelegram()){
+    // Шапка и фон Telegram — в цвет var(--bg) текущей темы (BkTheme.apply в
+    // <head>, ТЗ 09); если они не совпадают с фоном, на телефоне над самим
+    // приложением видна полоса другого цвета.
+    try{ tg.ready(); tg.expand(); BkTheme.apply(); tg.disableVerticalSwipes && tg.disableVerticalSwipes(); }catch(e){}
+    // BackButton — обработчик регистрируется один раз на весь запуск приложения
+    // (повторный onClick только добавлял бы новый колбэк поверх старого, а не
+    // заменял его). См. ЗАДАНИЕ.md Блок 10 — MainButton для "Рассчитать" не
+    // прижился (см. комментарий у syncTelegramUI) и был убран. Вне Telegram
+    // кнопки назад нет — листы и подразделы закрываются кнопками на экране.
+    try{
+      if(tg.BackButton) tg.BackButton.onClick(()=>{
+        const overlay = document.getElementById('sheetOverlay');
+        if(overlay && overlay.classList.contains('open')){ closeSheet(); return; }
+        if(state.view==='settings' && state.settingsSection){ state.settingsSection = null; renderSettingsView(document.getElementById('content')); return; }
+      });
+    }catch(e){}
+  } else {
+    // Обычный браузер (ТЗ 15). --tg-top-pad остаётся 0px (только --safe-top).
+    const fin = await finishLoginFromUrl();
+    if(fin && fin.error){ setSession(''); renderGate('login', fin); return; }
+    if(!getSession()){ renderGate('login'); return; }
+  }
   loadDeliveryPrefsFromCloud();
-  try{
+  if(inTelegram()) try{
     // Telegram рисует свои кнопки (закрыть/свернуть/⋯) поверх окна мини-приложения,
     // а не в отдельной полосе — если не оставить место, они налезают на контент.
     // С Bot API 8.0 сам Telegram кладёт точный отступ под конкретное устройство
@@ -2977,11 +3111,16 @@ async function bootGate(){
     }
   }catch(e){ document.documentElement.style.setProperty('--tg-top-pad', '44px'); }
 
-  let authRes;
+  let authRes, authHttp = 0;
   try{
-    const r = await fetch('/api/auth', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData}), signal:AbortSignal.timeout(15000)});
+    const r = await fetch('/api/auth', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(authFields()), signal:AbortSignal.timeout(15000)});
+    authHttp = r.status;
     authRes = await r.json();
   }catch(e){ authRes = {status:'error', error:'Нет связи с сервером'}; }
+
+  // Вне Telegram 401 — сессия истекла или SESSION_SECRET сменили: стираем
+  // её и показываем вход, а не бесконечную «Не удалось проверить доступ».
+  if(!inTelegram() && authHttp === 401){ setSession(''); renderGate('login', {error:'Сессия истекла — войдите снова'}); return; }
 
   ACCESS = authRes;
 
@@ -2991,26 +3130,26 @@ async function bootGate(){
   BkTheme.sync(authRes.theme);
 
   try{
-    const r2 = await fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'get'}), signal:AbortSignal.timeout(15000)});
+    const r2 = await fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action:'get'}), signal:AbortSignal.timeout(15000)});
     const data = await r2.json();
     CONFIG_VERSION = (data && Number.isFinite(data.configVersion)) ? data.configVersion : 0;
     if(data && data.config){
       CONFIG = applyStoredConfig(data.config);
       Store.set('cfg_v2', CONFIG);
     } else {
-      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveConfig', config:CONFIG, configVersion:CONFIG_VERSION})}).catch(()=>{});
+      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action:'saveConfig', config:CONFIG, configVersion:CONFIG_VERSION})}).catch(()=>{});
     }
     if(data && Array.isArray(data.history)){
       state.history = data.history;
       Store.set('history_v2', state.history);
     } else if(state.history.length){
-      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveHistory', history:state.history})}).catch(()=>{});
+      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action:'saveHistory', history:state.history})}).catch(()=>{});
     }
     if(data && Array.isArray(data.archive)){
       state.archive = data.archive;
       Store.set('archive_v1', state.archive);
     } else if(state.archive.length){
-      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({initData: tg.initData, action:'saveArchive', archive:state.archive})}).catch(()=>{});
+      fetch('/api/state', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...authFields(), action:'saveArchive', archive:state.archive})}).catch(()=>{});
     }
   }catch(e){ /* работаем с тем, что было в localStorage, пока не появится связь */ }
 

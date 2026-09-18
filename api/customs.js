@@ -290,7 +290,7 @@ module.exports = async (req, res) => {
   // TKS и, занимая распределённую блокировку tks:ratelimit (см. acquireTksSlot
   // выше), ронять расчёт у самого владельца (см. ЗАДАНИЕ.md Блок 7).
   const { authenticate } = require('./_lib/access');
-  const auth = await authenticate(body.initData);
+  const auth = await authenticate(body.initData, body.session);
   if (!auth.ok || auth.record.status !== 'approved') {
     res.status(401).send(JSON.stringify({ error: auth.ok ? 'доступ не подтверждён' : auth.error }));
     return;
