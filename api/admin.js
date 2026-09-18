@@ -63,6 +63,24 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // Удаление записи (ТЗ 15-а): для ошибочных/фантомных заявок. Только
+    // pending/revoked (клиент не показывает кнопку у approved — сначала
+    // «Закрыть»), не себя и не владельца. Подтверждения не нужно: при
+    // следующем входе человека запись создастся заново как pending.
+    if (action === 'remove') {
+      const targetId = String(body.targetId || '');
+      if (!targetId) { res.status(400).send(JSON.stringify({ error: 'targetId обязателен' })); return; }
+      if (targetId === auth.uid) { res.status(400).send(JSON.stringify({ error: 'нельзя удалить самого себя' })); return; }
+      const raw = await kv('HGET', 'access', targetId);
+      if (!raw) { res.status(400).send(JSON.stringify({ error: 'пользователь не найден' })); return; }
+      const record = JSON.parse(raw);
+      if (record.isOwner) { res.status(400).send(JSON.stringify({ error: 'нельзя удалить владельца' })); return; }
+      if (record.status === 'approved') { res.status(400).send(JSON.stringify({ error: 'сначала закройте доступ' })); return; }
+      await kv('HDEL', 'access', targetId);
+      res.status(200).send(JSON.stringify({ ok: true }));
+      return;
+    }
+
     // Уровень доступа к разделу учёта сделок. Владелец всегда полный —
     // менять его нельзя, иначе можно случайно запереть самого себя.
     if (action === 'setDealsLevel') {

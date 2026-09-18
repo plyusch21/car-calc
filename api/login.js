@@ -11,8 +11,10 @@
  * state/code_verifier живут в KV «login:<state>» 10 минут, читаются один
  * раз (GETDEL). id_token проверяется целиком: подпись по JWKS (RS256 /
  * ES256 / EdDSA / ES256K — алгоритм из заголовка), iss, aud, exp. Из
- * claims берём sub (= числовой Telegram user id, тот же, что user.id в
- * initData мини-приложения), name, preferred_username. Итог — сессия
+ * claims берём id — числовой Telegram user id, тот же, что user.id в
+ * initData мини-приложения (sub — служебный идентификатор OIDC, НЕ user id,
+ * не использовать: так появился фантомный пользователь, ТЗ 15-а), name,
+ * preferred_username. Итог — сессия
  * приложения (api/_lib/session.js), с которой ходят все остальные
  * запросы через authenticate(initData, session).
  *
@@ -193,13 +195,14 @@ async function callback(body) {
   }
 
   const claims = await verifyIdToken(tokenData.id_token, clientId);
-  const uid = String(claims.sub);
+  // Telegram user id — только claim id (scope profile). Отката на sub нет
+  // намеренно: sub служебный, и с ним человек молча становится новым
+  // пользователем pending вместо себя самого (ТЗ 15-а).
+  if (!/^\d+$/.test(String(claims.id ?? ''))) throw new LoginError('Telegram не передал идентификатор пользователя (id) — сообщите владельцу');
+  const uid = String(claims.id);
   // Имя: given_name/family_name, если Telegram их прислал, иначе name целиком.
   const name = [claims.given_name, claims.family_name].filter(Boolean).join(' ') || String(claims.name || '').trim();
   const username = String(claims.preferred_username || '');
-  // Отладка ТЗ 15 «Проверить», п. 2: sub должен совпасть с ключом записи
-  // владельца в HASH access. Убрать после подтверждения владельцем.
-  console.log('api/login: вход через сайт, sub=' + uid + (claims.id != null ? ' id=' + claims.id : ''));
 
   return { session: issueSession({ uid, name, username }), name };
 }

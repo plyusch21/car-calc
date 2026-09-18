@@ -5,7 +5,7 @@
 Использование: найти нужный диапазон здесь, прочитать его `sed -n 'START,ENDp' файл`, а не файл целиком.
 
 
-## index.html (3203 строк)
+## index.html (3207 строк)
 
 ### Секции
 
@@ -17,10 +17,10 @@
 - L993-997: 6. Route → RUB conversion chains
 - L998-1008: 7. Main calculation
 - L1009-2390: 8. Rendering
-- L2391-2803: 9. Settings
-- L2804-2943: 10. Rate editor sheet
-- L2944-2988: 11. Nav + boot
-- L2989-3203: 12. Доступ — два способа подтвердить, кто это (ТЗ 15):
+- L2391-2807: 9. Settings
+- L2808-2947: 10. Rate editor sheet
+- L2948-2992: 11. Nav + boot
+- L2993-3207: 12. Доступ — два способа подтвердить, кто это (ТЗ 15):
 
 ### Функции
 
@@ -103,35 +103,35 @@
 - L2535-2551: `openResetConfirm()`
 - L2553-2556: `fetchAdminUsers()`
 - L2557-2560: `adminAction()`
-- L2567-2594: `renderAdminUsersList()`
-- L2595-2615: `loadAdminCard()`
-- L2627-2635: `fetchDealsApi()`
-- L2636-2656: `loadDealsExtraCard()`
-- L2657-2673: `openDealsArchiveSheet()`
-- L2674-2674: `csvCellIdx()`
-- L2675-2675: `idleDaysIdx()`
-- L2676-2685: `dealsCsvIdx()`
-- L2686-2696: `partiesCsvIdx()`
-- L2697-2740: `runDealsExport()`
-- L2741-2759: `openWipeDealersConfirm()`
-- L2761-2771: `routeSettingsBlock()`
-- L2772-2781: `bindRouteSettings()`
-- L2783-2792: `deliveryTable()`
-- L2793-2802: `bindDeliveryTable()`
-- L2807-2815: `openSheet()`
-- L2816-2816: `closeSheet()`
-- L2821-2839: `openTextFieldSheet()`
-- L2885-2903: `openRateHistory()`
-- L2905-2942: `openRateEditor()`
-- L2968-2968: `toast()`
-- L2978-2985: `syncTelegramUI()`
-- L2986-2986: `renderAll()`
-- L2987-2987: `startApp()`
-- L3002-3007: `logout()`
-- L3008-3021: `startLogin()`
-- L3022-3049: `renderGate()`
-- L3054-3068: `finishLoginFromUrl()`
-- L3070-3197: `bootGate()`
+- L2567-2597: `renderAdminUsersList()`
+- L2598-2619: `loadAdminCard()`
+- L2631-2639: `fetchDealsApi()`
+- L2640-2660: `loadDealsExtraCard()`
+- L2661-2677: `openDealsArchiveSheet()`
+- L2678-2678: `csvCellIdx()`
+- L2679-2679: `idleDaysIdx()`
+- L2680-2689: `dealsCsvIdx()`
+- L2690-2700: `partiesCsvIdx()`
+- L2701-2744: `runDealsExport()`
+- L2745-2763: `openWipeDealersConfirm()`
+- L2765-2775: `routeSettingsBlock()`
+- L2776-2785: `bindRouteSettings()`
+- L2787-2796: `deliveryTable()`
+- L2797-2806: `bindDeliveryTable()`
+- L2811-2819: `openSheet()`
+- L2820-2820: `closeSheet()`
+- L2825-2843: `openTextFieldSheet()`
+- L2889-2907: `openRateHistory()`
+- L2909-2946: `openRateEditor()`
+- L2972-2972: `toast()`
+- L2982-2989: `syncTelegramUI()`
+- L2990-2990: `renderAll()`
+- L2991-2991: `startApp()`
+- L3006-3011: `logout()`
+- L3012-3025: `startLogin()`
+- L3026-3053: `renderGate()`
+- L3058-3072: `finishLoginFromUrl()`
+- L3074-3201: `bootGate()`
 
 
 ## deals.html (2029 строк)

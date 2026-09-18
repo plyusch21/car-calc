@@ -2571,9 +2571,12 @@ function renderAdminUsersList(users){
     const uname = u.username ? ' · @'+u.username : '';
     const statusColor = u.isOwner ? 'var(--accent)' : (u.status==='approved' ? 'var(--good)' : u.status==='pending' ? 'var(--warn)' : 'var(--danger)');
     const statusText = u.isOwner ? 'владелец' : (u.status==='approved' ? 'доступ открыт' : u.status==='pending' ? 'ожидает подтверждения' : 'доступ закрыт');
+    // «Удалить» — только у pending/revoked (ТЗ 15-а): ошибочные и фантомные
+    // заявки; у approved сначала «Закрыть». Без подтверждения — при
+    // следующем входе запись создастся заново как pending.
     const btn = u.isOwner ? '' : (u.status==='approved'
       ? `<button class="btn secondary small" data-revoke="${u.id}">Закрыть</button>`
-      : `<button class="btn small" data-approve="${u.id}">Разрешить</button>`);
+      : `<button class="btn small" data-approve="${u.id}">Разрешить</button><button class="btn secondary small" data-remove="${u.id}" style="margin-top:var(--sp-2);">Удалить</button>`);
     // Уровень доступа к учёту сделок — отдельно от доступа к самому
     // приложению: человек может считать машины, но не видеть сделок.
     const levels = u.isOwner || u.status!=='approved' ? '' : `
@@ -2601,6 +2604,7 @@ async function loadAdminCard(){
     cardEl.innerHTML = `<h2>Доступ к приложению</h2>` + renderAdminUsersList(users||[]);
     cardEl.querySelectorAll('[data-approve]').forEach(b=> b.onclick = async ()=>{ b.disabled=true; await adminAction('approve', b.dataset.approve); toast('Доступ открыт'); loadAdminCard(); });
     cardEl.querySelectorAll('[data-revoke]').forEach(b=> b.onclick = async ()=>{ b.disabled=true; await adminAction('revoke', b.dataset.revoke); toast('Доступ закрыт'); loadAdminCard(); });
+    cardEl.querySelectorAll('[data-remove]').forEach(b=> b.onclick = async ()=>{ b.disabled=true; const r = await adminAction('remove', b.dataset.remove); toast(r.error ? ('Не вышло: '+r.error) : 'Запись удалена'); loadAdminCard(); });
     cardEl.querySelectorAll('.deals-level').forEach(sel=> sel.onchange = async ()=>{
       sel.disabled = true;
       const res = await fetch('/api/admin', {method:'POST', headers:{'Content-Type':'application/json'},

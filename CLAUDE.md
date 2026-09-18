@@ -123,9 +123,12 @@ Telegram user id** and the same `access` HASH record (ТЗ 15):
    URL; `callback` exchanges the code at the token endpoint (Basic client
    auth), verifies the `id_token` fully with `node:crypto` (JWKS signature
    RS256/ES256/EdDSA/ES256K by header `alg`/`kid`, JWKS cached 1 h in
-   function memory, `iss`, `aud`, `exp`), takes `uid = sub` (the numeric
-   Telegram user id — same as `user.id` in `initData`), `name`,
-   `preferred_username`, and issues an **app session**:
+   function memory, `iss`, `aud`, `exp`), takes `uid` from the **`id`
+   claim** (the numeric Telegram user id, same as `user.id` in `initData`;
+   `sub` is an internal OIDC identifier, NOT the user id — using it once
+   created a phantom pending user, ТЗ 15-а — so a missing `id` is a login
+   error, never a fallback to `sub`), `name`, `preferred_username`, and
+   issues an **app session**:
    `base64url(JSON{uid,name,username,iat,exp}).base64url(HMAC-SHA256 by
    SESSION_SECRET)`, 90 days (`api/_lib/session.js`). Stored client-side in
    `localStorage` `bk_session_v1`. No server-side session list: "Выйти"
