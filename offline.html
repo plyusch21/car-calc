@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Нет подключения · Байкал Авто</title>
+<style>
+  :root{ --bg:#070c14; --fg:#ffffff; --accent:#1a4db5; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; height:100%; }
+  body{
+    background:var(--bg); color:var(--fg);
+    font-family:-apple-system, system-ui, sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh; padding:24px; padding-top:calc(24px + env(safe-area-inset-top));
+    text-align:center;
+  }
+  .wrap{ max-width:360px; }
+  h1{ font-size:22px; margin:0 0 12px; }
+  p{ font-size:15px; line-height:1.5; opacity:0.8; margin:0 0 24px; }
+  button{
+    font:inherit; font-size:16px; font-weight:600; color:#fff;
+    background:var(--accent); border:none; border-radius:12px;
+    padding:14px 28px; cursor:pointer;
+  }
+  button:active{ opacity:0.85; }
+</style>
+<script>
+(function(){
+  try{
+    var v = JSON.parse(localStorage.getItem('bk_theme_v1'));
+    var mode = (v && /^(dark|light|auto)$/.test(v.mode)) ? v.mode : 'dark';
+    var light = mode === 'light' || (mode === 'auto' && matchMedia('(prefers-color-scheme: light)').matches);
+    if(light){
+      document.documentElement.style.setProperty('--bg', '#ebebee');
+      document.documentElement.style.setProperty('--fg', '#0d1626');
+    }
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Нет подключения к интернету</h1>
+    <p>Калькулятору нужна сеть: курсы, таможня и вход проверяются на сервере.</p>
+    <button onclick="location.reload()">Повторить</button>
+  </div>
+</body>
+</html>

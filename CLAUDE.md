@@ -90,6 +90,10 @@ top to bottom.
   `KV_REST_API_TOKEN`, auto-injected by Vercel once a KV store is attached).
 - `diag.html` / `share.html` — standalone pages (no Telegram auth, registered
   as extra static routes in `vercel.json`) — see Sharing below.
+- `manifest.webmanifest` — PWA manifest for "add to Home Screen" (see PWA below).
+- `icons/` — generated PWA icons, rebuilt by `tools/make-icons.py` (see PWA below).
+- `sw.js` — minimal offline-fallback service worker, registered outside Telegram only (see PWA below).
+- `offline.html` — standalone "no connection" screen shown by `sw.js` (see PWA below).
 
 ### Config sync vs. code authority (important recurring pattern)
 
@@ -454,6 +458,37 @@ neither share nor download working).
 `colorScheme` (светло/темно), палитра всегда наша. Фото-КП (`.kp-*`) от
 темы не зависит. Новый элемент со своим цветом — сразу решить, как он
 выглядит в светлой.
+
+## PWA (ТЗ 16)
+
+Приложение можно поставить на экран «Домой» из Safari/Chrome (вне
+Telegram) — иконка «Байкал Авто», открывается на весь экран без адресной
+строки. Вход там — «Войти через Telegram» (ТЗ 15), своё хранилище сессии
+на каждом экране входа. Мини-приложение в Telegram не меняется ничем из
+этого раздела.
+
+Файлы: `manifest.webmanifest` (корень) со ссылками на иконки; `icons/`
+(`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `favicon-32.png`),
+генерируются `tools/make-icons.py` (Pillow) из `logo-kp.png` на градиенте
+`.kp-hero` — пересобрать после замены логотипа: `python3 tools/make-icons.py`;
+дизайнерский оригинал квадратной иконки можно положить под тем же именем
+без изменения кода; `sw.js` (корень) — service worker; `offline.html`
+(корень) — экран «Нет подключения», которым он отвечает.
+
+**Service worker намеренно ничего не кэширует, кроме `offline.html`, и
+регистрируется только вне Telegram** (`registerSW()` рядом с
+`inTelegram()` в `index.html`/`deals.html`, вызов первой строкой в ветке
+«не Telegram» `bootGate()`/`boot()`) — не добавлять в него кэширование
+`index.html`/`deals.html`/`/api/*` без отдельного решения владельца:
+старая версия иначе может залипнуть у пользователя.
+
+Отключить совсем: заменить `sw.js` на самоудаляющийся
+(`self.registration.unregister()` в `activate`), а не удалять файл —
+удалённый файл не снимает уже установленный у пользователей worker.
+
+Новый статический файл в корне/`icons/` = запись и в `builds`, и в
+`routes` **выше** финального `/(.*)`  в `vercel.json` (иначе Vercel не
+задеплоит файл или отдаст вместо него `index.html`).
 
 ## Standing conventions (from the owner, apply without re-asking)
 

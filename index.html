@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>Растаможка · Калькулятор</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#070c14">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Байкал Авто">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="/lib/calc.js?v=1"></script>
@@ -45,6 +53,7 @@
   function apply(){
     var th = effective(), t = tg();
     document.documentElement.setAttribute('data-theme', th);
+    try{ var tc = document.querySelector('meta[name="theme-color"]'); if(tc) tc.setAttribute('content', BG[th]); }catch(e){}
     try{ if(t && getInitData()){ t.setHeaderColor && t.setHeaderColor(BG[th]); t.setBackgroundColor && t.setBackgroundColor(BG[th]); } }catch(e){}
     return th;
   }
@@ -682,6 +691,12 @@ function getTg(){ return window.Telegram && window.Telegram.WebApp; }
 // Внутри Telegram — есть initData; в обычном браузере (Safari/Chrome/«на
 // экран Домой», ТЗ 15) объект Telegram.WebApp есть, но initData пустой.
 function inTelegram(){ return !!getInitData(); }
+// PWA (ТЗ 16): service worker только в обычном браузере / «на экране Домой».
+// В Telegram не регистрируем — мини-приложению он не нужен.
+function registerSW(){
+  if(inTelegram() || !('serviceWorker' in navigator)) return;
+  try{ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }catch(e){}
+}
 // Сессия приложения для входа вне Telegram — выдаёт /api/login после входа
 // через Telegram OpenID Connect, 90 дней (см. api/_lib/session.js).
 const SESSION_KEY = 'bk_session_v1';
@@ -3092,6 +3107,7 @@ async function bootGate(){
     }catch(e){}
   } else {
     // Обычный браузер (ТЗ 15). --tg-top-pad остаётся 0px (только --safe-top).
+    registerSW();
     const fin = await finishLoginFromUrl();
     if(fin && fin.error){ setSession(''); renderGate('login', fin); return; }
     if(!getSession()){ renderGate('login'); return; }
